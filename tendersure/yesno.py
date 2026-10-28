@@ -12,13 +12,13 @@ not there are judged in one model call per batch (anonymised like every
 call), else by a keyword rule; both are drafts the team confirms there.
 """
 
-import csv
 import re
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from .generate import Plan, PlannedRow
+from .learned_store import YES_NO, resolve
 from .llm import LLMError, make_llm
 from .trust import context_key
 from .validate import YES_BAD, YES_GOOD, is_yes_no, yes_no_target
@@ -57,21 +57,18 @@ class Book:
         self._by[v.question_key] = v
 
 
-def load(path: str) -> Book:
-    try:
-        with open(path, newline="") as fh:
-            return Book([Verdict(d["question_key"], d["example"], d["yes_is"], d["status"] or DRAFTED)
-                         for d in csv.DictReader(fh)])
-    except FileNotFoundError:
-        return Book([])
+def load(target) -> Book:
+    """From a storage driver (see learned_store) or a CSV path."""
+    store, name = resolve(target, YES_NO)
+    return Book([Verdict(d["question_key"], d["example"], d["yes_is"], d["status"] or DRAFTED)
+                 for d in store.read(name)])
 
 
-def save(book: Book, path: str):
-    with open(path, "w", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(COLUMNS)
-        for v in sorted(book.verdicts, key=lambda v: (v.yes_is, v.question_key)):
-            w.writerow([v.question_key, v.example, v.yes_is, v.status])
+def save(book: Book, target):
+    store, name = resolve(target, YES_NO)
+    store.write(name, COLUMNS, [{"question_key": v.question_key, "example": v.example, "yes_is": v.yes_is,
+                                 "status": v.status}
+                                for v in sorted(book.verdicts, key=lambda v: (v.yes_is, v.question_key))])
 
 
 def rule_yes_is(text: str) -> str:

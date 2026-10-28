@@ -12,12 +12,12 @@ Questions are keyed in context (trust.context_key), so "If yes attach a copy"
 under a safety policy question is not the same document as under another.
 """
 
-import csv
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+from .learned_store import GLOSSARY, resolve
 from .parser import Sheet
 from .trust import context_key
 from .validate import needs_names
@@ -129,17 +129,17 @@ class Glossary:
         self._by[(entry.client, entry.question_key)] = entry
 
 
-def load(path: str) -> List[Entry]:
-    with open(path, newline="") as fh:
-        return [Entry(d["client"], d["question_key"], d["example"], d["short_name"], d["acronym"],
-                      d["numbered"].strip().lower() == "true", d["status"] or SEEDED, int(d["uses"] or 0))
-                for d in csv.DictReader(fh)]
+def load(target) -> List[Entry]:
+    """From a storage driver (see learned_store) or a CSV path."""
+    store, name = resolve(target, GLOSSARY)
+    return [Entry(d["client"], d["question_key"], d["example"], d["short_name"], d["acronym"],
+                  d["numbered"].strip().lower() == "true", d["status"] or SEEDED, int(d["uses"] or 0))
+            for d in store.read(name)]
 
 
-def save(entries: List[Entry], path: str):
-    with open(path, "w", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(COLUMNS)
-        for e in sorted(entries, key=_document_order):
-            w.writerow([e.client, e.question_key, e.example, e.short_name, e.acronym,
-                        "TRUE" if e.numbered else "", e.status, e.uses])
+def save(entries: List[Entry], target):
+    store, name = resolve(target, GLOSSARY)
+    store.write(name, COLUMNS, [
+        {"client": e.client, "question_key": e.question_key, "example": e.example, "short_name": e.short_name,
+         "acronym": e.acronym, "numbered": "TRUE" if e.numbered else "", "status": e.status, "uses": e.uses}
+        for e in sorted(entries, key=_document_order)])

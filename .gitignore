@@ -10,3 +10,7 @@ out/
 reports/
 .env
 data/bank.sqlite
+
+# learned facts: client-derived data, stored apart from the code
+data/glossary.csv
+data/yesno_polarity.csv

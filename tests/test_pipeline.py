@@ -1410,3 +1410,20 @@ def test_model_judges_unconfirmed_scored_questions_in_one_call(corpus, tmp_path)
     again = yesno.load(str(tmp_path / "yn.csv"))
     assert again.lookup("do you hold a valid service licence yes/no").status == yesno.CONFIRMED
     assert len(again.verdicts) == 3
+
+
+# --- learning from the bank ----------------------------------------------------------
+
+def test_rewordings_group_and_confirmed_questions_stay_apart():
+    from tendersure import grouping
+    keys = ["does your company have the necessary technology and equipment to manage your operations efficiently",
+            "does your organization have the necessary technology and equipment to manage your operations efficiently",
+            "do you offer extended warranty on goods sold yes/no",
+            "do you offer extended warranty on goods sold",
+            "has the firm ever been declared in default of a contract"]
+    g = grouping.group(keys)
+    assert g[keys[1]] == keys[0] and g[keys[3]] == keys[2]
+    assert len(set(g.values())) == 3
+    confirmed = {keys[2], keys[3]}
+    g = grouping.group(keys, apart=lambda a, b: a in confirmed and b in confirmed)
+    assert g[keys[3]] == keys[3]                          # the team confirmed both: never merged
