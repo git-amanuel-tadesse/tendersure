@@ -1469,3 +1469,37 @@ def test_model_calls_go_in_chunks_and_a_failed_chunk_falls_back_alone():
     assert Transport.calls == 3
     assert [(v.yes_is, v.status) for v in got] == [("bad", yesno.DRAFTED)] * 2 + \
            [("good", yesno.RULE_DRAFTED)] * 2 + [("bad", yesno.DRAFTED)]
+
+
+def test_learn_names_and_judges_the_history_and_applies_the_review(corpus, tmp_path, capsys):
+    from tendersure import glossary as gl, yesno
+    from tendersure.cli import main
+    store, review = tmp_path / "learned", tmp_path / "review.xlsx"
+    main(["learn", str(corpus), "--store", str(store), "--out", str(review), "--no-model"])
+
+    entries = gl.load(str(store / "glossary.csv"))
+    assert entries and all(e.short_name and e.acronym for e in entries)
+    food = next(e for e in entries if e.question_key.startswith("please attach your food safety"))
+    assert (food.short_name, food.acronym, food.status) == ("Food Safety and Hygiene", "FSH", gl.RULE_DRAFTED)
+    book = yesno.load(str(store / "yesno_polarity.csv"))
+    assert {v.question_key for v in book.verdicts} == {
+        "do you offer extended warranty on goods sold yes/no", "do you hold a valid service licence yes/no",
+        "do you use temperature regulated food containers yes/no"}           # the scored ones only
+
+    wb = openpyxl.load_workbook(review)
+    names, yn = wb["Names"], wb["Yes-No"]
+    row_of = {names.cell(r, 2).value: r for r in range(2, names.max_row + 1)}
+    names.cell(row_of["Please attach your food safety and hygiene procedures"], 8, "Food Safety Procedures | FSP")
+    names.cell(row_of["Attach evidence of trained service staff"], 8, "ok")
+    yn.cell(2, 6, "bad")
+    wb.save(review)
+    main(["learn", "--review", str(review), "--store", str(store), "--out", str(tmp_path / "r2.xlsx")])
+
+    food = next(e for e in gl.load(str(store / "glossary.csv")) if e.question_key == food.question_key)
+    assert (food.short_name, food.acronym, food.status) == ("Food Safety Procedures", "FSP", gl.CONFIRMED)
+    assert sum(v.status == yesno.CONFIRMED for v in yesno.load(str(store / "yesno_polarity.csv")).verdicts) == 1
+    assert "applied 3 answered lines" in capsys.readouterr().out
+
+    main(["learn", str(corpus), "--store", str(store), "--out", str(tmp_path / "r3.xlsx"), "--no-model"])
+    out = capsys.readouterr().out
+    assert "0 questions newly named" in out and "0 questions judged" in out     # nothing new: nothing asked

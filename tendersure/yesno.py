@@ -15,7 +15,7 @@ call), else by a keyword rule; both are drafts the team confirms there.
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import grouping
 from .generate import Plan, PlannedRow
@@ -137,21 +137,29 @@ class ModelJudge:
         return out
 
 
+def _yes_no(rows: List) -> List[Tuple[int, str]]:
+    return [(i, context_key(rows, i)) for i, r in enumerate(rows) if is_yes_no(r)]
+
+
 def _scored_yes_no(plan: Plan) -> List[Tuple[PlannedRow, str]]:
     qs = plan.questions
-    rows = [p.row for p in qs]
-    return [(p, context_key(rows, i)) for i, p in enumerate(qs) if is_yes_no(p.row)]
+    return [(qs[i], key) for i, key in _yes_no([p.row for p in qs])]
+
+
+def needs_in(sheets: Iterable[Tuple[str, List]], book: Book, redo_rules: bool) -> List[Need]:
+    """Scored Yes/No questions with no verdict yet, once each. `sheets` are
+    (client, rows) pairs: generated plans or past sheets."""
+    out: Dict[str, Need] = {}
+    for client, rows in sheets:
+        for i, key in _yes_no(rows):
+            v = book.lookup(key)
+            if (rows[i].marks or 0) > 0 and (v is None or (redo_rules and v.status == RULE_DRAFTED)):
+                out.setdefault(key, Need(client, key, rows[i].criteria))
+    return list(out.values())
 
 
 def needs(plans: List[Plan], book: Book, redo_rules: bool) -> List[Need]:
-    """Scored Yes/No questions with no verdict yet, once each."""
-    out: Dict[str, Need] = {}
-    for plan in plans:
-        for p, key in _scored_yes_no(plan):
-            v = book.lookup(key)
-            if (p.row.marks or 0) > 0 and (v is None or (redo_rules and v.status == RULE_DRAFTED)):
-                out.setdefault(key, Need(plan.target.client, key, p.row.criteria))
-    return list(out.values())
+    return needs_in(((p.target.client, [q.row for q in p.questions]) for p in plans), book, redo_rules)
 
 
 def apply(plan: Plan, book: Book):
@@ -198,4 +206,14 @@ def settle(plans: List[Plan], book: Book, judge) -> List[Verdict]:
         book.add(v)
     for plan in plans:
         apply(plan, book)
+    return new
+
+
+def learn(sheets: Iterable[Tuple[str, List]], book: Book, judge) -> List[Verdict]:
+    """A verdict for every scored Yes/No question in past sheets (spec 04 L4):
+    reuse confirmed rewordings, judge the rest. Returns the new verdicts."""
+    reused, rest = reuse_similar(needs_in(sheets, book, judge.redoes_rules), book)
+    new = reused + judge.judge(rest)
+    for v in new:
+        book.add(v)
     return new

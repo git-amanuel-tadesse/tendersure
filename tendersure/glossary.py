@@ -121,6 +121,10 @@ class Glossary:
         """The client's own entry, else the cross-client one."""
         return self._by.get((client or ANY_CLIENT, key)) or self._by.get((ANY_CLIENT, key))
 
+    def exact(self, client: str, key: str) -> Optional[Entry]:
+        """This client's own entry only, no fallback."""
+        return self._by.get((client, key))
+
     def add(self, entry: Entry):
         """Add an entry, replacing one for the same client and question."""
         old = self._by.get((entry.client, entry.question_key))

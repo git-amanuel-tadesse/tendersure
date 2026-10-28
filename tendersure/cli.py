@@ -232,6 +232,45 @@ def _glossary(path: str, sheets: List[Sheet]) -> "gl.Glossary":
     return gl.Glossary(entries)
 
 
+def cmd_learn(a):
+    """Learn names and Yes/No verdicts for every question in the bank (spec 04)."""
+    from . import learned_review as lr
+    from .learned_store import CsvStore
+    store = CsvStore(a.store)
+    book = yesno.load(store)
+    if a.review:
+        g = gl.Glossary(gl.load(store))
+        applied, problems = lr.apply_review(a.review, g, book)
+        gl.save(g.entries, store)
+        yesno.save(book, store)
+        print(f"learn: applied {applied} answered lines from {a.review}")
+        for p in problems:
+            print(f"REVIEW PROBLEM: {p}")
+    else:
+        sheets, _ = load_source(a)
+        usable = trust.usable(sheets, trust.grade(sheets))
+        g = gl.Glossary(gl.reseed(gl.load(store), gl.seed(usable)))
+        use_model, why_not = _model_wanted(a)
+        if not use_model:
+            print(f"learn: without a model ({why_not}): drafts by rules")
+        drafter = naming.ModelDrafter(model=a.model or None, examples=g.entries) if use_model \
+            else naming.RuleDrafter()
+        judge = yesno.ModelJudge(model=a.model or None) if use_model else yesno.RuleJudge()
+        history = [(s.client, s.rows) for s in usable]
+        named, (rebuilt, reused, built) = naming.learn(history, g, drafter)
+        judged = yesno.learn(history, book, judge)
+        gl.save(g.entries, store)
+        yesno.save(book, store)
+        similar = sum(e.status == gl.SIMILAR for e in named) + sum(v.status == yesno.SIMILAR for v in judged)
+        print(f"learn: {len(usable)} usable sheets; names: {len(named)} questions newly named, {rebuilt + reused + built} "
+              f"acronyms filled or rebuilt; Yes/No: {len(judged)} questions judged; {similar} taken from a "
+              f"confirmed rewording")
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+    n, y = lr.write_review(g, book, a.out)
+    print(f"learn: {n} name lines and {y} Yes/No lines wait for review -> {a.out}"
+          + ("  (answer the Decision column, then: learn --review <file>)" if n or y else ""))
+
+
 def cmd_glossary(a):
     """Seed data/glossary.csv from the bank, keeping the team's confirmed and drafted rows."""
     sheets, _ = load_source(a)
@@ -555,6 +594,16 @@ def main(argv=None):
     p.add_argument("--model", help="OpenRouter model id for --engine llm/both, e.g. "
                    "google/gemini-4-argon (default: $TENDERSURE_MODEL)")
     p.set_defaults(fn=cmd_categories)
+
+    p = sub.add_parser("learn", help="learn names and Yes/No verdicts for the whole bank; write the review")
+    p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")
+    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
+    p.add_argument("--store", default="data", help="folder of the learned files (default data/)")
+    p.add_argument("--out", default="reports/learned_review.xlsx", help="the review workbook")
+    p.add_argument("--review", help="an answered review workbook to apply")
+    p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
+    p.add_argument("--no-model", action="store_true", help="draft by rules, without a model")
+    p.set_defaults(fn=cmd_learn)
 
     p = sub.add_parser("glossary", help="seed the short name / acronym glossary from the bank")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")

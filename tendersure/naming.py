@@ -15,7 +15,7 @@ on both names: "Shareholder ID or passport 1" / "SIDP 1", as references are.
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import glossary as gl
 from . import grouping
@@ -157,10 +157,13 @@ class ModelDrafter:
         return out
 
 
+def _named(rows: List) -> List[Tuple[int, str]]:
+    return [(i, context_key(rows, i)) for i, r in enumerate(rows) if needs_names(r)]
+
+
 def _named_rows(plan: Plan) -> List[Tuple[PlannedRow, str]]:
     qs = plan.questions
-    rows = [p.row for p in qs]
-    return [(p, context_key(rows, i)) for i, p in enumerate(qs) if needs_names(p.row)]
+    return [(qs[i], key) for i, key in _named([p.row for p in qs])]
 
 
 def _resolve(row, e: Optional[gl.Entry], n: int) -> Tuple[str, str, List[str], bool]:
@@ -176,20 +179,25 @@ def _resolve(row, e: Optional[gl.Entry], n: int) -> Tuple[str, str, List[str], b
     return short, acronym, took, num_s or num_a
 
 
-def needs(plans: List[Plan], glossary: gl.Glossary, redraw_rules: bool) -> List[Need]:
-    """Questions the glossary cannot fully name, once per client and question."""
+def needs_in(sheets: Iterable[Tuple[str, List]], glossary: gl.Glossary, redraw_rules: bool) -> List[Need]:
+    """Questions the glossary cannot fully name, once per client and question.
+    `sheets` are (client, rows) pairs: generated plans or past sheets."""
     out: Dict[Tuple[str, str], Need] = {}
-    for plan in plans:
-        client, seen = plan.target.client, Counter()
-        for p, key in _named_rows(plan):
+    for client, rows in sheets:
+        seen = Counter()
+        for i, key in _named(rows):
             seen[key] += 1
             e = glossary.lookup(client, key)
             if e and e.status == gl.RULE_DRAFTED and redraw_rules:
                 e = None
-            short, acronym, _, _ = _resolve(p.row, e, seen[key])
+            short, acronym, _, _ = _resolve(rows[i], e, seen[key])
             if not short or not acronym:
-                out.setdefault((client, key), Need(client, key, p.row.criteria, short))
+                out.setdefault((client, key), Need(client, key, rows[i].criteria, short))
     return list(out.values())
+
+
+def needs(plans: List[Plan], glossary: gl.Glossary, redraw_rules: bool) -> List[Need]:
+    return needs_in(((p.target.client, [q.row for q in p.questions]) for p in plans), glossary, redraw_rules)
 
 
 def _numbered(name: str, n: Optional[int]) -> str:
@@ -321,3 +329,15 @@ def complete_glossary(glossary: gl.Glossary, drafter) -> Tuple[int, int, int]:
             e.acronym, built = _numbered(acronym_for(base), n), built + 1
         e.status = gl.DRAFTED
     return rederived, reused, built
+
+
+def learn(sheets: Iterable[Tuple[str, List]], glossary: gl.Glossary, drafter) -> Tuple[List[gl.Entry], Tuple]:
+    """Name every question in past sheets that needs names (spec 04 L3): fill
+    the glossary's empty acronyms, then reuse confirmed rewordings, then
+    draft the rest. Returns (new entries, complete_glossary's counts)."""
+    counts = complete_glossary(glossary, drafter)
+    reused, rest = reuse_similar(needs_in(sheets, glossary, drafter.redraws_rules), glossary)
+    new = reused + drafter.draft(rest)
+    for e in new:
+        glossary.add(e)
+    return new, counts
