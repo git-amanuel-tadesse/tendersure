@@ -16,6 +16,7 @@ from copy import copy
 from typing import Dict, List, Optional
 
 import openpyxl
+from openpyxl.styles import Side
 from openpyxl.utils import get_column_letter
 
 from .generate import Plan, check_total
@@ -40,6 +41,24 @@ def _num(v):
     if v is None:
         return None
     return int(v) if float(v).is_integer() else v
+
+
+THIN = Side(style="thin")
+
+
+def _close_border(cell):
+    """Draw any edge the client's style leaves open (spec 02 G6); edges it
+    draws are kept. Done before merging: a merged block takes its outline
+    from its first cell."""
+    b = cell.border
+    sides = ("left", "right", "top", "bottom")
+    if all(getattr(b, s).style for s in sides):
+        return
+    b = copy(b)
+    for s in sides:
+        if not getattr(b, s).style:
+            setattr(b, s, THIN)
+    cell.border = b
 
 
 def _copy_style(src, dst):
@@ -158,6 +177,7 @@ class Writer:
         for (_, label), col in zip(LAYOUT, range(FIRST_COL, last_col + 1)):
             c = ws.cell(hdr, col, label)
             _copy_style(st.cell("header", col), c)
+            _close_border(c)
 
         self._write_body(ws, plan, st, hdr + 1, last_col)
 
@@ -197,6 +217,7 @@ class Writer:
                     c = ws.cell(r, col, values.get(col))
                     role = role_b if col <= COL["sub_section"] else "plain"
                     _copy_style(st.cell(role, col), c)
+                    _close_border(c)
                 if new_section or not blocks_b:
                     blocks_b.append([r, r])
                 else:
@@ -213,6 +234,7 @@ class Writer:
                 ws.cell(r, FIRST_COL, "Total Marks" if is_total else "Sub Total")
                 for col in range(FIRST_COL, last_col + 1):
                     _copy_style(st.cell(role, col), ws.cell(r, col))
+                    _close_border(ws.cell(r, col))
                 for col in (COL[f] for f in MARK_FIELDS):
                     L = get_column_letter(col)
                     if is_total:

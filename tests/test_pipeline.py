@@ -251,6 +251,25 @@ def test_inserted_rows_keep_the_sub_section_block_whole(corpus, tmp_path):
     assert any(m.min_row == tech[0] and m.max_row == tech[-1] for m in blocks)
 
 
+def test_every_cell_and_merged_block_is_bordered(corpus, tmp_path):
+    from tendersure.schema import LAYOUT
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")     # no styling at all
+    Writer().write([g.plan(Target(src.code, src.description, src.client))], str(tmp_path / "o.xlsx"))
+    ws = openpyxl.load_workbook(tmp_path / "o.xlsx").active
+    owner = {(r, c): m for m in ws.merged_cells.ranges
+             for r in range(m.min_row, m.max_row + 1) for c in range(m.min_col, m.max_col + 1)}
+    open_edges = []
+    for r in range(4, ws.max_row + 1):
+        for c in range(2, 2 + len(LAYOUT)):
+            m = owner.get((r, c))
+            outer = {"left": not m or c == m.min_col, "right": not m or c == m.max_col,
+                     "top": not m or r == m.min_row, "bottom": not m or r == m.max_row}
+            open_edges += [(r, c, side) for side, needed in outer.items()
+                           if needed and not getattr(ws.cell(r, c).border, side).style]
+    assert open_edges == []
+
+
 def _trade_license(marks=0.0, section="Registration and Statutory Requirements"):
     from tendersure.parser import Row
     return Row("", "", 0, section=section, sub_section="N/A", criteria="Please attach a valid Trade license",
