@@ -1,0 +1,865 @@
+import json
+import re
+
+import openpyxl
+import pytest
+
+from tendersure.categories import _split_sub_categories, category_kind
+from tendersure.cli import load_corpus
+from tendersure.generate import (Generator, MarksError, Target, apply_section_marks, check_total,
+                                 fill_placeholder, swap_client)
+from tendersure.parser import parse_workbook, section_key
+from tendersure.selectors import ModelSelector
+from tendersure.llm import LLMError, OpenRouterLLM, SchemaError, check_schema
+from tendersure.category_llm import LLMExtractor, reconcile, verify
+from tendersure.categories import Category
+from tendersure.similarity import Retriever
+from tendersure.validate import validate_sheet
+from tendersure.writer import Writer
+
+from conftest import GENERIC, TAIL, tech, write_sheet
+
+
+def _gen(corpus):
+    sheets = load_corpus(str(corpus))
+    return sheets, Generator(sheets, Retriever(sheets))
+
+
+# --- parser and validator ------------------------------------------------------
+
+def test_parses_synthetic_corpus(corpus):
+    sheets = load_corpus(str(corpus))
+    assert len(sheets) == 4
+    s = next(s for s in sheets if s.name == "AAA-ET-2026-001")
+    assert s.client == "AAA" and s.description.startswith("Supply of Office")
+    assert validate_sheet(s) == []
+
+
+def test_validator_catches_silent_and_arithmetic_errors(tmp_path):
+    rows = GENERIC + tech("goods") + TAIL
+    rows = [list(r) for r in rows]
+    rows[6][8] = 5                      # 'Insert TIN number' coded as upload
+    rows[3][8] = 1                      # 'Attach evidence of office' coded as text
+    rows[11][13] = "0,15"               # years in business: best score 15, row worth 20
+    wb = openpyxl.Workbook()
+    write_sheet(wb.active, "AAA-ET-2026-009", "Test", [tuple(r) for r in rows], "AAA")
+    ws = wb.active
+    ws.cell(9, 5, 999)                  # first subtotal: wrong
+    ws.cell(9, 2).value = None          # ... and its label moved to the Criteria column
+    ws.cell(9, 4, "Sub Total")
+    wb.save(tmp_path / "x.xlsx")
+    s = parse_workbook(str(tmp_path / "x.xlsx"))[0]
+    rules = {f.rule for f in validate_sheet(s)}
+    assert {"AT-ASKS-TEXT", "AT-TEXT-SAYS-ATTACH", "OPT-MAX-MARKS", "SUM-ROWS", "SUM-LABEL-COLUMN"} <= rules
+    assert all(r.criteria != "Sub Total" for r in s.rows)
+
+
+def test_country_code_is_not_a_client(tmp_path):
+    wb = openpyxl.Workbook()
+    write_sheet(wb.active, "ET-2026_016", "Research", GENERIC + TAIL, "X")
+    wb.save(tmp_path / "x.xlsx")
+    s = parse_workbook(str(tmp_path / "x.xlsx"))[0]
+    assert s.client is None
+    assert "ID-NO-CLIENT" in {f.rule for f in validate_sheet(s)}
+
+
+# --- generation ----------------------------------------------------------------
+
+def test_text_adaptation_keeps_platform_name():
+    assert swap_client("Are you a supplier of ILRI?", "ERCS") == "Are you a supplier of ERCS?"
+    assert swap_client("I authorize TenderSure to share", "ERCS") == "I authorize TenderSure to share"
+    assert fill_placeholder("Are you a current consultant of ?", "SNV") == "Are you a current consultant of SNV?"
+
+
+def test_plan_reuses_client_skeleton_and_flags_category_rows(corpus):
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-004", "Provision of Cleaning Services", "AAA", client_name="AAA"))
+    assert p.skeleton.sheet.name == "AAA-ET-2026-003"
+    assert p.total() == 100
+    check_total(p)
+    flagged = [q.row.criteria for q in p.questions if q.needs_reading]
+    assert flagged and all(section_key(q.row.section) == "technical"
+                           for q in p.questions if q.needs_reading)
+    assert p.findings == []
+
+
+def test_plan_from_other_client_swaps_names_and_suggests(corpus):
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    texts = [q.row.criteria for q in p.questions]
+    assert not any("BBB" in t for t in texts)
+    assert any("food safety" in s.row.criteria for s in p.suggestions)
+
+
+def test_existing_code_is_reused_unflagged(corpus):
+    sheets, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-002", "Supply of Electronics and Home Appliances (revised)", "AAA"))
+    assert p.skeleton.sheet.name == "AAA-ET-2026-002"
+    assert not any(q.needs_reading for q in p.questions)
+    assert p.notes and "revised" in p.notes[0]
+
+
+def test_marks_split_and_total_enforcement(corpus):
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-004", "Supply of Cleaning Materials", "AAA"))
+    apply_section_marks(p, {"technical": 30, "trade_reference": 40})
+    check_total(p)
+    years = next(q.row for q in p.questions if q.row.criteria == "Years in business")
+    assert years.option_scores == "0,20"
+    with pytest.raises(MarksError):
+        apply_section_marks(p, {"technical": 40})
+        check_total(p)
+
+
+def test_corrects_unambiguous_answer_type_errors(tmp_path):
+    rows = [list(r) for r in GENERIC + tech("goods") + TAIL]
+    rows[3][8] = 1                       # 'Attach evidence of office' as a text box
+    wb = openpyxl.Workbook()
+    write_sheet(wb.active, "AAA-ET-2026-001", "Supply of Stationery", [tuple(r) for r in rows], "AAA")
+    wb.save(tmp_path / "a.xlsx")
+    sheets = load_corpus(str(tmp_path))
+    p = Generator(sheets, Retriever(sheets)).plan(Target("AAA-ET-2026-001", "Supply of Stationery", "AAA"))
+    q = next(q for q in p.questions if q.row.criteria.startswith("Attach evidence of physically"))
+    assert q.row.answer_type == 5 and q.origin == "adapted"
+
+
+# --- writer --------------------------------------------------------------------
+
+def test_writer_round_trip_is_lossless(corpus, tmp_path):
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client))
+    out = tmp_path / "out.xlsx"
+    Writer().write([p], str(out))
+    back = parse_workbook(str(out))[0]
+    fields = ["section", "sub_section", "criteria", "marks", "system", "compliance", "answer_type",
+              "mandatory", "attachment", "compliance_attach", "options", "option_scores"]
+    assert [[getattr(r, f) for f in fields] for r in back.rows] == \
+           [[getattr(r, f) for f in fields] for r in src.rows]
+    assert [(s.label, s.marks) for s in back.structural] == [(s.label, s.marks) for s in src.structural]
+    assert validate_sheet(back) == []
+
+
+def test_writer_refuses_off_total(corpus, tmp_path):
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-004", "Supply of Cleaning Materials", "AAA"))
+    p.questions[3].row.marks = 50
+    with pytest.raises(MarksError):
+        Writer().write([p], str(tmp_path / "x.xlsx"))
+
+
+# --- model access (no network) -----------------------------------------------
+
+class FakeTransport:
+    """Stands in for OpenRouter: records requests, replies with a canned payload."""
+
+    def __init__(self, payload, model_used=None, finish="stop", raw=None):
+        self.payload, self.model_used, self.finish, self.raw = payload, model_used, finish, raw
+        self.calls = []
+
+    def __call__(self, url, headers, body):
+        self.calls.append((url, headers, body))
+        text = self.raw if self.raw is not None else json.dumps(self.payload)
+        return {"model": self.model_used or body["model"],
+                "choices": [{"finish_reason": self.finish, "message": {"content": text}}]}
+
+
+SCHEMA = {"type": "object", "properties": {"n": {"type": "integer"}, "k": {"type": "string", "enum": ["a", "b"]}},
+          "required": ["n", "k"]}
+
+
+@pytest.mark.parametrize("model", ["anthropic/claude-opus-5.5", "google/gemini-4-argon"])
+def test_switching_provider_is_one_string(model):
+    t = FakeTransport({"n": 1, "k": "a"})
+    llm = OpenRouterLLM(model=model, fallbacks=["openai/gpt-5"], transport=t)
+    assert llm.complete_json("sys", "hi", SCHEMA, "x") == {"n": 1, "k": "a"}
+    url, headers, body = t.calls[0]
+    assert url.endswith("/chat/completions") and body["model"] == model
+    assert body["response_format"]["json_schema"]["schema"] == SCHEMA
+    assert body["models"] == ["openai/gpt-5"]
+    assert body["provider"]["data_collection"] == "deny" and body["provider"]["zdr"] is True
+    assert llm.last_model == model
+
+
+def test_prompt_json_mode_and_fenced_reply():
+    t = FakeTransport(None, raw='Here you go:\n```json\n{"n": 2, "k": "b"}\n```')
+    llm = OpenRouterLLM(model="some/model", json_mode="prompt", transport=t)
+    assert llm.complete_json("sys", "hi", SCHEMA, "x") == {"n": 2, "k": "b"}
+    body = t.calls[0][2]
+    assert "response_format" not in body and "JSON Schema" in body["messages"][0]["content"]
+
+
+def test_replies_are_checked_not_trusted():
+    with pytest.raises(SchemaError):
+        OpenRouterLLM(model="m", transport=FakeTransport({"n": "1", "k": "c"})).complete_json("s", "p", SCHEMA, "x")
+    with pytest.raises(LLMError):
+        OpenRouterLLM(model="m", transport=FakeTransport({"n": 1, "k": "a"}, finish="length")).complete_json("s", "p", SCHEMA, "x")
+    assert check_schema({"n": True, "k": "a"}, SCHEMA) == ["$.n: expected integer, got bool"]
+
+
+def test_model_proposes_and_review_applies(corpus, tmp_path):
+    from tendersure.reports import write_qa_report
+    from tendersure.review import apply_answers, decision_items, read_answers, read_proposals
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    flagged = [i for i, r in enumerate(p.rows) if r.kind == "question" and r.needs_reading]
+    unflagged = next(i for i, r in enumerate(p.rows) if r.kind == "question" and not r.needs_reading)
+    food = next(j for j, s in enumerate(p.suggestions) if "food safety" in s.row.criteria)
+    t = FakeTransport({
+        "reword": [],
+        "drop": [{"row": flagged[0], "reason": "not catering"}, {"row": unflagged, "reason": "x"}],
+        "add": [{"suggestion": food, "reason": "catering needs it"}, {"suggestion": 999, "reason": "x"}],
+        "drafts": [{"section": "registration", "criteria": "Attach a valid food handling licence",
+                    "answer_type": 5, "options": "", "reason": "category licence"},
+                   {"section": "technical", "criteria": "Bad type", "answer_type": 9,
+                    "options": "", "reason": "x"}],
+    }, model_used="google/gemini-4-argon")
+    prop = ModelSelector(llm=OpenRouterLLM(model="google/gemini-4-argon", transport=t)).propose(p)
+    assert len(prop["drop"]) == 1 and len(prop["add"]) == 1 and len(prop["drafts"]) == 1
+    assert len(prop["ignored"]) == 3                       # unflagged drop, unknown suggestion, bad type
+    n_before = len(p.questions)
+    assert len(p.questions) == n_before                    # proposing changes nothing
+
+    items = decision_items([p])
+    q = next(i for i in items if i.type == "question")
+    a = next(i for i in items if i.id == "A-AAA-ET-2026-031")
+    assert q.proposed == "remove all" and "gemini" in q.why
+    assert a.proposed == "add all" and "NEW, drafted" in a.decide
+
+    # The QA report keeps the proposal; the review replays it without the model.
+    path = tmp_path / "qa.xlsx"
+    write_qa_report([p], str(path))
+    assert read_proposals(str(path))["AAA-ET-2026-031"] == prop
+    p2 = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    p2.proposal = read_proposals(str(path))["AAA-ET-2026-031"]
+    out_items, log, problems = apply_answers([p2], {a.id: "add: 2"})     # Q left blank: accepted
+    texts = [x.row.criteria for x in p2.questions]
+    assert "Attach a valid food handling licence" in texts
+    assert not any("food safety" in x for x in texts)      # item 1 was not picked
+    assert len(p2.questions) == n_before - 1 + 1
+    drafted = next(x for x in p2.questions if x.origin == "newly drafted")
+    assert drafted.row.marks == 0 and drafted.needs_reading and drafted.row.attachment
+    assert next(i for i in out_items if i.type == "question").status == "applied: removed from 1 (proposal accepted)"
+    check_total(p2)
+    assert len(t.calls) == 1
+
+
+def test_weak_match_without_model_offers_suggestions(corpus):
+    from tendersure.review import decision_items
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    assert p.weak_match
+    a = next(i for i in decision_items([p]) if i.id == "A-AAA-ET-2026-031")
+    assert a.proposed == "skip" and "food safety" in a.decide
+
+
+# --- model-assisted category extraction ----------------------------------------
+
+def _cats():
+    return [Category(1, "Supply of Stationery and Toners", "GENERAL", ["Supply of office Stationery"]),
+            Category(2, "Supply of Electronics/ Home Appliances (TVs, Fridges)", "GENERAL"),
+            Category(3, "Provision of Catering Services", "HOSPITALITY")]
+
+
+VOCAB = {t for c in _cats() for t in re.findall(r"[a-z0-9]+", (c.description + " " + " ".join(c.sub_categories)
+                                                                + " " + c.group).lower())}
+
+
+def test_verify_flags_words_not_in_the_pdf():
+    cats = _cats()
+    cats[1] = Category(2, "Supply of Electronics and Home Appliances (TVs, Refrigerators)", "GENERAL")
+    del cats[2]
+    issues = verify(cats + [Category(4, "Provision of Catering Services", "HOSPITALITY")], VOCAB)
+    msgs = [(i.kind, i.number, i.message) for i in issues]
+    assert ("sequence", None, "missing category numbers: [3]") in msgs
+    assert any(k == "unverified" and n == 2 and "refrigerators" in m for k, n, m in msgs)
+    assert verify(_cats(), set())[0].kind == "no-text-layer"
+
+
+def test_reconcile_prefers_verbatim_text():
+    layout = _cats()
+    layout[2] = Category(3, "Provision of Catering Servces", "HOSPITALITY")      # layout slip
+    model = _cats()
+    model[1] = Category(2, "Supply of Electronics and Home Appliances (TVs, Refrigerators)", "GENERAL")
+    merged, issues = reconcile(layout, model, VOCAB)
+    by = {c.number: c for c in merged}
+    assert by[2].description == _cats()[1].description      # layout verbatim, model paraphrased
+    assert by[3].description == "Provision of Catering Services"   # model verbatim, layout slipped
+    assert len([i for i in issues if i.kind == "disagreement"]) == 2
+
+
+def test_llm_extractor_sends_anonymised_text_not_the_pdf(tmp_path, monkeypatch):
+    import tendersure.category_llm as cl
+    monkeypatch.setattr(cl, "notice_text", lambda path: (
+        "The Ethiopian Red Cross Society (ERCS) invites vendors. Contact clearskies@tendersure.africa "
+        "or +251 955 210 999.\n1 Supply of Stationery and Toners"))
+    payload = {"notice_title": "Notice", "client_name": "[CLIENT]", "closing_date": "September 10, 2026",
+               "categories": [{"number": c.number, "description": c.description, "group": c.group,
+                               "sub_categories": c.sub_categories, "kind": "goods"} for c in _cats()]}
+    t = FakeTransport(payload)
+    data = LLMExtractor(llm=OpenRouterLLM(model="google/gemini-4-argon", transport=t)).ask("n.pdf", "ERCS")
+    sent = json.dumps(t.calls[0][2])
+    for secret in ("Red Cross", "ERCS", "clearskies", "tendersure", "955 210"):
+        assert secret.lower() not in sent.lower()
+    assert '"type": "file"' not in sent                      # never the PDF itself
+    assert data["client_name"] == "ERCS"                    # placeholders restored locally
+
+
+# --- category extraction helpers -----------------------------------------------
+
+def test_sub_category_wrapping():
+    lines = [(90, "Supply of office Stationery"), (106, "Supply of Toners and"), (121, "Cartridges"),
+             (324, "Sugar, Milk Powder"), (339, "Fresh fruits, Vegetables, Tubers"), (352, "and Herbs")]
+    assert _split_sub_categories(lines) == [
+        "Supply of office Stationery", "Supply of Toners and Cartridges",
+        "Sugar, Milk Powder", "Fresh fruits, Vegetables, Tubers and Herbs"]
+
+
+@pytest.mark.parametrize("desc,kind", [
+    ("Supply of Assorted Pharmaceuticals", "goods"),
+    ("Supply, Installation and Maintenance of Generators", "goods+service"),
+    ("Provision of Catering Services", "service"),
+    ("Provision of Consultancy Services for Design of Buildings", "consultancy"),
+    ("Provision of Civil Works in Building Construction", "works"),
+    ("Supply of General Construction/Building Materials, wood works", "goods"),
+])
+def test_category_kind(desc, kind):
+    assert category_kind(desc) == kind
+
+
+def test_category_table_keeps_eligibility_gate_and_applies_to(tmp_path):
+    from tendersure.categories import load, save
+    cats = [Category(43, "Provision of Travel Agency Services (IATA Registered Only)", "SERVICES",
+                     eligibility=["Trade License", "IATA Registration Certificate"],
+                     applies_to=["Sole Proprietor", "Private Limited Company", "Share Company"]),
+            Category(39, "Provision of Consultancy Services", "CONSULTANCY", gate_question=True,
+                     applies_to=["Individual Consultant", "Private Limited Company"])]
+    for name in ("cats.csv", "cats.json"):
+        save(cats, str(tmp_path / name))
+        assert load(str(tmp_path / name)) == cats
+
+    old = tmp_path / "old.csv"            # a table written before these columns existed
+    old.write_text("number,group,description,sub_categories,kind,client,version\n"
+                   "1,GENERAL,Supply of Stationery,,goods,ERCS,v1\n")
+    c = load(str(old))[0]
+    assert (c.eligibility, c.gate_question, c.applies_to) == ([], False, [])
+
+
+# --- real corpus (skipped without client data) ---------------------------------
+
+def test_real_corpus_round_trip(real_corpus, tmp_path):
+    sheets = load_corpus(real_corpus)
+    g = Generator(sheets, Retriever(sheets))
+    src = next(s for s in sheets if s.name == "ERCS-ET-2026-002")
+    p = g.plan(Target(src.code, src.description, src.client))
+    Writer().write([p], str(tmp_path / "o.xlsx"))
+    back = parse_workbook(str(tmp_path / "o.xlsx"))[0]
+    assert [(r.criteria, r.marks, r.answer_type, r.options) for r in back.rows] == \
+           [(r.criteria, r.marks, r.answer_type, r.options) for r in src.rows]
+
+
+# --- review loop ---------------------------------------------------------------
+
+def _batch(corpus):
+    from tendersure.review import decision_items
+    _, g = _gen(corpus)
+    plans = [g.plan(Target(f"AAA-ET-2026-0{n}", d, "AAA")) for n, d in
+             ((10, "Provision of Cleaning Services"), (11, "Provision of Gardening Services"))]
+    return plans, decision_items(plans)
+
+
+def test_repeated_flags_collapse_into_one_decision(corpus):
+    plans, items = _batch(corpus)
+    flagged = sum(q.needs_reading for p in plans for q in p.questions)
+    q_items = [i for i in items if i.type == "question"]
+    assert flagged == 4 and len(q_items) == 1          # 2 questions x 2 categories -> 1 bundle
+    assert q_items[0].codes == ["AAA-ET-2026-010", "AAA-ET-2026-011"]
+    assert len([i for i in items if i.type == "marks"]) == 1
+
+
+def test_review_answers_are_applied_and_reported(corpus, tmp_path):
+    from tendersure.reports import write_qa_report
+    from tendersure.review import apply_answers, read_answers
+    plans, items = _batch(corpus)
+    q = next(i for i in items if i.type == "question")
+    m = next(i for i in items if i.type == "marks")
+    answers = {q.id: "remove: 10", m.id: "experience 30, trade_reference 40", "Q-gone": "remove all"}
+    out_items, log, problems = apply_answers(plans, answers)
+    p10, p11 = plans
+    assert not any(section_key(x.row.section) == "technical" for x in p10.questions)
+    assert any(section_key(x.row.section) == "technical" for x in p11.questions)
+    for p in plans:
+        check_total(p)
+    subtotals = lambda p: sum(r.kind == "subtotal" for r in p.rows)
+    assert subtotals(p10) == subtotals(p11) - 1          # empty section's subtotal removed
+    freed = next(i for i in out_items if i.id.startswith("M-FREED-technical"))
+    assert freed.codes == ["AAA-ET-2026-010"] and freed.status == ""
+    assert any("no longer in this batch" in x for x in problems)
+    # the QA report carries the answers and statuses forward under the same ids
+    path = tmp_path / "qa.xlsx"
+    write_qa_report(plans, str(path), out_items)
+    assert read_answers(str(path))[q.id] == "remove: 10"
+
+
+def test_rejected_marks_answer_keeps_sheet_writable(corpus):
+    from tendersure.review import apply_answers
+    plans, items = _batch(corpus)
+    m = next(i for i in items if i.type == "marks")
+    out_items, _, problems = apply_answers(plans, {m.id: "trade_reference 90"})
+    it = next(i for i in out_items if i.id == m.id)
+    assert it.status.startswith("NOT APPLIED") and problems
+    for p in plans:
+        check_total(p)
+
+
+# --- trust: grading, conventions, standing rulings -----------------------------
+
+def _client_corpus(tmp_path, n=6, odd_one=None, broken=None):
+    """n sheets for client AAA; `odd_one` gets 'Company name' mandatory; `broken` has bad arithmetic."""
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for i in range(1, n + 1):
+        code = f"AAA-ET-2026-{i:03d}"
+        rows = [list(r) for r in GENERIC + tech("service" if i % 2 else "goods") + TAIL]
+        if i == odd_one:
+            rows[1][9] = True
+        write_sheet(wb.create_sheet(code), code, f"Provision of Service Number {i}", [tuple(r) for r in rows], "AAA")
+        if i == broken:
+            wb[code].cell(9, 5, 99)            # subtotal no longer matches its rows
+    wb.save(tmp_path / "c.xlsx")
+    return load_corpus(str(tmp_path), cache=False)
+
+
+def test_broken_sheets_are_quarantined_and_never_copied(tmp_path):
+    from tendersure import trust
+    sheets = _client_corpus(tmp_path, broken=1)
+    grades = trust.grade(sheets)
+    assert grades["AAA-ET-2026-001"].tier == "quarantined" and "SUM-ROWS" in grades["AAA-ET-2026-001"].reasons
+    g = Generator(sheets, Retriever(sheets), grades=grades)
+    p = g.plan(Target("AAA-ET-2026-009", "Provision of Service Number 1", "AAA"))
+    assert p.skeleton.sheet.name != "AAA-ET-2026-001"
+    assert any(n.startswith("skipped AAA-ET-2026-001 (quarantined") for n in p.notes)
+
+
+def test_client_convention_corrects_copy_errors(tmp_path):
+    from tendersure import trust
+    sheets = _client_corpus(tmp_path, n=10, odd_one=3)  # 9 of 10 sheets: 'Company name' optional
+    g = Generator(sheets, Retriever(sheets), grades=trust.grade(sheets))
+    p = g.plan(Target("AAA-ET-2026-003", "Provision of Service Number 3", "AAA"))
+    q = next(q for q in p.questions if q.row.criteria == "Company name")
+    assert q.row.mandatory is False and "AAA convention (9 of 10 uses)" in q.notes[-1]
+
+
+def test_standing_rulings_round_trip_and_win(tmp_path):
+    from tendersure import trust
+    path = str(tmp_path / "rulings.csv")
+    trust.save_rulings(path, [{"id": "C-1", "client": "AAA", "question_key": "company name",
+                               "field": "mandatory", "value": "True", "decided_on": "2026-10-16",
+                               "question": "Company name"}])
+    rulings, by_id = trust.load_rulings(path)
+    assert rulings == {("AAA", "company name", "mandatory"): True} and "C-1" in by_id
+    sheets = _client_corpus(tmp_path)
+    p = Generator(sheets, Retriever(sheets), rulings=rulings).plan(
+        Target("AAA-ET-2026-002", "Provision of Service Number 2", "AAA"))
+    assert next(q for q in p.questions if q.row.criteria == "Company name").row.mandatory is True
+    with pytest.raises(ValueError):
+        trust.parse_value("answer_type", "7")
+
+
+def test_schema_trouble_is_retried_once_in_prompt_mode():
+    replies = iter(['{"n": "one", "k": "a"}', '{"n": 1, "k": "a"}'])     # bent, then right
+
+    def transport(url, headers, body):
+        transport.bodies.append(body)
+        return {"model": body["model"], "choices": [{"finish_reason": "stop",
+                                                     "message": {"content": next(replies)}}]}
+    transport.bodies = []
+    llm = OpenRouterLLM(model="google/gemini-4-argon", transport=transport)
+    assert llm.complete_json("s", "p", SCHEMA, "x") == {"n": 1, "k": "a"}
+    assert "response_format" in transport.bodies[0] and "response_format" not in transport.bodies[1]
+    assert llm.retried == 1
+
+
+def test_auth_errors_are_not_retried():
+    def transport(url, headers, body):
+        transport.n += 1
+        raise LLMError("OpenRouter HTTP 401: invalid key")
+    transport.n = 0
+    with pytest.raises(LLMError):
+        OpenRouterLLM(model="m", transport=transport).complete_json("s", "p", SCHEMA, "x")
+    assert transport.n == 1
+
+
+def test_key_and_model_from_dotenv(tmp_path, monkeypatch):
+    from tendersure.llm import load_dotenv
+    env = tmp_path / ".env"
+    env.write_text('# comment\nexport OPENROUTER_API_KEY="sk-or-test"\nTENDERSURE_MODEL=google/gemini-3.8-flash\n')
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("TENDERSURE_MODEL", "already/set")
+    load_dotenv(str(env))
+    import os
+    assert os.environ["OPENROUTER_API_KEY"] == "sk-or-test"
+    assert os.environ["TENDERSURE_MODEL"] == "already/set"        # existing variables win
+
+
+# --- privacy -------------------------------------------------------------------
+
+def test_anonymiser_round_trip_and_guard():
+    from tendersure.privacy import Anonymiser, PrivacyError
+    a = Anonymiser("ERCS")
+    raw = ("Is your company a current supplier of ERCS? Seen in ILRI-ET-078 for ILRI. "
+           "Email procurement@redcross.org, call +251 911 234 567. Period 2026-2029, ISO/IEC 27001.")
+    out = a.anonymise(raw)
+    assert "ERCS" not in out and "ILRI" not in out and "redcross" not in out and "911 234" not in out
+    assert "[CLIENT]" in out and "[CLIENT-" in out and "2026-2029" in out and "27001" in out
+    assert a.leaks(out) == []
+    assert a.restore(out).startswith("Is your company a current supplier of ERCS?")
+    with pytest.raises(PrivacyError):
+        a.guard(raw)
+
+
+def test_model_never_sees_client_names(corpus):
+    """A real proposal prompt mixes clients; nothing identifying may reach the provider."""
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    t = FakeTransport({"drop": [], "reword": [], "add": [], "drafts": [
+        {"section": "technical", "criteria": "Do you supply [CLIENT] daily?", "answer_type": 4,
+         "options": "", "reason": "x"}]})
+    prop = ModelSelector(llm=OpenRouterLLM(model="m", transport=t)).propose(p)
+    sent = json.dumps(t.calls[0][2])
+    assert "BBB" not in sent and "AAA-ET" not in sent and "BBB-ET-001" not in sent
+    assert prop["drafts"][0]["criteria"] == "Do you supply AAA daily?"
+
+
+def test_raw_pdfs_are_refused():
+    from tendersure.privacy import PrivacyError
+    with pytest.raises(PrivacyError):
+        OpenRouterLLM(model="m", transport=FakeTransport({})).complete_json("s", "p", SCHEMA, "x", pdf=b"%PDF")
+
+
+def test_outbox_records_exactly_what_was_sent(tmp_path, monkeypatch):
+    monkeypatch.setenv("TENDERSURE_OUTBOX", str(tmp_path / "outbox"))
+    OpenRouterLLM(model="m", transport=FakeTransport({"n": 1, "k": "a"})).complete_json(
+        "sys", "supplier of ERCS?", SCHEMA, "probe", client="ERCS")
+    logged = (tmp_path / "outbox").glob("*probe*.txt").__next__().read_text()
+    assert "supplier of [CLIENT]?" in logged and "ERCS" not in logged
+
+
+def test_gemini_backend_requires_paid_tier_and_speaks_gemini():
+    from tendersure.llm import GeminiLLM
+    from tendersure.privacy import PrivacyError
+    with pytest.raises(PrivacyError):
+        GeminiLLM(model="gemini-4-argon", transport=lambda *a: {}, paid_tier=False)
+
+    def transport(url, headers, body):
+        transport.seen = (url, headers, body)
+        return {"modelVersion": "gemini-4-argon-001",
+                "candidates": [{"finishReason": "STOP", "content": {"parts": [
+                    {"text": "thinking...", "thought": True}, {"text": '{"n": 1, "k": "b"}'}]}}]}
+    llm = GeminiLLM(model="google/gemini-4-argon", transport=transport, paid_tier=True)
+    assert llm.complete_json("sys", "p", SCHEMA, "x") == {"n": 1, "k": "b"}
+    url, headers, body = transport.seen
+    assert url.endswith("/models/gemini-4-argon:generateContent")
+    assert body["generationConfig"]["responseJsonSchema"] == SCHEMA
+    assert body["systemInstruction"]["parts"][0]["text"] == "sys"
+    assert llm.last_model == "gemini-4-argon-001"
+
+
+def test_make_llm_picks_the_backend(monkeypatch):
+    from tendersure.llm import GeminiLLM, make_llm
+    monkeypatch.setenv("TENDERSURE_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    monkeypatch.setenv("GEMINI_PAID_TIER", "yes")
+    assert isinstance(make_llm(), GeminiLLM)
+
+
+def test_notice_narrative_is_not_sent():
+    from tendersure.category_llm import table_only
+    text = ("The Ethiopian society, one of the 192 national Red Cross and Red Crescent societies around the world, "
+            "was founded on July 8th, 1935, by government Decree.\n"
+            "   #   CATEGORY DESCRIPTION        SUB-CATEGORY\n"
+            "              GENERAL\n"
+            "   1   Supply of Stationery and Toners   Supply of office Stationery\n"
+            "Should you require any assistance, kindly contact us by phone, Telegram or WhatsApp at any time.\n"
+            "   2   Supply of Electronics/ Home Appliances (TVs,\n")
+    out = table_only(text)
+    assert "1935" not in out and "Red Cross" not in out and "assistance" not in out
+    assert "Supply of Stationery and Toners" in out and "Supply of Electronics" in out
+
+
+def test_evaluate_model_scores_and_resumes(corpus, tmp_path):
+    from tendersure import trust
+    from tendersure.evaluate import evaluate_model, model_jobs, summarise_model
+    sheets = load_corpus(str(corpus))
+    gen = Generator(sheets, Retriever(sheets), grades=trust.grade(sheets))
+    jobs = model_jobs(gen, sheets)
+    assert jobs
+    t = FakeTransport({"drop": [], "reword": [], "add": [], "drafts": []})
+    sel = ModelSelector(llm=OpenRouterLLM(model="m", transport=t))
+    cache = str(tmp_path / "eval.json")
+    s, by_client, failures = evaluate_model(jobs, sel, cache, workers=1, progress=lambda *_: None)
+    assert s["judged"] == len(jobs) and not failures
+    assert "FLAGGED ROWS" in summarise_model(s, by_client, failures)
+    calls = len(t.calls)
+    evaluate_model(model_jobs(gen, sheets), sel, cache, workers=1, progress=lambda *_: None)
+    assert len(t.calls) == calls                       # resumed from the cache: no new calls
+
+
+
+# --- rewording ------------------------------------------------------------------
+
+def test_reword_keeps_fields_and_protected_rows_are_never_dropped(corpus):
+    from tendersure.review import apply_answers, decision_items
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    flagged = [i for i, r in enumerate(p.rows) if r.kind == "question" and r.needs_reading]
+    target = p.rows[flagged[0]].row
+    before = (target.answer_type, target.marks, target.compliance_attach)
+    trade = next(i for i, r in enumerate(p.rows) if r.kind == "question"
+                 and section_key(r.row.section) == "trade_reference")
+    p.rows[trade].needs_reading = True                  # pretend it was flagged
+    t = FakeTransport({"reword": [{"row": flagged[0], "criteria": "Do you hold a valid food handling licence? Yes/No",
+                                   "reason": "same check, catering subject"}],
+                       "drop": [{"row": trade, "reason": "x"}], "add": [], "drafts": []})
+    prop = ModelSelector(llm=OpenRouterLLM(model="m", transport=t)).propose(p)
+    assert len(prop["reword"]) == 1 and not prop["drop"]
+    assert any("trade_reference rows are never removed" in x for x in prop["ignored"])
+    q = next(i for i in decision_items([p]) if i.type == "question" and i.payload)
+    assert q.proposed == "reword all" and "-> Do you hold a valid food handling licence" in q.decide
+    out, log, problems = apply_answers([p], {})          # blank accepts the proposal
+    row = next(r.row for r in p.rows if r.kind == "question" and "food handling licence" in r.row.criteria)
+    assert (row.answer_type, row.marks, row.compliance_attach) == before
+    assert next(i for i in out if i.id == q.id).status.startswith("applied: reworded in 1")
+
+
+def test_q_answer_grammar():
+    from tendersure.review import parse_q_answer
+    codes = ["X-001", "X-002", "X-003"]
+    rm, rw = parse_q_answer("remove: 1; reword: 2", codes, {"X-002": "new"}, 1)
+    assert rm == {"X-001"} and rw == {"X-002": "new"}
+    rm, rw = parse_q_answer("reword 3: my own words", codes, {}, 1)
+    assert rw == {"X-003": "my own words"}
+    rm, _ = parse_q_answer("keep: 2", codes, {}, 1)
+    assert rm == {"X-001", "X-003"}
+    for bad in ("delete 4", "reword: 3", "remove: 9", "reword 2: x"):
+        with pytest.raises(ValueError):
+            parse_q_answer(bad, codes, {}, 2 if bad.startswith("reword 2") else 1)
+
+
+# --- the bank as the only source -------------------------------------------------
+
+def test_bank_ingest_is_incremental_and_complete(corpus, tmp_path):
+    from tendersure.store import BankStore
+    bank = BankStore(str(tmp_path / "bank.sqlite"))
+    first = bank.ingest_folder(str(corpus))
+    assert first["added"] == 2 and first["sheets_added"] == 4
+    again = bank.ingest_folder(str(corpus))
+    assert again["added"] == 0 and again["unchanged"] == 2          # nothing re-read
+    fresh = {s.name: s for s in load_corpus(str(corpus), cache=False)}
+    stored = {s.name: s for s in bank.load_sheets()}
+    assert set(stored) == set(fresh)
+    for name, s in stored.items():
+        assert [r.criteria for r in s.rows] == [r.criteria for r in fresh[name].rows]
+        assert [(x.label, x.marks) for x in s.structural] == [(x.label, x.marks) for x in fresh[name].structural]
+    # a changed workbook replaces its earlier version
+    wb = openpyxl.load_workbook(corpus / "BBB.xlsx")
+    wb.active.cell(2, 2, "BBB-ET-001: Provision of Catering and Canteen Services")
+    wb.save(corpus / "BBB.xlsx")
+    changed = bank.ingest_folder(str(corpus))
+    assert changed["replaced"] == 1 and bank.summary()["sheets"] == 4
+    assert any(s.description.endswith("Canteen Services") for s in bank.load_sheets())
+
+
+def test_build_needs_only_the_bank(corpus, tmp_path):
+    from tendersure.store import BankStore
+    bank = BankStore(str(tmp_path / "bank.sqlite"))
+    bank.ingest_folder(str(corpus))
+    for f in corpus.glob("*.xlsx"):
+        f.unlink()                                         # the original workbooks are gone
+    sheets = bank.load_sheets()
+    g = Generator(sheets, Retriever(sheets))
+    p = g.plan(Target("AAA-ET-2026-010", "Provision of Cleaning Services", "AAA"))
+    out = tmp_path / "out.xlsx"
+    Writer(template_loader=bank.template).write([p], str(out))
+    back = parse_workbook(str(out))[0]
+    assert len(back.rows) == len(p.questions) and validate_sheet(back) == []
+
+
+def test_rewording_is_applied_during_the_build(corpus):
+    from tendersure.review import auto_reword
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    i = next(i for i, r in enumerate(p.rows) if r.kind == "question" and r.needs_reading)
+    original = p.rows[i].row.criteria
+    t = FakeTransport({"reword": [{"row": i, "criteria": "Do you hold a food handling licence? Yes/No",
+                                   "reason": "catering subject"}], "drop": [], "add": [], "drafts": []})
+    ModelSelector(llm=OpenRouterLLM(model="m", transport=t)).propose(p)
+    items, n = auto_reword([p])
+    texts = [q.row.criteria for q in p.questions]
+    assert n == 1 and "Do you hold a food handling licence? Yes/No" in texts and original not in texts
+    q = next(it for it in items if it.type == "question" and it.payload)
+    assert q.status == "reworded automatically" and q.answer == ""
+
+
+# --- AI reviewer: only what both passes agree on is applied -----------------------
+
+def _proposed_catering(corpus):
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    flagged = [i for i, r in enumerate(p.rows) if r.kind == "question" and r.needs_reading]
+    food = next(j for j, s in enumerate(p.suggestions) if "food safety" in s.row.criteria)
+    t = FakeTransport({
+        "drop": [{"row": flagged[0], "reason": "not catering"}],
+        "reword": [{"row": flagged[1], "criteria": "Attach evidence of trained catering staff",
+                    "reason": "catering subject"}],
+        "add": [{"suggestion": food, "reason": "catering needs it"}],
+        "drafts": [{"section": "technical", "criteria": "Attach a food handling permit",
+                    "answer_type": 5, "options": "", "reason": "licence"}]})
+    ModelSelector(llm=OpenRouterLLM(model="m", transport=t)).propose(p)
+    return g, p, p.rows[flagged[0]].row.criteria
+
+
+def test_ai_review_applies_only_agreed_changes(corpus):
+    from tendersure.reviewer import ModelReviewer, ai_review
+    g, p, dropped_text = _proposed_catering(corpus)
+    verdicts = FakeTransport({"verdicts": [
+        {"id": "D1", "verdict": "disagree", "text": "", "reason": "still relevant"},
+        {"id": "D2", "verdict": "agree", "text": "", "reason": "ok"},
+        {"id": "D3", "verdict": "agree", "text": "", "reason": "ok"},
+        {"id": "D4", "verdict": "edit", "text": "Attach a valid food handling permit from the health authority",
+         "reason": "more precise"}]})
+    items, summary = ai_review(g, [p], ModelReviewer(llm=OpenRouterLLM(model="m", transport=verdicts)),
+                               progress=lambda *_: None)
+    texts = [q.row.criteria for q in p.questions]
+    assert dropped_text in texts                                    # removal refused: kept
+    assert "Attach evidence of trained catering staff" in texts     # rewording agreed
+    assert any("food safety" in x for x in texts)                   # addition agreed
+    assert "Attach a valid food handling permit from the health authority" in texts   # edited draft
+    assert summary["disagreements"] == 2                            # the refusal + the edit note
+    assert all(i.status.startswith("AI:") for i in items if i.answer)
+    check_total(p)
+    sent = json.dumps(verdicts.calls[0][2])
+    assert "asked in" in sent or "no past questionnaires" in sent   # reviewer got bank evidence
+
+
+def test_failed_review_applies_nothing(corpus):
+    from tendersure.reviewer import ModelReviewer, ai_review
+    g, p, dropped_text = _proposed_catering(corpus)
+    n_before = len(p.questions)
+
+    def broken(url, headers, body):
+        raise LLMError("HTTP 500: provider down")
+    ai_review(g, [p], ModelReviewer(llm=OpenRouterLLM(model="m", transport=broken)), progress=lambda *_: None)
+    texts = [q.row.criteria for q in p.questions]
+    assert len(p.questions) == n_before and dropped_text in texts
+    assert "Attach evidence of trained catering staff" not in texts and not any("food safety" in x for x in texts)
+
+
+def test_remove_instead_of_reword_needs_the_bank_too(corpus):
+    from tendersure.reviewer import ModelReviewer, ai_review, bank_says_absent
+    assert bank_says_absent({"asked": 0, "compared": 3}) and not bank_says_absent({"asked": 0, "compared": 1})
+    g, p, _ = _proposed_catering(corpus)
+    reworded_from = next(q.row.criteria for q in p.questions if q.needs_reading
+                         and "trained service staff" in q.row.criteria)
+    verdicts = FakeTransport({"verdicts": [
+        {"id": "D1", "verdict": "disagree", "text": "", "reason": "x"},
+        {"id": "D2", "verdict": "remove", "text": "", "reason": "does not apply"},
+        {"id": "D3", "verdict": "disagree", "text": "", "reason": "x"},
+        {"id": "D4", "verdict": "disagree", "text": "", "reason": "x"}]})
+    items, _ = ai_review(g, [p], ModelReviewer(llm=OpenRouterLLM(model="m", transport=verdicts)),
+                         progress=lambda *_: None)
+    texts = [q.row.criteria for q in p.questions]
+    assert reworded_from in texts                     # only one similar past sheet: the bank can't confirm
+    assert any("bank does not confirm" in i.status for i in items)
+
+
+def test_ai_runs_by_default_when_configured(monkeypatch):
+    from types import SimpleNamespace
+    from tendersure.cli import _model_wanted
+    a = SimpleNamespace(model=None, no_model=False)
+    monkeypatch.setenv("TENDERSURE_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    monkeypatch.setenv("GEMINI_PAID_TIER", "yes")
+    assert _model_wanted(a)[0]
+    monkeypatch.setenv("GEMINI_PAID_TIER", "no")
+    assert not _model_wanted(a)[0]                       # unpaid key: never used automatically
+    monkeypatch.setenv("GEMINI_PAID_TIER", "yes")
+    assert not _model_wanted(SimpleNamespace(model=None, no_model=True))[0]
+
+
+def test_nothing_left_open_after_ai_review(corpus):
+    from tendersure.reviewer import ModelReviewer, ai_review
+    g, p, _ = _proposed_catering(corpus)
+    verdicts = FakeTransport({"verdicts": [{"id": f"D{i}", "verdict": "agree", "text": "", "reason": "ok"}
+                                           for i in range(1, 5)]})
+    items, _ = ai_review(g, [p], ModelReviewer(llm=OpenRouterLLM(model="m", transport=verdicts)),
+                         progress=lambda *_: None)
+    assert items and all(i.status for i in items)            # every line settled, with a reason
+    assert any(i.status.startswith("AI: kept the client's marks") for i in items if i.type == "marks")
+
+
+def test_removal_that_strands_marks_is_rebalanced(corpus):
+    """The crash seen in the first automatic run: a scored question removed from a
+    section whose other questions carry no marks."""
+    from tendersure.reviewer import ModelReviewer, ai_review
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    tech = [i for i, r in enumerate(p.rows) if r.kind == "question" and r.needs_reading]
+    a, b = p.rows[tech[0]].row, p.rows[tech[1]].row
+    a.marks, a.system, a.compliance = 20.0, 20.0, None       # all the section's marks on one question
+    b.marks, b.system, b.compliance, b.compliance_attach = 0.0, 0.0, None, False
+    check_total(p)
+    t = FakeTransport({"drop": [{"row": tech[0], "reason": "not catering"}], "reword": [], "add": [], "drafts": []})
+    ModelSelector(llm=OpenRouterLLM(model="m", transport=t)).propose(p)
+    verdicts = FakeTransport({"verdicts": [{"id": "D1", "verdict": "agree", "text": "", "reason": "ok"}]})
+    items, summary = ai_review(g, [p], ModelReviewer(llm=OpenRouterLLM(model="m", transport=verdicts)),
+                               progress=lambda *_: None)
+    check_total(p)                                           # back at 100
+    assert summary["rebalanced"] == ["AAA-ET-2026-031"]
+    assert any("marks rebalanced to 100" in n for n in p.notes)
+    assert any(i.status.startswith("AI: marks rebalanced") for i in items if i.type == "marks")
+
+
+def test_protected_rows_survive_every_removal_path(corpus, monkeypatch):
+    """Trade reference / declaration / submission rows must never be removed by the
+    AI - including the reviewer's 'remove instead of reword' path."""
+    import tendersure.reviewer as rv
+    from tendersure.reviewer import ModelReviewer, ai_review
+    monkeypatch.setattr(rv, "removal_evidence", lambda gen, plan, text: ("asked in 0 of 3", 0, 3))
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    i = next(i for i, r in enumerate(p.rows) if r.kind == "question"
+             and section_key(r.row.section) == "trade_reference" and (r.row.marks or 0) > 0)
+    p.rows[i].needs_reading = True
+    protected_text = p.rows[i].row.criteria
+    t = FakeTransport({"drop": [{"row": i, "reason": "x"}],
+                       "reword": [{"row": i, "criteria": "Attach evidence of catering contracts", "reason": "x"}],
+                       "add": [], "drafts": []})
+    ModelSelector(llm=OpenRouterLLM(model="m", transport=t)).propose(p)
+    verdicts = FakeTransport({"verdicts": [{"id": "D1", "verdict": "remove", "text": "", "reason": "x"}]})
+    ai_review(g, [p], ModelReviewer(llm=OpenRouterLLM(model="m", transport=verdicts)), progress=lambda *_: None)
+    texts = [q.row.criteria for q in p.questions]
+    assert protected_text in texts or "Attach evidence of catering contracts" in texts
+    check_total(p)
+
+
+def test_apply_layer_refuses_ai_removal_of_protected_rows(corpus):
+    from tendersure.review import apply_answers, decision_items
+    from tendersure.schema import PROTECTED_SECTIONS
+
+    def plan_with_flagged_trade_row():
+        _, g = _gen(corpus)
+        p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+        i = next(i for i, r in enumerate(p.rows) if r.kind == "question"
+                 and section_key(r.row.section) == "trade_reference" and (r.row.marks or 0) > 0)
+        p.rows[i].needs_reading = True
+        return p, p.rows[i].row.criteria
+
+    p, text = plan_with_flagged_trade_row()
+    q = next(i for i in decision_items([p]) if i.type == "question" and "trade_reference" in i.decide)
+    out, _, problems = apply_answers([p], {q.id: "remove all"}, protect=PROTECTED_SECTIONS)
+    assert text in [x.row.criteria for x in p.questions]                 # AI route: refused
+    assert next(i for i in out if i.id == q.id).status == "removal refused: protected section"
+    p2, text2 = plan_with_flagged_trade_row()
+    apply_answers([p2], {q.id: "remove all"})                            # a person's explicit answer
+    assert text2 not in [x.row.criteria for x in p2.questions]

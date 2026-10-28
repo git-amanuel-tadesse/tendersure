@@ -1,0 +1,297 @@
+"""Validation rules for TenderSure criteria sheets.
+
+Two classes of rule, deliberately separated:
+
+  PLATFORM  - things the upload will reject. Catching these locally removes
+              upload round-trips. Confirm the real list with the TenderSure
+              team; these are inferred.
+
+  SILENT    - structurally valid files that behave wrongly for the supplier.
+              The platform cannot reject these, so they reach people.
+
+Every finding is advisory. Nothing here blocks: the odd case is sometimes
+deliberate and the reviewer overrides.
+"""
+
+from dataclasses import dataclass
+from typing import List, Optional
+
+from .schema import ANSWER_TYPES, TOTAL_MARKS
+from .parser import Sheet, Row, normalise
+
+PLATFORM = "platform"
+SILENT = "silent"
+
+
+@dataclass
+class Finding:
+    sheet: str
+    excel_row: Optional[int]
+    rule: str
+    kind: str          # platform | silent
+    severity: str      # error | warning
+    message: str
+    suggestion: str = ""
+
+    def as_dict(self):
+        return {
+            "Sheet": self.sheet,
+            "Row": self.excel_row,
+            "Rule": self.rule,
+            "Class": self.kind,
+            "Severity": self.severity,
+            "Problem": self.message,
+            "Suggested fix": self.suggestion,
+        }
+
+
+ATTACH_WORDS = ("attach", "upload")
+
+
+def _looks_like_attachment(text: str) -> bool:
+    low = text.lower()
+    return any(low.startswith(w) or f" {w}" in low[:40] for w in ATTACH_WORDS)
+
+
+def check_answer_types(sheet: Sheet) -> List[Finding]:
+    out = []
+    for r in sheet.rows:
+        t = r.answer_type
+        if t is None:
+            out.append(Finding(sheet.name, r.excel_row, "AT-MISSING", PLATFORM, "error",
+                               "No answer type set.",
+                               "Set an answer type between 1 and 5."))
+            continue
+        if t not in ANSWER_TYPES:
+            out.append(Finding(sheet.name, r.excel_row, "AT-RANGE", PLATFORM, "error",
+                               f"Answer type {t} is outside the valid range 1-5.",
+                               "Use 1 text, 2 single select, 3 multi select, 4 yes/no, 5 attachment."))
+            continue
+
+        spec = ANSWER_TYPES[t]
+
+        if spec["requires_options"] and not r.option_list():
+            out.append(Finding(sheet.name, r.excel_row, "AT-NO-OPTIONS", PLATFORM, "error",
+                               f"Answer type {t} ({spec['name']}) has no options listed.",
+                               "Add the options, or change the answer type."))
+
+        if not spec["requires_options"] and r.option_list():
+            out.append(Finding(sheet.name, r.excel_row, "AT-STRAY-OPTIONS", SILENT, "warning",
+                               f"Options are listed but answer type {t} ({spec['name']}) does not use them.",
+                               "Change to type 2 or 3, or clear the options."))
+
+        if t == 5 and not (r.attachment or r.compliance_attach):
+            out.append(Finding(sheet.name, r.excel_row, "AT-NO-UPLOAD-FLAG", SILENT, "warning",
+                               "Attachment question with neither the Attachment nor the Compliance flag set.",
+                               "Set Compliance (M) if it carries compliance marks, otherwise Attachment (L)."))
+
+        if _looks_like_attachment(r.criteria) and t != 5:
+            out.append(Finding(sheet.name, r.excel_row, "AT-TEXT-SAYS-ATTACH", SILENT, "error",
+                               f"Wording asks for a document but answer type is {t} ({spec['name']}). "
+                               "The supplier gets the wrong control.",
+                               "Set answer type 5."))
+
+        if t == 5 and not _looks_like_attachment(r.criteria) and r.criteria.lower().startswith("insert"):
+            out.append(Finding(sheet.name, r.excel_row, "AT-ASKS-TEXT", SILENT, "error",
+                               "Wording asks for a typed value but answer type is 5 (upload).",
+                               "Set answer type 1."))
+    return out
+
+
+def check_options(sheet: Sheet) -> List[Finding]:
+    out = []
+    for r in sheet.rows:
+        opts, scores = r.option_list(), r.score_list()
+        if opts and scores and len(opts) != len(scores):
+            out.append(Finding(sheet.name, r.excel_row, "OPT-COUNT", PLATFORM, "error",
+                               f"{len(opts)} options but {len(scores)} scores.",
+                               "Give one score per option."))
+        if opts and not scores:
+            out.append(Finding(sheet.name, r.excel_row, "OPT-NO-SCORES", PLATFORM, "warning",
+                               f"{len(opts)} options with no scores set.",
+                               "Add a score per option, zeros if unscored."))
+        try:
+            values = [float(s) for s in scores]
+        except ValueError:
+            bad = next(s for s in scores if not _is_number(s))
+            out.append(Finding(sheet.name, r.excel_row, "OPT-SCORE-NaN", PLATFORM, "error",
+                               f"Option score '{bad}' is not a number.", "Use numbers only."))
+            continue
+        # 534 of 562 scored select rows in the corpus have best score == row
+        # marks; the rest are either unreachable marks or uncounted scores.
+        if values and r.answer_type in (2, 3) and abs(max(values) - (r.marks or 0)) > 1e-6:
+            out.append(Finding(sheet.name, r.excel_row, "OPT-MAX-MARKS", SILENT, "error",
+                               f"Best option scores {max(values):g} but the row is worth {r.marks or 0:g} marks. "
+                               + ("No supplier can reach full marks."
+                                  if max(values) < (r.marks or 0)
+                                  else "The option scores points the row does not count."),
+                               "Make the best option's score equal the row's marks."))
+    return out
+
+
+def _is_number(s) -> bool:
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
+def check_marks(sheet: Sheet) -> List[Finding]:
+    """Subtotals must equal the rows above them; the total must equal 100."""
+    out = []
+    totals = [s for s in sheet.structural if "total marks" in s.label.lower()]
+    subs = [s for s in sheet.structural if "total marks" not in s.label.lower()]
+
+    for s in subs:
+        if s.label == "<unlabelled>":
+            out.append(Finding(sheet.name, s.excel_row, "SUM-NO-LABEL", SILENT, "warning",
+                               "A subtotal row has no 'Sub Total' label in the Section column.",
+                               "Add the label so the section is identifiable."))
+        if s.marks is not None and s.system is not None and s.compliance is not None:
+            if abs((s.system + s.compliance) - s.marks) > 1e-6:
+                out.append(Finding(sheet.name, s.excel_row, "SUM-SPLIT", PLATFORM, "error",
+                                   f"Subtotal {s.marks:g} does not equal system {s.system:g} "
+                                   f"+ compliance {s.compliance:g}.",
+                                   "Correct the split."))
+
+    for xr in sheet.misplaced_labels:
+        out.append(Finding(sheet.name, xr, "SUM-LABEL-COLUMN", PLATFORM, "warning",
+                           "Sub Total / Total label is not in the Section column (B).",
+                           "Move the label to column B; an importer may read the row as a question."))
+
+    out.extend(_check_rows_against_subtotals(sheet))
+
+    if not totals:
+        out.append(Finding(sheet.name, None, "SUM-NO-TOTAL", PLATFORM, "error",
+                           "No 'Total Marks' row found.", "Add one."))
+        return out
+
+    t = totals[-1]
+    if t.marks is not None and t.system is not None and t.compliance is not None:
+        if abs((t.system + t.compliance) - t.marks) > 1e-6:
+            out.append(Finding(sheet.name, t.excel_row, "SUM-TOTAL-SPLIT", PLATFORM, "error",
+                               f"Total {t.marks:g} does not equal system {t.system:g} "
+                               f"+ compliance {t.compliance:g}.",
+                               "A row is probably missing from one of the System/Compliance sums."))
+    if t.marks is not None and abs(t.marks - TOTAL_MARKS) > 1e-6:
+        out.append(Finding(sheet.name, t.excel_row, "SUM-NOT-100", PLATFORM, "error",
+                           f"Total marks is {t.marks:g}, not {TOTAL_MARKS}.",
+                           "Rebalance the section marks."))
+
+    sub_sum = sum(s.marks for s in subs if s.marks is not None)
+    if t.marks is not None and subs and abs(sub_sum - t.marks) > 1e-6:
+        out.append(Finding(sheet.name, t.excel_row, "SUM-MISMATCH", PLATFORM, "error",
+                           f"Subtotals add to {sub_sum:g} but the total says {t.marks:g}.",
+                           "Check each section subtotal."))
+    return out
+
+
+def _check_rows_against_subtotals(sheet: Sheet) -> List[Finding]:
+    """Each subtotal must equal the question rows since the previous one."""
+    out = []
+    items = sorted([(r.excel_row, r) for r in sheet.rows] +
+                   [(s.excel_row, s) for s in sheet.structural], key=lambda t: t[0])
+    running = 0.0
+    every = 0.0
+    for xr, obj in items:
+        if isinstance(obj, Row):
+            running += obj.marks or 0
+            every += obj.marks or 0
+            continue
+        is_total = "total marks" in obj.label.lower()
+        expected = every if is_total else running
+        if obj.marks is not None and abs(obj.marks - expected) > 1e-6:
+            out.append(Finding(sheet.name, xr, "SUM-ROWS", PLATFORM, "error",
+                               f"{'Total' if is_total else 'Subtotal'} reads {obj.marks:g} but the "
+                               f"question rows {'in the sheet' if is_total else 'above it'} add to {expected:g}.",
+                               "Check the SUM range and any row marks typed in by hand."))
+        if not is_total:
+            running = 0.0
+    return out
+
+
+def check_text(sheet: Sheet) -> List[Finding]:
+    out = []
+    for r in sheet.rows:
+        c = r.criteria
+        if "  ?" in c or c.rstrip().endswith("of ?") or c.rstrip().endswith("of  ?"):
+            out.append(Finding(sheet.name, r.excel_row, "TXT-PLACEHOLDER", SILENT, "error",
+                               "Looks like a client name was never filled in when this sheet was copied.",
+                               "Insert the client name."))
+        if "\n" in c:
+            out.append(Finding(sheet.name, r.excel_row, "TXT-LINEBREAK", SILENT, "warning",
+                               "Question text contains a line break.",
+                               "Remove it; some importers split on newlines."))
+    return out
+
+
+def check_both_upload_flags(sheet: Sheet) -> List[Finding]:
+    out = []
+    for r in sheet.rows:
+        if r.attachment and r.compliance_attach:
+            out.append(Finding(sheet.name, r.excel_row, "UP-BOTH-FLAGS", SILENT, "warning",
+                               "Both the Attachment (L) and Compliance (M) upload flags are set.",
+                               "Set only one: M when the upload carries compliance marks, otherwise L."))
+        if r.compliance_attach and r.compliance is None and (r.marks or 0) > 0:
+            out.append(Finding(sheet.name, r.excel_row, "UP-COMP-NO-MARKS", SILENT, "warning",
+                               "Flagged as a compliance upload but no compliance marks recorded.",
+                               "Put the marks in the Compliance column, or use the Attachment flag."))
+    return out
+
+
+def check_identity(sheet: Sheet) -> List[Finding]:
+    if sheet.client:
+        return []
+    return [Finding(sheet.name, 2, "ID-NO-CLIENT", SILENT, "warning",
+                    f"Title '{sheet.title[:40]}' has no client prefix, so the client is unknown.",
+                    "Restore the client prefix, e.g. 'SNV-ET-2026_016'.")]
+
+
+ALL_CHECKS = [
+    check_answer_types,
+    check_options,
+    check_marks,
+    check_text,
+    check_both_upload_flags,
+    check_identity,
+]
+
+
+def validate_sheet(sheet: Sheet) -> List[Finding]:
+    out = []
+    for fn in ALL_CHECKS:
+        out.extend(fn(sheet))
+    return sorted(out, key=lambda f: (f.excel_row or 0, f.rule))
+
+
+def _signature(sheet: Sheet):
+    return [(r.criteria, r.marks, r.answer_type, r.options) for r in sheet.rows]
+
+
+def check_corpus(sheets: List[Sheet], threshold: float = 0.95) -> List[Finding]:
+    """Cross-sheet checks: near-identical sheets double-count in the bank.
+
+    Same-client sheets for different categories are legitimately ~95%
+    identical; a draft shares the category description too. Sheets are
+    grouped by description first, so this stays fast on years of history.
+    """
+    out = []
+    groups = {}
+    for s in sheets:
+        groups.setdefault(normalise(s.description or ""), []).append(s)
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        sigs = [(s, _signature(s)) for s in group]
+        for i, (a, sa) in enumerate(sigs):
+            for b, sb in sigs[i + 1:]:
+                if not sa or abs(len(sa) - len(sb)) > 2:
+                    continue
+                same = sum(1 for x, y in zip(sa, sb) if x == y)
+                if same / max(len(sa), len(sb)) >= threshold:
+                    out.append(Finding(b.name, None, "SHEET-NEAR-DUP", SILENT, "warning",
+                                       f"{same}/{max(len(sa), len(sb))} rows identical to "
+                                       f"{a.name} ({a.source_file}). Both count toward bank frequencies.",
+                                       "Keep the final version only, or exclude the draft from ingest."))
+    return out

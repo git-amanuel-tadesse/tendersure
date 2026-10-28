@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.DS_Store
+.cache/
+# client data and outputs derived from it
+sample file/
+samples/
+out/
+reports/
+.env
+data/bank.sqlite
