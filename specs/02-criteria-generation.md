@@ -67,7 +67,9 @@ always present.
      glossary if the skeleton has none;
   2. one upload row per document in the category's `eligibility` column.
 - Commercial registration certificate, TIN certificate and number, tax
-  clearance and VAT stay in Registration and Statutory.
+  clearance and VAT stay in Registration and Statutory. A VAT question is
+  kept when the client's sheet has one; it is never added (ERCS sheets have
+  none).
 - Every row in the Eligibility section: Eligibility = TRUE, answer type 5,
   Mandatory = TRUE, Compliance flag = TRUE, marks 0. No row outside the
   section has Eligibility = TRUE.
@@ -116,6 +118,8 @@ always present.
   these rows arrive blank and split the block: 27 cases in 20 ERCS sheets.
 - Every cell B–V of question, Sub Total and Total rows has a border, and each
   merged block has its outer border on all four sides.
+- A Sub Section the client's sheet leaves blank stays blank (decided
+  2026-10-28; e.g. ERCS-041's one-row Technical section).
 
 ## G7. Gate Question and Applies To (items 4 and 8)
 
