@@ -33,7 +33,7 @@ from .schema import CLIENT_NAMES, LAYOUT, SECTION_KEYS, TOTAL_MARKS
 from .similarity import Match, Retriever
 from .trust import CLEAN, CORRECTABLE, FIELDS, Conventions, Grade, context_key, usable
 from .validate import (SUB_CATEGORY, SUB_CATEGORY_QUESTION, TRADE_LICENSE, Finding, fix_marks_columns,
-                       sub_category_options, validate_sheet)
+                       fix_option_scores, sub_category_options, validate_sheet)
 
 REUSED = "reused unchanged"
 ADAPTED = "adapted"
@@ -474,6 +474,10 @@ def finalise(plan: Plan):
     place_sub_category_question(plan)
     place_eligibility(plan)
     _relabel_sections(plan)
+    for p in plan.questions:
+        note = fix_option_scores(p.row)
+        if note:
+            p.note(note)
     n = sum(fix_marks_columns(p.row) for p in plan.questions)
     if n:
         plan.notes.append(f"marks repeated in System or Compliance on {n} rows (template rule)")

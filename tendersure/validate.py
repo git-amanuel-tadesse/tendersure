@@ -303,6 +303,24 @@ def fix_marks_columns(r: Row) -> bool:
     return changed
 
 
+def fix_option_scores(r: Row) -> Optional[str]:
+    """Spec 02 G9, the fix for OPT-MAX-MARKS: scale a select row's option
+    scores so its best option is worth the row's marks (0 marks and scores
+    1,2,3 become 0,0,0). Returns what changed. Scores that are not numbers,
+    or all 0 on a scored row (no option is known to be best), are left for a
+    person; the check reports them."""
+    scores = r.score_list()
+    if r.answer_type not in (2, 3) or not scores or not all(_is_number(s) for s in scores):
+        return None
+    values, marks = [float(s) for s in scores], r.marks or 0
+    best = max(values)
+    if abs(best - marks) < 1e-6 or best <= 0:
+        return None
+    old = r.option_scores
+    r.option_scores = ",".join(f"{marks if v == best else round(v * marks / best):g}" for v in values)
+    return f"option scores {old} -> {r.option_scores}: the best option now scores the row's {marks:g} marks"
+
+
 TRADE_LICENSE = re.compile(r"trade\s*licen[cs]e", re.I)
 
 

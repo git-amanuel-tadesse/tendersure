@@ -1316,3 +1316,19 @@ def test_glossary_fill_rebuilds_drafts_and_keeps_one_acronym_per_document(tmp_pa
     gl.save(entries, str(tmp_path / "g.csv"))
     order = [(e.acronym, e.client) for e in gl.load(str(tmp_path / "g.csv"))]
     assert order[:4] == [("COI", "ERCS"), ("ISO9001", "*"), ("SIDP", "ERCS"), ("SIDP", "ILRI")]
+
+
+@pytest.mark.parametrize("marks,scores,fixed", [
+    (0, "1,2,3", "0,0,0"),          # NRC 'Lead time': 0 marks, options scored
+    (3, "0,2", "0,3"),              # ILRI 'declared in default': best option short of the marks
+    (2, "0,1,3", "0,1,2"),          # best option over the marks: scaled down
+    (5, "0,5", None),               # already right
+    (4, "0,0", None),               # no option is known to be best: left for a person
+])
+def test_best_option_is_scaled_to_the_rows_marks(marks, scores, fixed):
+    from tendersure.parser import Row
+    from tendersure.validate import fix_option_scores
+    r = Row("", "", 0, criteria="q", answer_type=2, marks=marks, options="a,b,c"[:len(scores) * 2 - 1],
+            option_scores=scores)
+    note = fix_option_scores(r)
+    assert r.option_scores == (fixed or scores) and bool(note) == bool(fixed)
