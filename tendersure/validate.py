@@ -15,7 +15,7 @@ deliberate and the reviewer overrides.
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from .schema import ANSWER_TYPES, TOTAL_MARKS
 from .parser import Sheet, Row, normalise, section_key
@@ -319,6 +319,50 @@ def fix_option_scores(r: Row) -> Optional[str]:
     old = r.option_scores
     r.option_scores = ",".join(f"{marks if v == best else round(v * marks / best):g}" for v in values)
     return f"option scores {old} -> {r.option_scores}: the best option now scores the row's {marks:g} marks"
+
+
+YES_GOOD, YES_BAD = "good", "bad"
+
+
+def is_yes_no(r: Row) -> bool:
+    """A Yes/No toggle (type 4), or a single select whose options are Yes and No."""
+    return r.answer_type == 4 or (r.answer_type == 2 and sorted(o.lower() for o in r.option_list()) == ["no", "yes"])
+
+
+def yes_no_target(yes_is: Optional[str], marks: float) -> Optional[Tuple[int, Optional[str], Optional[str]]]:
+    """Spec 02 G10 (feedback item 11): Yes is good, or the row has no marks
+    -> type 4, no options; Yes is bad and the row has marks -> type 2,
+    options Yes,No, scores 0,<marks>. None while the verdict is unknown."""
+    if marks <= 0 or yes_is == YES_GOOD:
+        return 4, None, None
+    if yes_is == YES_BAD:
+        return 2, "Yes,No", f"0,{marks:g}"
+    return None
+
+
+def check_yes_no(sheet: Sheet, yes_is: Callable[[List[Row], int], Optional[str]]) -> List[Finding]:
+    """`yes_is(rows, i)` gives the team's verdict on row i ('good', 'bad' or None)."""
+    out = []
+    for i, r in enumerate(sheet.rows):
+        if not is_yes_no(r):
+            continue
+        marks = r.marks or 0
+        verdict = yes_is(sheet.rows, i) if marks > 0 else YES_GOOD
+        want = yes_no_target(verdict, marks)
+        if want is None:
+            out.append(Finding(sheet.name, r.excel_row, "YESNO-UNKNOWN", SILENT, "warning",
+                               "Scored Yes/No question: nobody has said whether Yes is the good answer.",
+                               "Set yes_is to good or bad in data/yesno_polarity.csv."))
+            continue
+        scores = [float(s) for s in r.score_list() if _is_number(s)]
+        got = (r.answer_type, [o.lower() for o in r.option_list()], scores)
+        exp = (want[0], ["yes", "no"] if want[1] else [], [0.0, marks] if want[2] else [])
+        if got != exp:
+            how = "type 4 (Yes/No)" if want[0] == 4 else f"type 2, options Yes,No scored 0,{marks:g}"
+            out.append(Finding(sheet.name, r.excel_row, "YESNO-TYPE", SILENT, "error",
+                               f"Yes is {verdict} here{'' if marks > 0 else ' (no marks)'}, so the question is {how}.",
+                               f"Set it to {how}."))
+    return out
 
 
 TRADE_LICENSE = re.compile(r"trade\s*licen[cs]e", re.I)

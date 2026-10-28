@@ -20,6 +20,7 @@ from typing import Dict, List
 from . import categories as cat
 from . import glossary as gl
 from . import naming
+from . import yesno
 from . import category_llm as cl
 from .bank import Bank
 from .evaluate import evaluate, summarise
@@ -373,6 +374,15 @@ def cmd_generate(a):
 
     for p in plans:
         finalise(p)
+    book = yesno.load(a.yes_no)
+    judge = yesno.ModelJudge(model=a.model or None) if use_model else yesno.RuleJudge()
+    judged = yesno.settle(plans, book, judge)
+    if judged:
+        yesno.save(book, a.yes_no)
+        bad = sum(v.yes_is == "bad" for v in judged)
+        print(f"yes/no: judged {len(judged)} scored questions ({bad} where Yes is bad; "
+              f"{sum(v.status == yesno.RULE_DRAFTED for v in judged)} by keywords), saved as drafts in "
+              f"{a.yes_no}: confirm or change them there")
     glossary = _glossary(a.glossary, sheets)
     drafter = naming.ModelDrafter(model=a.model or None, examples=glossary.entries) if use_model \
         else naming.RuleDrafter()
@@ -579,6 +589,8 @@ def main(argv=None):
                    help="model id to use (default: TENDERSURE_MODEL). The AI runs automatically whenever "
                         "a model is configured in .env")
     p.add_argument("--no-model", action="store_true", help="build without any AI step")
+    p.add_argument("--yes-no", default="data/yesno_polarity.csv",
+                   help="whether Yes is the good answer, per Yes/No question (default data/yesno_polarity.csv)")
     p.add_argument("--glossary", default="data/glossary.csv",
                    help="short names and acronyms (default data/glossary.csv; seeded from the bank if absent)")
     p.add_argument("--out", required=True)

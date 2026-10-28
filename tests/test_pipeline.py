@@ -1332,3 +1332,81 @@ def test_best_option_is_scaled_to_the_rows_marks(marks, scores, fixed):
             option_scores=scores)
     note = fix_option_scores(r)
     assert r.option_scores == (fixed or scores) and bool(note) == bool(fixed)
+
+
+# --- yes/no questions -------------------------------------------------------------
+
+YN = {"recycle": "Does your company recycle waste responsibly? Yes/No",
+      "default": "Has the firm ever been declared in default of a contract?",
+      "supplier": "Is your company an existing supplier? Yes/No",
+      "licence": "Do you hold a valid service licence? Yes/No"}
+
+
+def _yn_plan(corpus):
+    """The synthetic plan (its 'licence' question is type 4 worth 10) plus a
+    positive question scored Yes=0, a negative one as a toggle with compliance
+    marks, and an unscored Yes/No select."""
+    from tendersure.generate import PlannedRow, finalise
+    from tendersure.parser import Row
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client))
+    finalise(p)
+    extra = [Row("", "", 0, section="Business Experience- EXP", criteria=YN["recycle"], answer_type=2, marks=2,
+                 system=2, options="Yes, No", option_scores="0,2"),
+             Row("", "", 0, section="Business Experience- EXP", criteria=YN["default"], answer_type=4, marks=3,
+                 compliance=3, compliance_attach=True),
+             Row("", "", 0, section="Business Experience- EXP", criteria=YN["supplier"], answer_type=2, marks=0,
+                 system=0, options="Yes,No", option_scores="0,0")]
+    at = next(i for i, q in enumerate(p.rows) if q.kind == "total")
+    p.rows[at:at] = [PlannedRow(kind="question", row=r) for r in extra]
+    return p
+
+
+def _rows(p):
+    return {k: next(q.row for q in p.questions if q.row.criteria == t) for k, t in YN.items()}
+
+
+def test_yes_no_rule_sets_the_answer_type_from_whether_yes_is_good(corpus):
+    from tendersure import yesno
+    from tendersure.generate import to_sheet
+    from tendersure.trust import context_key
+    from tendersure.validate import check_yes_no
+    p = _yn_plan(corpus)
+    book = yesno.Book([])
+    judged = yesno.settle([p], book, yesno.RuleJudge())
+    r = _rows(p)
+    assert (r["recycle"].answer_type, r["recycle"].options, r["recycle"].option_scores) == (4, None, None)
+    assert (r["default"].answer_type, r["default"].options, r["default"].option_scores) == (2, "Yes,No", "0,3")
+    assert (r["default"].compliance, r["default"].system) == (3, None)          # marks stay where they were
+    assert (r["supplier"].answer_type, r["supplier"].options) == (4, None)      # no marks: a toggle
+    assert r["licence"].answer_type == 4
+    assert sorted((v.example, v.yes_is) for v in judged) == sorted(
+        [(YN["recycle"], "good"), (YN["default"], "bad"), (YN["licence"], "good")])   # only scored ones
+
+    def yes_is(rows, i):
+        v = book.lookup(context_key(rows, i))
+        return v.yes_is if v else None
+    assert check_yes_no(to_sheet(p), yes_is) == []
+
+
+def test_model_judges_unconfirmed_scored_questions_in_one_call(corpus, tmp_path):
+    from tendersure import yesno
+    p = _yn_plan(corpus)
+    book = yesno.Book([yesno.Verdict("do you hold a valid service licence yes/no", "x", "good", yesno.CONFIRMED),
+                       yesno.Verdict("has the firm ever been declared in default of a contract", "x", "good",
+                                     yesno.RULE_DRAFTED)])                         # a keyword draft: redone
+    t = FakeTransport({"answers": [{"id": 0, "yes_is": "good"}]})                  # nothing for id 1
+    judged = {v.example: v for v in yesno.settle([p], book, yesno.ModelJudge(llm=OpenRouterLLM(model="m", transport=t)))}
+
+    sent = json.dumps(t.calls[0][2])
+    assert len(t.calls) == 1 and "recycle" in sent and "declared in default" in sent
+    assert "service licence" not in sent and "existing supplier" not in sent   # confirmed / unscored
+    assert (judged[YN["recycle"]].yes_is, judged[YN["recycle"]].status) == ("good", yesno.DRAFTED)
+    assert (judged[YN["default"]].yes_is, judged[YN["default"]].status) == ("bad", yesno.RULE_DRAFTED)
+    assert _rows(p)["default"].options == "Yes,No"
+
+    yesno.save(book, str(tmp_path / "yn.csv"))
+    again = yesno.load(str(tmp_path / "yn.csv"))
+    assert again.lookup("do you hold a valid service licence yes/no").status == yesno.CONFIRMED
+    assert len(again.verdicts) == 3
