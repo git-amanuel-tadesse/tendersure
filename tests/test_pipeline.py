@@ -1427,6 +1427,10 @@ def test_rewordings_group_and_confirmed_questions_stay_apart():
     confirmed = {keys[2], keys[3]}
     g = grouping.group(keys, apart=lambda a, b: a in confirmed and b in confirmed)
     assert g[keys[3]] == keys[3]                          # the team confirmed both: never merged
+    cv = "attach evidencecv contract and education experience for {} with atleast 4 years experience"
+    g = grouping.group([cv.format("structural engineer"), cv.format("architect"), cv.format("mep engineer"),
+                        cv.format("electrical engineer"), cv.format("mechanical engineer")])
+    assert len(set(g.values())) == 5                      # one template, five different documents
 
 
 def test_a_rewording_takes_its_confirmed_twins_answers_without_a_model():
@@ -1439,7 +1443,8 @@ def test_a_rewording_takes_its_confirmed_twins_answers_without_a_model():
 
     doc = "please attach evidence of ownership or rent agreement for welding machine"
     g = gl.Glossary([gl.Entry("AAA", doc, "x", "Welding Machine Ownership", "WMO", status=gl.CONFIRMED)])
-    reused, rest = naming.reuse_similar([naming.Need("BBB", doc.replace("rent", "lease"), "...")], g)
+    reused, rest = naming.reuse_similar([naming.Need("BBB", "please attach evidence of ownership or rent "
+                                                           "agreement for the welding machine", "...")], g)
     assert rest == [] and (reused[0].short_name, reused[0].acronym, reused[0].status) == \
            ("Welding Machine Ownership", "WMO", gl.SIMILAR)
     _, rest = naming.reuse_similar([naming.Need("BBB", "attach a fire safety certificate", "...")], g)
@@ -1695,3 +1700,92 @@ def test_category_eligibility_documents_join_the_eligibility_section(corpus):
            ("Eligibility", 5, True, True, 0)
     assert (iata.archive_short_name, iata.acronym) == ("IATA Registration Certificate", "IATA")
     assert check_template(to_sheet(p)) == [] and p.total() == 100
+
+
+# --- gate question and applies to ---------------------------------------------------
+
+def _audience_book():
+    from tendersure import gating
+    from tendersure.parser import Row
+    companies = ["Sole Proprietor", "Private Limited Company", "Share Company"]
+    book = gating.Book([gating.Audience("company name", "Company name", companies),
+                        gating.Audience("attach tin certificate", "Attach TIN certificate", companies),
+                        gating.Audience("full name as per national id or passport", "Full name", ["Individual Consultant"]),
+                        gating.Audience("please attach valid id/passport", "Valid ID", ["Individual Consultant"])])
+    donors = {"full name as per national id or passport": Row(
+                  "s.xlsx", "SNV-1", 12, section="Company Information", criteria="Full name (as per National ID or passport)",
+                  answer_type=1, marks=0, archive_short_name="Name"),
+              "please attach valid id/passport": Row(
+                  "s.xlsx", "SNV-1", 30, section="Registration and Statutory Requirements",
+                  criteria="Please attach Valid ID/Passport", answer_type=1, marks=0, compliance=0, mandatory=True,
+                  compliance_attach=True, archive_short_name="ID")}
+    return book, donors
+
+
+def test_a_gated_category_gets_its_business_types_and_audiences(corpus):
+    from tendersure import gating
+    from tendersure.generate import finalise, to_sheet
+    from tendersure.validate import check_gate
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    types = ["Sole Proprietor", "Private Limited Company", "Individual Consultant"]
+    p = g.plan(Target(src.code, src.description, src.client, gate_question=True, applies_to=types))
+    book, donors = _audience_book()
+    gating.apply(p, book, donors)
+    finalise(p)
+    rows = {q.row.criteria: q for q in p.questions}
+    gate = rows["Organization type"].row
+    assert (gate.gate_question, gate.options, gate.option_scores) == (True, ", ".join(types), "0,0,0")
+    assert [q.row.criteria for q in p.questions if q.row.gate_question] == ["Organization type"]
+    assert rows["Company name"].row.applies_to == "Sole Proprietor, Private Limited Company"   # no Share Company here
+    assert rows["Attach TIN certificate"].row.applies_to == "Sole Proprietor, Private Limited Company"
+    full = rows["Full name (as per National ID or passport)"].row
+    assert (full.applies_to, full.section) == ("Individual Consultant", "Company Information")
+    valid_id = rows["Please attach Valid ID/Passport"]
+    assert (valid_id.row.applies_to, valid_id.row.answer_type) == ("Individual Consultant", 5)   # text box fixed
+    assert rows["Attach evidence e.g. PO or award letter"].row.applies_to is None          # everyone
+    office = rows["Attach evidence of physically registered office"]
+    assert office.row.applies_to is None and "no past sheet says who answers it" in office.notes[-1]
+    assert check_gate(to_sheet(p), True, types) == [] and p.total() == 100
+
+
+def test_without_a_gate_the_columns_and_individual_questions_go(corpus):
+    from tendersure import gating
+    from tendersure.generate import PlannedRow, finalise, to_sheet
+    from tendersure.parser import Row
+    from tendersure.validate import check_gate
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client))
+    rows = {q.row.criteria: q.row for q in p.questions}
+    org = rows["Organization type"]                                    # as an SNV skeleton has it
+    org.options, org.option_scores, org.gate_question = "Individual Consultant, sole proprietor, plc", "0,0,0", True
+    rows["Company name"].applies_to = "sole proprietor, plc"
+    at = next(i for i, q in enumerate(p.rows) if q.kind == "question" and q.row is rows["Company name"]) + 1
+    p.rows.insert(at, PlannedRow(kind="question", row=Row("", "", 0, section="Company Information",
+                                 criteria="Full name (as per National ID or passport)", answer_type=1, marks=0,
+                                 applies_to="Individual Consultant")))
+    book, donors = _audience_book()
+    gating.apply(p, book, donors)
+    finalise(p)
+    texts = [q.row.criteria for q in p.questions]
+    assert "Full name (as per National ID or passport)" not in texts
+    assert (org.options, org.option_scores, org.gate_question) == ("sole proprietor, plc", "0,0", False)
+    assert not any(q.row.applies_to for q in p.questions)
+    assert check_gate(to_sheet(p), False, []) == []
+
+
+def test_a_category_whose_gate_disagrees_with_applies_to_is_not_written(corpus, tmp_path, capsys):
+    from tendersure import categories as cat
+    from tendersure.cli import main
+    cats = [cat.Category(1, "Supply of Office Stationery", "GENERAL", client="AAA"),
+            cat.Category(2, "Provision of Consultancy Services", "CONSULTANCY", client="AAA", gate_question=True,
+                         applies_to=["Sole Proprietor", "Share Company"])]               # no Individual Consultant
+    cat.save(cats, str(tmp_path / "cats.csv"))
+    main(["generate", str(corpus), "--categories", str(tmp_path / "cats.csv"), "--client", "AAA",
+          "--prefix", "AAA-ET-2026-", "--out", str(tmp_path / "o.xlsx"), "--no-model",
+          "--audience", str(tmp_path / "aud.csv"), "--glossary", str(tmp_path / "g.csv"),
+          "--yes-no", str(tmp_path / "yn.csv")])
+    out = capsys.readouterr().out
+    assert "NOT WRITTEN AAA-ET-2026-002: categories table: Gate Question is TRUE" in out
+    assert [s for s in openpyxl.load_workbook(tmp_path / "o.xlsx").sheetnames] == ["AAA-ET-2026-001"]
