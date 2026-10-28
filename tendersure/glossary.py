@@ -58,6 +58,19 @@ def unnumbered(name: Optional[str], n: int) -> Tuple[str, bool]:
     return name, False
 
 
+def split_number(name: str) -> Tuple[str, Optional[int]]:
+    """'Staff 2' -> ('Staff', 2); a name without a trailing number -> (name, None)."""
+    m = _TRAILING_NUMBER.match(name or "")
+    return (m.group(1), int(m.group(2))) if m else (name or "", None)
+
+
+def _document_order(e: Entry):
+    """Rows for one document sit together: by acronym (REF, REF 2, REF 3),
+    then name; the client's own rows before the cross-client one."""
+    base, n = split_number(e.acronym)
+    return (not base, base.upper(), n or 0, e.short_name.lower(), e.client == ANY_CLIENT, e.client, e.question_key)
+
+
 def _entry(client: str, key: str, seen: List[Tuple[str, str, bool, str]]) -> Optional[Entry]:
     shorts = Counter(s for s, _, _, _ in seen if s)
     short = shorts.most_common(1)[0][0] if shorts else ""
@@ -127,6 +140,6 @@ def save(entries: List[Entry], path: str):
     with open(path, "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(COLUMNS)
-        for e in sorted(entries, key=lambda e: (e.client, -e.uses, e.question_key)):
+        for e in sorted(entries, key=_document_order):
             w.writerow([e.client, e.question_key, e.example, e.short_name, e.acronym,
                         "TRUE" if e.numbered else "", e.status, e.uses])

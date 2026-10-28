@@ -1268,3 +1268,35 @@ def test_acronyms_stay_unique_within_a_sheet(corpus):
     naming.name_documents([p], g, naming.RuleDrafter())
     acronyms = [q.row.acronym for q in p.questions if q.row.acronym]
     assert len(acronyms) == len(set(acronyms)) and "TIN2" in acronyms
+
+
+def test_glossary_fill_reuses_a_names_acronym_and_drafts_each_name_once(tmp_path):
+    from tendersure import glossary as gl, naming
+    E = gl.Entry
+    entries = [E("ERCS", "attach id", "x", "Shareholder ID or passport", "SID", status=gl.DRAFTED, uses=24),
+               E("ILRI", "attach id", "x", "Shareholder ID or passport", "", uses=38),
+               E(gl.ANY_CLIENT, "attach id", "x", "Shareholder ID or passport", "", uses=70),
+               E("ILRI", "attach staff 1", "x", "Staff", "", numbered=True, uses=9),
+               E("ILRI", "attach staff 2", "x", "Staff 2", "", uses=9),
+               E(gl.ANY_CLIENT, "attach iso", "x", "ISO 9001", "", uses=2),
+               E("ERCS", "attach ref 2", "x", "Reference 2", "REF 2", uses=12)]
+
+    class Drafts(naming.RuleDrafter):
+        asked = []
+
+        def draft(self, needs):
+            Drafts.asked += [n.short_name for n in needs]
+            return super().draft(needs)
+
+    reused, drafted = naming.complete_glossary(gl.Glossary(entries), Drafts())
+    got = {(e.client, e.short_name): e.acronym for e in entries}
+    assert got[("ILRI", "Shareholder ID or passport")] == got[("*", "Shareholder ID or passport")] == "SID"
+    assert (got[("ILRI", "Staff")], got[("ILRI", "Staff 2")]) == ("STA", "STA 2")     # one base, numbered
+    assert got[("*", "ISO 9001")] == "ISO9"                                            # not item 9001 of 'ISO'
+    assert (reused, drafted, sorted(Drafts.asked)) == (2, 2, ["ISO 9001", "Staff"])
+    assert all(e.acronym for e in entries) and entries[1].status == gl.DRAFTED
+
+    gl.save(entries, str(tmp_path / "g.csv"))
+    order = [(e.acronym, e.client) for e in gl.load(str(tmp_path / "g.csv"))]
+    assert order[:3] == [("ISO9", "*"), ("REF 2", "ERCS"), ("SID", "ERCS")]
+    assert order[3:5] == [("SID", "ILRI"), ("SID", "*")]                               # client rows, then '*'

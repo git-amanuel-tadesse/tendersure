@@ -158,8 +158,8 @@ def needs(plans: List[Plan], glossary: gl.Glossary, redraw_rules: bool) -> List[
     return list(out.values())
 
 
-def _numbered(name: str, n: int) -> str:
-    return f"{name} {n}" if name else name
+def _numbered(name: str, n: Optional[int]) -> str:
+    return f"{name} {n}" if name and n else name
 
 
 def fill(plan: Plan, glossary: gl.Glossary):
@@ -206,3 +206,49 @@ def name_documents(plans: List[Plan], glossary: gl.Glossary, drafter) -> List[gl
     for plan in plans:
         fill(plan, glossary)
     return drafted
+
+
+def _numbered_names(e: gl.Entry, names: set) -> Tuple[str, Optional[int]]:
+    """'Staff 2' is item 2 of 'Staff' when 'Staff' is itself a name; 'ISO 9001' is not."""
+    base, n = gl.split_number(e.short_name)
+    return (base, n) if n is not None and base.lower() in names else (e.short_name, None)
+
+
+def _known_acronyms(entries: List[gl.Entry]) -> Dict[str, str]:
+    """Short name -> the acronym the glossary gives it; confirmed rows first,
+    then drafted, then the most used."""
+    rank = {gl.CONFIRMED: 0, gl.DRAFTED: 1, gl.SEEDED: 2, gl.RULE_DRAFTED: 3}
+    out: Dict[str, str] = {}
+    for e in sorted(entries, key=lambda e: (rank.get(e.status, 4), -e.uses)):
+        if not (e.short_name and e.acronym):
+            continue
+        (s_base, s_n), (a_base, a_n) = gl.split_number(e.short_name), gl.split_number(e.acronym)
+        if s_n is not None and s_n == a_n:          # Reference 2 / REF 2 -> Reference / REF
+            out.setdefault(s_base.lower(), a_base)
+        out.setdefault(e.short_name.lower(), e.acronym)
+    return out
+
+
+def complete_glossary(glossary: gl.Glossary, drafter) -> Tuple[int, int]:
+    """Give every glossary entry an acronym. One document keeps one acronym:
+    a short name the glossary already names elsewhere takes that acronym; the
+    rest are drafted, once per name. Filled rows become drafts for the team
+    to confirm (a re-seed keeps them). Returns (reused, drafted)."""
+    todo = [e for e in glossary.entries if e.short_name and not e.acronym]
+    names = {e.short_name.lower() for e in glossary.entries if e.short_name}
+    known = _known_acronyms(glossary.entries)
+    needs_by_name: Dict[str, Need] = {}
+    reused = 0
+    for e in todo:
+        base, n = _numbered_names(e, names)
+        if base.lower() in known:
+            e.acronym, e.status, reused = _numbered(known[base.lower()], n), gl.DRAFTED, reused + 1
+        else:
+            needs_by_name.setdefault(base.lower(), Need(None, base.lower(), e.example, base))
+    drafted = {d.question_key: d for d in drafter.draft(list(needs_by_name.values()))}
+    for e in todo:
+        if not e.acronym:
+            base, n = _numbered_names(e, names)
+            d = drafted[base.lower()]
+            e.acronym, e.status = _numbered(d.acronym, n), d.status
+    return reused, len(needs_by_name)
