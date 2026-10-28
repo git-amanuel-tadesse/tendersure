@@ -253,8 +253,11 @@ For every draft row decide one status:
 - Kept: fine as it is.
 - Renamed: same category, wording fixed (spelling, clarity). Give the new wording.
 - Merged: two or more rows cover the same goods or services; one category replaces them. Give the reason.
-- Separated: one row bundles distinct trades or procurement kinds (e.g. goods with works, cleaning with
-  pest control); give one line per new category, each with the same "from", and the reason.
+- Separated: one row bundles what different kinds of supplier provide; give one line per new category,
+  each with the same "from", and the reason. A category should be something one kind of specialist
+  supplier provides: separate a row that combines distinct trades (e.g. catering with event decoration,
+  vehicle hire with vehicle repair), goods with construction works, or a service with the installation of
+  systems for it. Keep together items one supplier normally provides (e.g. stationery and toner).
 - Repeated: the row is a duplicate of another row.
 Never remove a category: scope is the client's decision. Where you are unsure, keep the row and write a
 question for the client instead (e.g. "Any specific languages?").
