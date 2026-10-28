@@ -175,6 +175,24 @@ def test_writer_round_trip_is_lossless(corpus, tmp_path):
     assert validate_sheet(back) == []
 
 
+def test_writer_uses_the_21_column_template(corpus, tmp_path):
+    from tendersure.schema import LAYOUT
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")     # a 14-column skeleton
+    p = g.plan(Target(src.code, src.description, src.client))
+    q = p.questions[1].row                                            # "Company name"
+    q.eligibility, q.gate_question, q.applies_to = True, True, "Sole Proprietor, Share Company"
+    out = tmp_path / "out.xlsx"
+    Writer().write([p], str(out))
+
+    ws = openpyxl.load_workbook(out).active
+    assert [ws.cell(4, 2 + i).value for i in range(len(LAYOUT))] == [label for _, label in LAYOUT]
+    assert "E3:I3" in {str(m) for m in ws.merged_cells.ranges}
+    back = parse_workbook(str(out))[0].rows[1]
+    assert (back.eligibility, back.gate_question, back.applies_to) == \
+           (True, True, "Sole Proprietor, Share Company")
+
+
 def test_writer_refuses_off_total(corpus, tmp_path):
     _, g = _gen(corpus)
     p = g.plan(Target("AAA-ET-2026-004", "Supply of Cleaning Materials", "AAA"))

@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from .parser import Row, Sheet, StructuralRow, normalise, section_key
-from .schema import CLIENT_NAMES, SECTION_KEYS, TOTAL_MARKS
+from .schema import CLIENT_NAMES, LAYOUT, SECTION_KEYS, TOTAL_MARKS
 from .similarity import Match, Retriever
 from .trust import CLEAN, CORRECTABLE, FIELDS, Conventions, Grade, context_key, usable
 from .validate import Finding, validate_sheet
@@ -452,7 +452,7 @@ class Generator:
             rows.append(p)
 
         plan = Plan(target=target, skeleton=skeleton, matches=matches[:k], rows=rows,
-                    n_columns=16 if target.client == "SNV" else sk.n_columns)
+                    n_columns=len(LAYOUT))
         plan.notes += skipped
         plan.same_category = same_category
         # Weak: neither the topic (text) nor the client's own grouping links

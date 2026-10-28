@@ -20,9 +20,12 @@ from openpyxl.utils import get_column_letter
 
 from .generate import Plan, check_total
 from .parser import section_key
+from .schema import LAYOUT
 
 FIRST_COL = 2           # B
-HEADERS_16 = ["Gate Question", "Applies To"]
+COL = {f: FIRST_COL + i for i, (f, _) in enumerate(LAYOUT)}
+LAST_COL = FIRST_COL + len(LAYOUT) - 1
+MARK_FIELDS = ("marks", "system", "compliance")     # summed on Sub Total and Total rows
 
 
 def _num(v):
@@ -105,14 +108,13 @@ class Writer:
         st = _Styles(tpl_ws, plan)
         title = _sheet_title(plan.target.code, wb.sheetnames)
         ws = wb.create_sheet(title)
-        n_cols = plan.n_columns
-        last_col = FIRST_COL + n_cols - 1
+        last_col = LAST_COL
 
         for col in range(1, max(last_col, tpl_ws.max_column) + 1):
             letter = get_column_letter(col)
             if letter in tpl_ws.column_dimensions:
                 ws.column_dimensions[letter].width = tpl_ws.column_dimensions[letter].width
-        if n_cols > st.n_template_cols:
+        if len(LAYOUT) > st.n_template_cols:
             for col in range(FIRST_COL + st.n_template_cols, last_col + 1):
                 ws.column_dimensions[get_column_letter(col)].width = 18
         for r in range(1, st.header_row + 1):
@@ -124,17 +126,14 @@ class Writer:
 
         c = ws.cell(2, FIRST_COL, f"{plan.target.code}: {plan.target.description}")
         _copy_style(st.cell("title", FIRST_COL), c)
-        for col in range(5, 8):
+        # The 'Marks' banner spans Marks to Evaluation, as in the template.
+        for col in range(COL["marks"], COL["evaluation"] + 1):
             _copy_style(st.cell("banner", col), ws.cell(3, col))
-        ws.cell(3, 5, "Marks")
-        ws.merge_cells(start_row=3, start_column=5, end_row=3, end_column=7)
+        ws.cell(3, COL["marks"], "Marks")
+        ws.merge_cells(start_row=3, start_column=COL["marks"], end_row=3, end_column=COL["evaluation"])
 
         hdr = st.header_row
-        for col in range(FIRST_COL, last_col + 1):
-            if col < FIRST_COL + st.n_template_cols:
-                label = tpl_ws.cell(hdr, col).value
-            else:
-                label = HEADERS_16[col - FIRST_COL - 14]
+        for (_, label), col in zip(LAYOUT, range(FIRST_COL, last_col + 1)):
             c = ws.cell(hdr, col, label)
             _copy_style(st.cell("header", col), c)
 
@@ -155,22 +154,26 @@ class Writer:
                 role_b = "question"
                 new_section = p.section_label is not None or q.section != prev_section
                 new_sub = new_section or q.sub_section != prev_sub
-                values = {
-                    2: p.section_label if new_section else None,
-                    3: q.sub_section if new_sub else None,
-                    4: q.criteria,
-                    5: _num(q.marks), 6: _num(q.system), 7: _num(q.compliance),
-                    8: q.archive_short_name, 9: q.acronym, 10: q.answer_type,
-                    11: True if q.mandatory else None,
-                    12: True if q.attachment else None,
-                    13: True if q.compliance_attach else None,
-                    14: q.options, 15: q.option_scores,
-                    16: True if q.gate_question else None,
-                    17: q.applies_to,
+                fields = {
+                    "section": p.section_label if new_section else None,
+                    "sub_section": q.sub_section if new_sub else None,
+                    "criteria": q.criteria,
+                    "marks": _num(q.marks),
+                    "eligibility": True if q.eligibility else None,
+                    "system": _num(q.system), "compliance": _num(q.compliance),
+                    "archive_short_name": q.archive_short_name, "acronym": q.acronym,
+                    "answer_type": q.answer_type,
+                    "mandatory": True if q.mandatory else None,
+                    "attachment": True if q.attachment else None,
+                    "compliance_attach": True if q.compliance_attach else None,
+                    "options": q.options, "option_scores": q.option_scores,
+                    "gate_question": True if q.gate_question else None,
+                    "applies_to": q.applies_to,
                 }
+                values = {COL[f]: v for f, v in fields.items()}
                 for col in range(FIRST_COL, last_col + 1):
                     c = ws.cell(r, col, values.get(col))
-                    role = role_b if col <= 3 else "plain"
+                    role = role_b if col <= COL["sub_section"] else "plain"
                     _copy_style(st.cell(role, col), c)
                 if new_section or not blocks_b:
                     blocks_b.append([r, r])
@@ -188,7 +191,7 @@ class Writer:
                 ws.cell(r, FIRST_COL, "Total Marks" if is_total else "Sub Total")
                 for col in range(FIRST_COL, last_col + 1):
                     _copy_style(st.cell(role, col), ws.cell(r, col))
-                for col in (5, 6, 7):
+                for col in (COL[f] for f in MARK_FIELDS):
                     L = get_column_letter(col)
                     if is_total:
                         refs = subtotal_rows + loose
@@ -198,7 +201,7 @@ class Writer:
                         val = f"=SUM({L}{group_start}:{L}{r - 1})" if self.formulas \
                             else _num(sum(_val(ws, x, col) for x in loose))
                     ws.cell(r, col, val)
-                ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=4)
+                ws.merge_cells(start_row=r, start_column=COL["section"], end_row=r, end_column=COL["criteria"])
                 if not is_total:
                     subtotal_rows.append(r)
                     loose = []
@@ -206,7 +209,7 @@ class Writer:
                 prev_section = prev_sub = None
             r += 1
 
-        for col, blocks in ((2, blocks_b), (3, blocks_c)):
+        for col, blocks in ((COL["section"], blocks_b), (COL["sub_section"], blocks_c)):
             for a, b in blocks:
                 if b > a:
                     ws.merge_cells(start_row=a, start_column=col, end_row=b, end_column=col)
