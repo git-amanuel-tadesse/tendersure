@@ -230,6 +230,27 @@ def test_marks_are_repeated_in_system_or_compliance(corpus):
     assert p.total() == 100
 
 
+def test_inserted_rows_keep_the_sub_section_block_whole(corpus, tmp_path):
+    from tendersure.generate import insert_rows
+    from tendersure.parser import Row
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client))
+    drafted = Row("", "", 0, criteria="Do you carry liability insurance? Yes/No", marks=0, answer_type=4)
+    donor = Row("", "", 0, criteria="Attach your service licence", marks=0, answer_type=5,
+                sub_section="Licences", compliance_attach=True)
+    insert_rows(p, "technical", [drafted, donor], "newly drafted", "model draft", "test")
+    assert drafted.sub_section == donor.sub_section == "N/A"
+
+    Writer().write([p], str(tmp_path / "o.xlsx"))
+    ws = openpyxl.load_workbook(tmp_path / "o.xlsx").active
+    tech = [r for r in range(5, ws.max_row + 1)
+            if ws.cell(r, 4).value in ("Do you hold a valid service licence? Yes/No",
+                                       "Attach your service licence")]
+    blocks = [m for m in ws.merged_cells.ranges if m.min_col == m.max_col == 3]
+    assert any(m.min_row == tech[0] and m.max_row == tech[-1] for m in blocks)
+
+
 def test_writer_refuses_off_total(corpus, tmp_path):
     _, g = _gen(corpus)
     p = g.plan(Target("AAA-ET-2026-004", "Supply of Cleaning Materials", "AAA"))

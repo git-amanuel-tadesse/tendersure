@@ -575,8 +575,15 @@ def insert_rows(plan: Plan, section: str, new_rows: List[Row], origin: str, sour
         idx = start - 1
     else:
         label = plan.rows[idx].row.section
+    # Inserted rows join the Sub Section of the row above, so its merged block
+    # is not split (a drafted row has none; a donor's may be named differently).
+    above = None if created else plan.rows[idx].row
     for j, r in enumerate(new_rows):
         r.section = label
+        if above is not None:
+            r.sub_section = above.sub_section
+        else:
+            r.sub_section = new_rows[0].sub_section or "N/A"
         hint = r.marks or 0.0
         scores_hint = r.option_scores
         r.marks = 0.0 if r.marks is not None else None
