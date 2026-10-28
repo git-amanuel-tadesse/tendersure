@@ -426,6 +426,11 @@ def cmd_generate(a):
     drafter = naming.ModelDrafter(model=a.model or None, examples=glossary.entries) if use_model \
         else naming.RuleDrafter()
     drafted = naming.name_documents(plans, glossary, drafter)
+    from . import learned_review as lr
+    n, y = lr.write_review(glossary, book, os.path.splitext(a.out)[0] + "_learned_review.xlsx")
+    if n or y:
+        print(f"learned drafts waiting for review: {n} name lines, {y} Yes/No lines -> "
+              f"{os.path.splitext(a.out)[0]}_learned_review.xlsx (answer it, then: learn --review <file>)")
     if drafted:
         gl.save(glossary.entries, a.glossary)
         by_rules = sum(e.status == gl.RULE_DRAFTED for e in drafted)
