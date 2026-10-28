@@ -64,6 +64,16 @@ One workbook per client exercise, one sheet per category.
 **Schema drift is real:** ERCS and ILRI sheets have 14 columns (no P/Q).
 SNV has 16. Any parser must handle both.
 
+**The 21-column template (October 2026).** Every generated sheet now uses
+the layout of NRC's 2026 exercise, columns B–V: Section · Sub Section ·
+Criteria · Marks · **Eligibility** · System · Compliance · **Evaluation** ·
+Archive Short Name · Acronym · Answer Type · Mandatory · Attachment ·
+Compliance · Options · Options Scores · **Eval Options** · **Eval Options
+Scores** · **Verify Against** · Gate Question · Applies To. Evaluation, the two
+Eval columns and Verify Against belong to the Kenya template and stay empty.
+The parser finds every field by its header label, so 14-, 16- and 21-column
+sheets all read alike. Full rules: `specs/02-criteria-generation.md`.
+
 ### L vs M — resolved
 
 These are **not** duplicates. Verified across all 66 sheets (only 1 row of
@@ -237,6 +247,43 @@ suppliers appeal and the platform's whole reputation rests on auditability.
 ---
 
 ## 7. Current state of this code
+
+### October 2026: the team's "AI Criteria Feedback"
+
+Eleven items from the team, agreed point by point and written as specs in
+`specs/` (01 category refinement, 02 criteria generation, 03 check, 04
+learning from the bank; build order and status in `specs/TASKS.md`).
+Decisions that are not obvious from the code:
+
+- Eligibility holds only the Trade License (plus documents the category's
+  draft itself states, e.g. "(IATA Registered Only)"); commercial
+  registration, TIN, tax clearance and VAT stay in Registration. VAT is never
+  added where the client's sheet lacks it.
+- Every question row repeats its marks, 0 included, in System or
+  Compliance - a change from the clients' own sheets.
+- The gate is the business-type question ("Organization type"), not ERCS's
+  "Type of Business"; it is set per category in the categories table
+  (Gate Question TRUE exactly when Individual Consultant may apply).
+- Yes/No: Yes good or no marks -> type 4; Yes bad with marks -> type 2,
+  Yes,No scored 0,marks. Whether Yes is good is judged from meaning, never
+  from past scoring: ERCS scored Yes 0 on recycling and employee policy.
+- Acronyms are built from the Short Name by the team's letter rule (TIN
+  Certificate -> TIN, Tax Compliance Certificate -> TCC); the model only
+  drafts Short Names. Clients' own acronyms (COI, DAF/MAF) are kept.
+- Learned facts (glossary, Yes/No verdicts, audience) are client data kept
+  out of git behind a storage driver (CSV today); `learn` prepares them from
+  the whole bank, the team confirms drafts in one review workbook.
+- Rewordings share an answer only when their subject words are identical:
+  a shared template ("CV for a Structural Engineer / an Architect") is not a
+  rewording - grouping those once gave 44 ERCS rows another document's name.
+- Category refinement never removes a category (only folds a duplicate);
+  merges and separations need a reason; the count is a business decision.
+
+Regenerated ERCS batch (2026-10-29): 58 sheets in the template, every total
+100, Trade License alone in Eligibility, 0 marks-only rows, the sub-category
+question on exactly the 5 categories the notice gives sub-categories, 963
+upload/flagged rows all named, 122 Yes/No rows corrected; `check` finds 0
+errors (129 warnings: uploads without an upload flag, open question 9).
 
 All pipeline stages exist: parse, validate, bank, category extraction,
 retrieval, generation, Excel writer, reports, evaluation, optional model step.

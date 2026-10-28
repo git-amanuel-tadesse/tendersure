@@ -7,6 +7,9 @@ format.
 Read `SPEC.md` first — it carries the domain knowledge derived from 66 real
 sheets (column semantics, answer-type codes, corpus statistics, scope
 boundary, open questions). Most of it is not recoverable from the code alone.
+`specs/` holds the agreed specs from the team's October 2026 feedback (the
+21-column template, Eligibility, gate questions, short names, Yes/No rules,
+category refinement, the check command, learning from the bank).
 
 ## Install
 
@@ -64,6 +67,17 @@ any folder works, with subfolders (e.g. one per year).
         --client ERCS --prefix ERCS-ET-2026- --out out/ERCS-2026-2029.xlsx \
         --review out/ERCS-2026-2029_qa.xlsx
 
+    #    Every sheet is written in the 21-column template and passes the check
+    #    rules below before it is written (a sheet with an error is NOT WRITTEN).
+    #    -> out/ERCS-2026-2029_learned_review.xlsx   names and Yes/No verdicts drafted
+    #       for this batch, to confirm (learn --review)
+
+    # 3c. After the team edits a workbook by hand: check it before upload
+    python -m tendersure check "out/ERCS-2026-2029.xlsx" --client ERCS \
+        --categories data/ercs_categories.csv [--against <generated workbook>] [--no-model]
+    #    -> reports/<name>_check.xlsx   every problem by sheet and row; exit code 1 on errors.
+    #    Never changes the workbook. --against lists what changed since generation.
+
     # 4. How good is it? Leave-one-out against existing sheets
     python -m tendersure evaluate --client ERCS --categories data/ercs_categories.csv
 
@@ -86,6 +100,7 @@ any folder works, with subfolders (e.g. one per year).
 | `--model id` | use a different model than `TENDERSURE_MODEL` (the AI runs automatically whenever a model is configured) |
 | `--no-model` | build without any AI step |
 | `--no-ai-review` | stop after the proposals (rewordings applied) and leave the rest to a person |
+| `--glossary`, `--yes-no`, `--audience` | the learned files (defaults under `data/`; seeded from the bank when absent) |
 
 ## Model steps: privacy first, any provider
 
@@ -217,14 +232,22 @@ removals and additions in the QA file; write the prequalification workbook.
 5. Rows from the next closest categories are offered as suggestions.
 6. Marks come from the skeleton unless overridden; a sheet that does not
    total 100 is not written.
-7. The output is re-validated with the same rules as the corpus.
+7. The template rules (specs/02) are applied once nothing else will change
+   the rows: Gate Question and Applies To from the categories table; the
+   sub-category question from the advert; an Eligibility section with the
+   Trade License and the category's own documents; marks repeated in System
+   or Compliance; option scores scaled to the marks; Yes/No answer types
+   from whether Yes is the good answer; a Short Name and Acronym on every
+   upload or flagged row.
+8. Every sheet passes the check's rules (the same code `check` runs) before
+   it is written; a sheet with an error is listed as NOT WRITTEN.
 
 ## Layout
 
     tendersure/
       schema.py      column map, answer-type codes, section keys, constants
       parser.py      workbook -> structured Row objects (deterministic)
-      validate.py    19 rules, split platform-error vs silent-error
+      validate.py    corpus rules (platform vs silent) and the template rules (check + fix)
       bank.py        question bank + corpus-consensus conflict detection
       categories.py  notice PDF -> category table by layout (number, group, sub-categories), diff
       category_llm.py  model extraction of the same table, verbatim check, reconcile
@@ -236,6 +259,16 @@ removals and additions in the QA file; write the prequalification workbook.
       review.py      the Decisions tab: collapse the review, apply the answers
       trust.py       sheet grades, client conventions, standing rulings
       selectors.py   optional model step (selects and drafts; code applies)
+      gating.py      Gate Question and Applies To; who answers each question (audience)
+      naming.py      Archive Short Names and Acronyms (letter rule, model drafts)
+      glossary.py    the glossary of short names and acronyms
+      yesno.py       whether Yes is the good answer; the Yes/No answer-type rule
+      grouping.py    rewordings of one question
+      learned_store.py  storage driver for the learned files (CSV today)
+      learned_review.py the review workbook for learned drafts
+      refine.py      category refinement: draft list -> revised -> final
+      check.py       check a workbook after hand edits
+      check_ai.py    the AI read of a checked workbook (warnings only)
       evaluate.py    leave-one-out evaluation
       cli.py         python -m tendersure ...
     tests/           pytest, synthetic workbooks

@@ -6,10 +6,10 @@ with no dependency between them can be built in any order.
 
 Size: **S** under half a day, **M** about a day, **L** two days or more.
 
-**Done:** T01, T02, T03, T06, T07 (first slice, 2026-10-28); T04, T05, T08, T09 (extraction was already complete; nothing to fix), T10, T11, T12, T13, T14, T15, T16, T17, T18, T19, T20, T21, T22, T23, T24, T25, T26, T36, T37, T38, T39, T40, T41, T27, T28, T29, T30, T31, T32, T33. ERCS batch
-regenerated: 21 columns, 0 rows with marks only in Marks (was 3,508), split
-Sub Section blocks fixed. One one-row Technical section in ERCS-041 keeps the
-blank Sub Section of the client's own sheet.
+**Status (2026-10-29): all tasks T01-T41 are done.** The regenerated ERCS
+batch meets the spec 02 acceptance list and `check` finds 0 errors on it;
+see SPEC.md section 7 for the numbers. T09 needed no fix: the notice's five
+sub-category lists were already read correctly.
 
 ## Design note: one rule, two uses
 
