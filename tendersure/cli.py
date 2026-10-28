@@ -244,9 +244,9 @@ def cmd_glossary(a):
             print(f"glossary: drafting by rules ({why_not})")
         drafter = naming.ModelDrafter(model=a.model or None, examples=entries) if use_model \
             else naming.RuleDrafter()
-        reused, drafted = naming.complete_glossary(gl.Glossary(entries), drafter)
-        print(f"glossary: filled missing acronyms - {reused} from the same name elsewhere in the glossary, "
-              f"{drafted} name(s) drafted; filled rows are drafts to confirm")
+        rederived, reused, built = naming.complete_glossary(gl.Glossary(entries), drafter)
+        print(f"glossary: {rederived} drafted acronyms rebuilt by the letter rule; empty acronyms: {reused} "
+              f"taken from the same name elsewhere, {built} built by the rule; filled rows are drafts to confirm")
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     gl.save(entries, a.out)
     kept = sum(e.status != gl.SEEDED for e in entries)
@@ -379,9 +379,10 @@ def cmd_generate(a):
     drafted = naming.name_documents(plans, glossary, drafter)
     if drafted:
         gl.save(glossary.entries, a.glossary)
-        by_model = sum(e.status == gl.DRAFTED for e in drafted)
-        print(f"glossary: named {len(drafted)} new documents ({by_model} by the model, "
-              f"{len(drafted) - by_model} by rules), saved as drafts in {a.glossary}: confirm or change them there")
+        by_rules = sum(e.status == gl.RULE_DRAFTED for e in drafted)
+        print(f"glossary: named {len(drafted)} new documents ({by_rules} short names drafted by rules, "
+              f"the rest given or drafted by the model; acronyms by the letter rule), saved as drafts in "
+              f"{a.glossary}: confirm or change them there")
 
     # Whatever happened above, a sheet that does not total 100 is listed, not
     # written - and never stops the rest of the batch.
@@ -550,7 +551,7 @@ def main(argv=None):
     p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
     p.add_argument("--out", default="data/glossary.csv")
     p.add_argument("--fill", action="store_true",
-                   help="give every entry an acronym: reuse the one the same name has, draft the rest")
+                   help="give every entry both names: drafts' acronyms by the letter rule, empty ones reused or built")
     p.add_argument("--model", nargs="?", const="", help="model id for --fill (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true", help="--fill by rules, without a model")
     p.set_defaults(fn=cmd_glossary)

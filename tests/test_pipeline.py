@@ -1234,30 +1234,46 @@ def test_names_come_from_the_glossary_and_repeats_are_numbered(corpus):
     ids = [q.row for q in p.questions if q.row.criteria == "Attach National ID or passport"]
     assert [(r.archive_short_name, r.acronym) for r in ids] == \
            [("Shareholder ID or passport 1", "SIDP 1"), ("Shareholder ID or passport 2", "SIDP 2")]
-    assert [e.status for e in drafted] == [gl.RULE_DRAFTED]                           # one question, drafted once
+    assert [e.status for e in drafted] == [gl.DRAFTED]                                # one question, named once
     assert check_names(to_sheet(p)) == []
 
 
-def test_model_drafts_missing_names_and_rules_replace_bad_drafts(corpus):
+def test_model_drafts_short_names_and_the_rule_builds_acronyms(corpus):
     from tendersure import glossary as gl, naming
+    from tendersure.generate import insert_rows
+    from tendersure.parser import Row
     p = _named_plan(corpus, shareholders=1)
-    t = FakeTransport({"names": [
-        {"id": 0, "short_name": "Office", "acronym": "OFF"},                          # in sheet order:
-        {"id": 1, "short_name": "Shareholder ID or passport", "acronym": "SIP"},      # registration
-        {"id": 2, "short_name": "Staff", "acronym": "TOOLONGX"}]})                    # 8 letters: refused
+    unnamed = [Row("", "", 0, criteria=c, answer_type=5, compliance_attach=True) for c in
+               ("Please attach evidence of ownership or rent agreement for welding machine",
+                "Please attach evidence of ownership or rent agreement for a concrete mixer")]
+    insert_rows(p, "technical", unnamed, "newly drafted", "model draft", "test")
+    t = FakeTransport({"names": [{"id": 0, "short_name": "Welding Machine Ownership"},
+                                 {"id": 1, "short_name": "Proof that the company owns a concrete mixer"}]})
     drafter = naming.ModelDrafter(llm=OpenRouterLLM(model="m", transport=t))
-    g = gl.Glossary([gl.Entry("AAA", "attach national id or passport", "x", "Shareholder ID or passport", "SIDP",
-                              status=gl.RULE_DRAFTED)])                               # a rules draft: redone
+    g = gl.Glossary([gl.Entry("AAA", "please attach evidence of ownership or rent agreement for welding machine",
+                              "x", "Ownership or Rent Agreement", "ORA", status=gl.RULE_DRAFTED)])  # redone
     drafted = {e.example: e for e in naming.name_documents([p], g, drafter)}
 
+    assert len(t.calls) == 1                         # rows with a Short Name never reach the model
     sent = json.dumps(t.calls[0][2])
-    assert len(t.calls) == 1 and "given short_name: Office" in sent
-    assert (drafted["Attach evidence of physically registered office"].acronym,
-            drafted["Attach evidence of physically registered office"].status) == ("OFF", gl.DRAFTED)
-    staff = drafted["Attach evidence of trained service staff"]
-    assert (staff.short_name, staff.acronym, staff.status) == ("Staff", "STA", gl.RULE_DRAFTED)
-    ids = next(q for q in p.questions if q.row.criteria == "Attach National ID or passport")
-    assert ids.row.acronym == "SIP" and "drafted - confirm it in data/glossary.csv" in ids.notes[-1]
+    assert "welding machine" in sent and "Shareholder ID" not in sent
+    weld = drafted["Please attach evidence of ownership or rent agreement for welding machine"]
+    assert (weld.short_name, weld.acronym, weld.status) == ("Welding Machine Ownership", "WMO", gl.DRAFTED)
+    mixer = drafted["Please attach evidence of ownership or rent agreement for a concrete mixer"]
+    assert (mixer.short_name, mixer.acronym, mixer.status) == ("Ownership or Rent Agreement", "ORA",
+                                                              gl.RULE_DRAFTED)   # 8 words: refused, rule draft
+    office = drafted["Attach evidence of physically registered office"]
+    assert (office.short_name, office.acronym) == ("Office", "OFF")
+
+
+@pytest.mark.parametrize("name,acronym", [
+    ("TIN Certificate", "TIN"), ("Tax Compliance Certificate", "TCC"), ("SHE Policy", "SHE"),
+    ("Structural Engineer CV", "SECV"), ("Accounts", "ACC"), ("Reference", "REF"),
+    ("Bank account request details form", "BARDF"), ("Shareholder ID or passport", "SIDP"),
+    ("Tax Compliance/Clearance Certificate", "TCC"), ("EPA License", "EPA")])
+def test_acronyms_combine_the_short_names_letters(name, acronym):
+    from tendersure.naming import acronym_for
+    assert acronym_for(name) == acronym
 
 
 def test_acronyms_stay_unique_within_a_sheet(corpus):
@@ -1270,7 +1286,7 @@ def test_acronyms_stay_unique_within_a_sheet(corpus):
     assert len(acronyms) == len(set(acronyms)) and "TIN2" in acronyms
 
 
-def test_glossary_fill_reuses_a_names_acronym_and_drafts_each_name_once(tmp_path):
+def test_glossary_fill_rebuilds_drafts_and_keeps_one_acronym_per_document(tmp_path):
     from tendersure import glossary as gl, naming
     E = gl.Entry
     entries = [E("ERCS", "attach id", "x", "Shareholder ID or passport", "SID", status=gl.DRAFTED, uses=24),
@@ -1279,24 +1295,24 @@ def test_glossary_fill_reuses_a_names_acronym_and_drafts_each_name_once(tmp_path
                E("ILRI", "attach staff 1", "x", "Staff", "", numbered=True, uses=9),
                E("ILRI", "attach staff 2", "x", "Staff 2", "", uses=9),
                E(gl.ANY_CLIENT, "attach iso", "x", "ISO 9001", "", uses=2),
-               E("ERCS", "attach ref 2", "x", "Reference 2", "REF 2", uses=12)]
+               E("ERCS", "attach coi", "x", "Company Registration Certificate", "COI", uses=12),     # client's own
+               E("ERCS", "attach weld", "x", "Welding Machine Ownership", "WELD", status=gl.DRAFTED)]
 
-    class Drafts(naming.RuleDrafter):
-        asked = []
-
+    class NoModel(naming.RuleDrafter):
         def draft(self, needs):
-            Drafts.asked += [n.short_name for n in needs]
-            return super().draft(needs)
+            assert needs == []                       # every entry has a Short Name: nothing to draft
+            return []
 
-    reused, drafted = naming.complete_glossary(gl.Glossary(entries), Drafts())
+    rederived, reused, built = naming.complete_glossary(gl.Glossary(entries), NoModel())
     got = {(e.client, e.short_name): e.acronym for e in entries}
-    assert got[("ILRI", "Shareholder ID or passport")] == got[("*", "Shareholder ID or passport")] == "SID"
-    assert (got[("ILRI", "Staff")], got[("ILRI", "Staff 2")]) == ("STA", "STA 2")     # one base, numbered
-    assert got[("*", "ISO 9001")] == "ISO9"                                            # not item 9001 of 'ISO'
-    assert (reused, drafted, sorted(Drafts.asked)) == (2, 2, ["ISO 9001", "Staff"])
-    assert all(e.acronym for e in entries) and entries[1].status == gl.DRAFTED
+    assert got[("ERCS", "Shareholder ID or passport")] == "SIDP"          # draft rebuilt by the rule
+    assert got[("ILRI", "Shareholder ID or passport")] == got[("*", "Shareholder ID or passport")] == "SIDP"
+    assert (got[("ILRI", "Staff")], got[("ILRI", "Staff 2")]) == ("STA", "STA 2")
+    assert got[("*", "ISO 9001")] == "ISO9001"                            # not item 9001 of 'ISO'
+    assert got[("ERCS", "Company Registration Certificate")] == "COI"     # the client's acronym kept
+    assert got[("ERCS", "Welding Machine Ownership")] == "WMO"
+    assert (rederived, reused, built) == (2, 2, 3)
 
     gl.save(entries, str(tmp_path / "g.csv"))
     order = [(e.acronym, e.client) for e in gl.load(str(tmp_path / "g.csv"))]
-    assert order[:3] == [("ISO9", "*"), ("REF 2", "ERCS"), ("SID", "ERCS")]
-    assert order[3:5] == [("SID", "ILRI"), ("SID", "*")]                               # client rows, then '*'
+    assert order[:4] == [("COI", "ERCS"), ("ISO9001", "*"), ("SIDP", "ERCS"), ("SIDP", "ILRI")]

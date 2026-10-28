@@ -1,14 +1,15 @@
 """Archive Short Names and Acronyms on a batch of sheets (spec 02 G8).
 
-The glossary supplies the names past sheets used. Questions it lacks are
-drafted: by the model when one is configured (one call per client for the
-whole batch), else by rules. Drafts go into the glossary, so each question is
-drafted once and the team can confirm or change it there. Code keeps the last
-word: a model draft that breaks the shape rules (1-4 words; acronym 2-6
-capitals or digits) is replaced by the rule draft.
+The glossary supplies the names past sheets used; names a row already has
+are kept. A question the glossary cannot name gets a drafted Short Name - by
+the model when one is configured (one call per client for the whole batch),
+else by rules - and its Acronym is always built from the Short Name by the
+team's letter-combining rule (`acronym_for`), never invented. Drafts go into
+the glossary, so each question is drafted once and the team can confirm or
+change it there.
 
 A question that repeats in a sheet (an ID for each shareholder) is numbered
-on both names: "Shareholder ID or passport 1" / "SIP 1", as references are.
+on both names: "Shareholder ID or passport 1" / "SIDP 1", as references are.
 """
 
 import re
@@ -26,7 +27,8 @@ _SMALL = {"a", "an", "and", "as", "at", "by", "for", "from", "in", "of", "on", "
 _LEAD = {"please", "kindly", "attach", "upload", "provide", "submit", "include", "a", "an", "the", "your",
          "valid", "copy", "copies", "of", "scanned", "current", "recent", "evidence"}
 _CUT = re.compile(r"\(|,|;|\s(?:e\.?g\.?|for|from|issued|if|that|which|showing|including|by)\s", re.I)
-_ACRONYM = re.compile(r"[A-Z0-9]{2,6}")
+_DOCUMENT_WORDS = {"certificate", "certificates", "license", "licence", "licenses", "policy", "form",
+                   "membership", "document"}
 
 
 @dataclass
@@ -34,92 +36,108 @@ class Need:
     client: str
     key: str
     example: str
-    short_name: str = ""        # known already; only the acronym is wanted
+    short_name: str = ""        # known already; its acronym follows from it
 
 
-def rule_names(text: str, short_name: str = "") -> Tuple[str, str]:
-    """A plain draft from the question text: the document noun phrase, up to
-    four words, and its initials."""
-    if not short_name:
-        words = _CUT.split(text.strip(), maxsplit=1)[0].split()
-        while words and words[0].lower().strip(":.") in _LEAD:
-            words.pop(0)
-        words = words[:4] or text.split()[:4]
-        short_name = " ".join(w if w.isupper() or (i and w.lower() in _SMALL) else w[:1].upper() + w[1:]
-                              for i, w in enumerate(words)).strip(" .:?")
-    letters = "".join(w if w.isupper() and len(w) <= 4 else w[0] for w in short_name.split()
-                      if w.lower() not in _SMALL and w[0].isalnum()).upper()
-    acronym = letters[:6] if len(letters) >= 2 else (short_name.replace(" ", "")[:3].upper() or "DOC")
-    return short_name, acronym
+def _is_abbreviation(word: str) -> bool:
+    letters = word.replace("/", "").replace("-", "")
+    return len(letters) >= 2 and letters.isupper()
 
 
-def _valid(short_name: str, acronym: str) -> bool:
-    return 1 <= len(short_name.split()) <= 4 and len(short_name) <= 45 and bool(_ACRONYM.fullmatch(acronym))
+def acronym_for(short_name: str) -> str:
+    """The team's way of writing an acronym (agreed 2026-10-28), which their
+    own sheets follow: the initials of the Short Name's words, small words
+    skipped (Tax Compliance Certificate -> TCC); a word already in capitals,
+    or a number, stays whole (Structural Engineer CV -> SECV); after such an
+    abbreviation a closing document word is dropped (TIN Certificate -> TIN,
+    SHE Policy -> SHE); a one-word name gives its first three letters
+    (Accounts -> ACC, Reference -> REF)."""
+    words = [w.strip("()[],.:") for w in short_name.split()]
+    words = [w for w in words if w and w.lower() not in _SMALL]
+    if len(words) > 1 and words[-1].lower() in _DOCUMENT_WORDS and any(_is_abbreviation(w) for w in words):
+        words = words[:-1]
+    if not words:
+        return ""
+    if len(words) == 1:
+        w = words[0]
+        return w.split("/")[0] if _is_abbreviation(w) else w[:3].upper()
+    return "".join(w.split("/")[0] if _is_abbreviation(w) or w.isdigit() else w[0] for w in words).upper()
+
+
+def rule_short_name(text: str) -> str:
+    """A plain Short Name from the question text: the document noun phrase,
+    up to four words."""
+    words = _CUT.split(text.strip(), maxsplit=1)[0].split()
+    while words and words[0].lower().strip(":.") in _LEAD:
+        words.pop(0)
+    words = words[:4] or text.split()[:4]
+    return " ".join(w if w.isupper() or (i and w.lower() in _SMALL) else w[:1].upper() + w[1:]
+                    for i, w in enumerate(words)).strip(" .:?")
+
+
+def _entry(n: Need, short_name: str, status: str) -> gl.Entry:
+    return gl.Entry(n.client, n.key, n.example, short_name, acronym_for(short_name), status=status)
 
 
 class RuleDrafter:
-    status = gl.RULE_DRAFTED
     redraws_rules = False
 
     def draft(self, needs: List[Need]) -> List[gl.Entry]:
-        return [gl.Entry(n.client, n.key, n.example, *rule_names(n.example, n.short_name), status=self.status)
-                for n in needs]
+        return [_entry(n, n.short_name, gl.DRAFTED) if n.short_name else
+                _entry(n, rule_short_name(n.example), gl.RULE_DRAFTED) for n in needs]
 
 
 SYSTEM = (
     "You name documents that suppliers upload in a supplier prequalification questionnaire. "
-    "For each numbered question give:\n"
-    "- short_name: 1 to 4 words, Title Case, naming the document itself so it can be filed "
-    "(e.g. 'TIN Certificate', 'Welding Machine Ownership', 'Structural Engineer CV');\n"
-    "- acronym: 2 to 6 capital letters or digits (e.g. 'TIN', 'WMO', 'SECV').\n"
-    "Where a short name is given, keep it exactly and give only its acronym. "
-    "Make every short name and acronym in the list distinct. Follow the style of the examples."
+    "For each numbered question give short_name: 1 to 4 words, Title Case, naming the document "
+    "itself so it can be filed (e.g. 'TIN Certificate', 'Welding Machine Ownership', "
+    "'Structural Engineer CV'). Keep standard abbreviations in capitals (TIN, VAT, CV, ISO). "
+    "Make every short name in the list distinct. Follow the style of the examples."
 )
 SCHEMA = {"type": "object", "required": ["names"], "properties": {"names": {"type": "array", "items": {
-    "type": "object", "required": ["id", "short_name", "acronym"],
-    "properties": {"id": {"type": "integer"}, "short_name": {"type": "string"}, "acronym": {"type": "string"}}}}}}
+    "type": "object", "required": ["id", "short_name"],
+    "properties": {"id": {"type": "integer"}, "short_name": {"type": "string"}}}}}}
 
 
 class ModelDrafter:
-    """Drafts names with any configured model; rules for whatever it gets wrong."""
-    status = gl.DRAFTED
+    """Short Names from any configured model; the rule for whatever it gets
+    wrong. A question that already has a Short Name needs no model."""
     redraws_rules = True
 
     def __init__(self, llm=None, model: Optional[str] = None, examples: Optional[List[gl.Entry]] = None):
         self.llm = llm or make_llm(model=model)
         self.examples = examples or []
 
-    def _prompt(self, client: str, needs: List[Need]) -> str:
-        shown = [e for e in self.examples if e.short_name and e.acronym and e.client in (client, gl.ANY_CLIENT)]
-        lines = ["EXAMPLES (question -> short_name | acronym):"]
-        lines += [f"  {e.example} -> {e.short_name} | {e.acronym}" for e in shown[:15]]
-        lines += ["", "QUESTIONS:"]
-        lines += [f"  {i} | {n.example}" + (f" | given short_name: {n.short_name}" if n.short_name else "")
-                  for i, n in enumerate(needs)]
+    def _prompt(self, client: Optional[str], needs: List[Need]) -> str:
+        shown = [e for e in self.examples if e.short_name and e.client in (client, gl.ANY_CLIENT)]
+        lines = ["EXAMPLES (question -> short_name):"]
+        lines += [f"  {e.example} -> {e.short_name}" for e in shown[:15]]
+        lines += ["", "QUESTIONS:"] + [f"  {i} | {n.example}" for i, n in enumerate(needs)]
         return "\n".join(lines)
 
+    def _ask(self, client: Optional[str], group: List[Need]) -> Dict[int, str]:
+        try:
+            raw = self.llm.complete_json(SYSTEM, self._prompt(client, group), SCHEMA, "document_names",
+                                         client=client, max_tokens=8000)
+            return {a["id"]: a["short_name"].strip() for a in raw["names"]}
+        except LLMError as e:
+            print(f"naming: no model drafts for {client} ({e}); drafted by rules")
+            return {}
+
     def draft(self, needs: List[Need]) -> List[gl.Entry]:
-        out = []
-        by_client: Dict[str, List[Need]] = defaultdict(list)
+        out = [_entry(n, n.short_name, gl.DRAFTED) for n in needs if n.short_name]
+        by_client: Dict[Optional[str], List[Need]] = defaultdict(list)
         for n in needs:
-            by_client[n.client].append(n)
+            if not n.short_name:
+                by_client[n.client].append(n)
         for client, group in by_client.items():
-            try:
-                raw = self.llm.complete_json(SYSTEM, self._prompt(client, group), SCHEMA, "document_names",
-                                             client=client, max_tokens=8000)
-                answers = {a["id"]: a for a in raw["names"]}
-            except LLMError as e:
-                print(f"naming: no model drafts for {client} ({e}); drafted by rules")
-                answers = {}
+            answers = self._ask(client, group)
             for i, n in enumerate(group):
-                a = answers.get(i, {})
-                short = n.short_name or a.get("short_name", "").strip()
-                acronym = a.get("acronym", "").strip().upper()
-                if a and _valid(short, acronym):
-                    out.append(gl.Entry(client, n.key, n.example, short, acronym, status=gl.DRAFTED))
+                short = answers.get(i, "")
+                if 1 <= len(short.split()) <= 4 and len(short) <= 45:
+                    out.append(_entry(n, short, gl.DRAFTED))
                 else:
-                    out.append(gl.Entry(client, n.key, n.example, *rule_names(n.example, n.short_name),
-                                        status=gl.RULE_DRAFTED))
+                    out.append(_entry(n, rule_short_name(n.example), gl.RULE_DRAFTED))
         return out
 
 
@@ -229,26 +247,35 @@ def _known_acronyms(entries: List[gl.Entry]) -> Dict[str, str]:
     return out
 
 
-def complete_glossary(glossary: gl.Glossary, drafter) -> Tuple[int, int]:
-    """Give every glossary entry an acronym. One document keeps one acronym:
-    a short name the glossary already names elsewhere takes that acronym; the
-    rest are drafted, once per name. Filled rows become drafts for the team
-    to confirm (a re-seed keeps them). Returns (reused, drafted)."""
-    todo = [e for e in glossary.entries if e.short_name and not e.acronym]
+def complete_glossary(glossary: gl.Glossary, drafter) -> Tuple[int, int, int]:
+    """Give every glossary entry both names. Drafts take the acronym the rule
+    builds from their Short Name. An empty acronym takes the one the glossary
+    already gives the same Short Name, so one document keeps one acronym, or
+    else the rule's. An entry with no Short Name is drafted. Seeded and
+    confirmed acronyms - the clients' own (COI, DAF/MAF) - are kept.
+    Returns (re-derived, reused, built)."""
     names = {e.short_name.lower() for e in glossary.entries if e.short_name}
+    rederived = 0
+    for e in glossary.entries:
+        if e.status in (gl.DRAFTED, gl.RULE_DRAFTED) and e.short_name:
+            base, n = _numbered_names(e, names)
+            acronym = _numbered(acronym_for(base), n)
+            rederived += acronym != e.acronym
+            e.acronym = acronym
+    unnamed = [e for e in glossary.entries if not e.short_name]
+    for d in drafter.draft([Need(None if e.client == gl.ANY_CLIENT else e.client, e.question_key, e.example)
+                            for e in unnamed]):
+        e = next(x for x in unnamed if x.question_key == d.question_key)
+        e.short_name, e.acronym, e.status = d.short_name, e.acronym, d.status
     known = _known_acronyms(glossary.entries)
-    needs_by_name: Dict[str, Need] = {}
-    reused = 0
-    for e in todo:
+    reused = built = 0
+    for e in glossary.entries:
+        if e.acronym:
+            continue
         base, n = _numbered_names(e, names)
         if base.lower() in known:
-            e.acronym, e.status, reused = _numbered(known[base.lower()], n), gl.DRAFTED, reused + 1
+            e.acronym, reused = _numbered(known[base.lower()], n), reused + 1
         else:
-            needs_by_name.setdefault(base.lower(), Need(None, base.lower(), e.example, base))
-    drafted = {d.question_key: d for d in drafter.draft(list(needs_by_name.values()))}
-    for e in todo:
-        if not e.acronym:
-            base, n = _numbered_names(e, names)
-            d = drafted[base.lower()]
-            e.acronym, e.status = _numbered(d.acronym, n), d.status
-    return reused, len(needs_by_name)
+            e.acronym, built = _numbered(acronym_for(base), n), built + 1
+        e.status = gl.DRAFTED
+    return rederived, reused, built

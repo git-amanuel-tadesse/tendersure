@@ -160,10 +160,17 @@ always present.
   seeded from the bank: the client's most common pair for the question, then
   other clients'. Example pairs: TIN Certificate / TIN, Tax Compliance
   Certificate / TCC, Reference 1 / REF 1.
-- A required row with no glossary entry gets a drafted pair (short name of
-  at most four words; acronym 2–6 capitals), saved to the glossary as
-  `drafted` and listed in the QA report. Once the team confirms it, it is
-  reused as is.
+- A required row with no glossary entry gets a drafted Short Name (at most
+  four words; by the model, or by rules without one), saved to the glossary
+  as `drafted`. Once the team confirms it, it is reused as is.
+- A new Acronym is never invented: it is built from the Short Name by the
+  team's letter rule (decided 2026-10-28): the initials of its words, small
+  words skipped (Tax Compliance Certificate → TCC); a word already in
+  capitals or a number stays whole (Structural Engineer CV → SECV); after
+  such an abbreviation a closing Certificate/License/Policy/Form is dropped
+  (TIN Certificate → TIN, SHE Policy → SHE); one word gives its first three
+  letters (Accounts → ACC). Acronyms the clients already use (COI, COIF,
+  DAF/MAF, TIN/PIN) are kept.
 - Within a sheet, acronyms are unique; repeated blocks are numbered
   (REF 1, REF 2, REF 3; Staff 1, Staff 2).
 - A copied pair that contradicts the glossary is reported, not changed
