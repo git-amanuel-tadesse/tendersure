@@ -280,16 +280,24 @@ def marks_column(r: Row) -> str:
     return "system"
 
 
+def _marks_columns_finding(sheet: Sheet, r: Row) -> Optional[Finding]:
+    if r.marks is None or (r.system is None and r.compliance is None):
+        col = marks_column(r).title()
+        shown = "blank" if r.marks is None else f"{r.marks:g}"
+        return Finding(sheet.name, r.excel_row, "MARKS-ONE-COLUMN", SILENT, "error",
+                       f"Marks {shown} is not repeated in System or Compliance.",
+                       f"Write {0 if r.marks is None else f'{r.marks:g}'} in Marks and in {col}.")
+    if abs((r.marks or 0) - (r.system or 0) - (r.compliance or 0)) > 1e-6:
+        return Finding(sheet.name, r.excel_row, "MARKS-SPLIT", PLATFORM, "error",
+                       f"Marks {r.marks:g} but System {r.system or 0:g} + Compliance {r.compliance or 0:g}.",
+                       "Make Marks equal System + Compliance.")
+    return None
+
+
 def check_marks_columns(sheet: Sheet) -> List[Finding]:
-    out = []
-    for r in sheet.rows:
-        if r.marks is None or (r.system is None and r.compliance is None):
-            col = marks_column(r).title()
-            out.append(Finding(sheet.name, r.excel_row, "MARKS-ONE-COLUMN", SILENT, "error",
-                               f"Marks {'blank' if r.marks is None else f'{r.marks:g}'} is not repeated "
-                               f"in System or Compliance.",
-                               f"Write {0 if r.marks is None else f'{r.marks:g}'} in Marks and in {col}."))
-    return out
+    """Spec 02 G4: every row repeats its marks in System or Compliance, and
+    Marks = System + Compliance."""
+    return [f for f in (_marks_columns_finding(sheet, r) for r in sheet.rows) if f]
 
 
 def fix_marks_columns(r: Row) -> bool:
@@ -340,28 +348,33 @@ def yes_no_target(yes_is: Optional[str], marks: float) -> Optional[Tuple[int, Op
     return None
 
 
+def _yes_no_finding(sheet: Sheet, r: Row, verdict: Optional[str]) -> Optional[Finding]:
+    marks = r.marks or 0
+    want = yes_no_target(verdict, marks)
+    if want is None:
+        return Finding(sheet.name, r.excel_row, "YESNO-UNKNOWN", SILENT, "warning",
+                       "Scored Yes/No question: nobody has said whether Yes is the good answer.",
+                       "Set yes_is to good or bad in data/yesno_polarity.csv.")
+    scores = [float(s) for s in r.score_list() if _is_number(s)]
+    got = (r.answer_type, [o.lower() for o in r.option_list()], scores)
+    exp = (want[0], ["yes", "no"] if want[1] else [], [0.0, marks] if want[2] else [])
+    if got == exp:
+        return None
+    how = "type 4 (Yes/No)" if want[0] == 4 else f"type 2, options Yes,No scored 0,{marks:g}"
+    return Finding(sheet.name, r.excel_row, "YESNO-TYPE", SILENT, "error",
+                   f"Yes is {verdict} here{'' if marks > 0 else ' (no marks)'}, so the question is {how}.",
+                   f"Set it to {how}.")
+
+
 def check_yes_no(sheet: Sheet, yes_is: Callable[[List[Row], int], Optional[str]]) -> List[Finding]:
-    """`yes_is(rows, i)` gives the team's verdict on row i ('good', 'bad' or None)."""
+    """Spec 02 G10. `yes_is(rows, i)` gives the team's verdict on row i
+    ('good', 'bad' or None)."""
     out = []
     for i, r in enumerate(sheet.rows):
-        if not is_yes_no(r):
-            continue
-        marks = r.marks or 0
-        verdict = yes_is(sheet.rows, i) if marks > 0 else YES_GOOD
-        want = yes_no_target(verdict, marks)
-        if want is None:
-            out.append(Finding(sheet.name, r.excel_row, "YESNO-UNKNOWN", SILENT, "warning",
-                               "Scored Yes/No question: nobody has said whether Yes is the good answer.",
-                               "Set yes_is to good or bad in data/yesno_polarity.csv."))
-            continue
-        scores = [float(s) for s in r.score_list() if _is_number(s)]
-        got = (r.answer_type, [o.lower() for o in r.option_list()], scores)
-        exp = (want[0], ["yes", "no"] if want[1] else [], [0.0, marks] if want[2] else [])
-        if got != exp:
-            how = "type 4 (Yes/No)" if want[0] == 4 else f"type 2, options Yes,No scored 0,{marks:g}"
-            out.append(Finding(sheet.name, r.excel_row, "YESNO-TYPE", SILENT, "error",
-                               f"Yes is {verdict} here{'' if marks > 0 else ' (no marks)'}, so the question is {how}.",
-                               f"Set it to {how}."))
+        if is_yes_no(r):
+            f = _yes_no_finding(sheet, r, yes_is(sheet.rows, i) if (r.marks or 0) > 0 else YES_GOOD)
+            if f:
+                out.append(f)
     return out
 
 

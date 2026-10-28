@@ -27,7 +27,7 @@ from .bank import Bank
 from .evaluate import evaluate, summarise
 from .llm import LLMError
 from .privacy import PrivacyError
-from .generate import Generator, MarksError, Target, apply_section_marks, check_total, finalise
+from .generate import Generator, MarksError, Target, apply_section_marks, check_total, finalise, to_sheet
 from .parser import Sheet, parse_workbook
 from .reports import load_decisions, write_bank, write_qa_report, write_validation_report
 from .similarity import Retriever
@@ -362,6 +362,65 @@ def cmd_refine_evaluate(a):
             print(f"  {k}: {v}")
 
 
+def _write_check_report(findings, path: str):
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Findings"
+    head = ["Sheet", "Row", "Rule", "Severity", "Class", "Problem", "Suggested fix"]
+    ws.append(head)
+    for f in findings:
+        ws.append([f.sheet, f.excel_row, f.rule, f.severity, f.kind, f.message, f.suggestion])
+    red = PatternFill("solid", fgColor="FFF4CCCC")
+    for row in ws.iter_rows(min_row=2):
+        if row[3].value == "error":
+            row[3].fill = red
+    for c, w in zip(ws[1], [20, 6, 20, 9, 9, 80, 60]):
+        c.font = Font(bold=True)
+        ws.column_dimensions[c.column_letter].width = w
+    ws.freeze_panes = "A2"
+    ws = wb.create_sheet("Summary")
+    ws.append(["Sheet", "Errors", "Warnings"])
+    per = defaultdict(Counter)
+    for f in findings:
+        per[f.sheet][f.severity] += 1
+    for sheet, c in sorted(per.items()):
+        ws.append([sheet, c["error"], c["warning"]])
+    wb.save(path)
+
+
+def cmd_check(a):
+    """Spec 03: check a workbook after hand edits; never writes to it."""
+    from . import check as ck
+    cats = cat.load(a.categories) if a.categories else None
+    yes_is = None
+    book = yesno.load(a.yes_no)
+    if book.verdicts:
+        def yes_is(rows, i):
+            v = book.lookup(trust.context_key(rows, i))
+            return v.yes_is if v else None
+    findings = ck.check_workbook(a.workbook, a.client, cats, a.against, yes_is)
+    if not a.no_model and _model_wanted(a)[0]:
+        from . import check_ai
+        findings += check_ai.read(a.workbook, a.model or None, client=a.client)
+    out = a.out or os.path.join("reports", os.path.splitext(os.path.basename(a.workbook))[0] + "_check.xlsx")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    _write_check_report(findings, out)
+    sev = Counter(f.severity for f in findings)
+    per = defaultdict(Counter)
+    for f in findings:
+        per[f.sheet][f.severity] += 1
+    for sheet, c in sorted(per.items()):
+        if c["error"]:
+            print(f"  {sheet}: {c['error']} errors, {c['warning']} warnings")
+    print(f"check: {sev['error']} errors, {sev['warning']} warnings in {len(per)} sheets "
+          f"({', '.join(f'{r} {n}' for r, n in Counter(f.rule for f in findings if f.severity == 'error').most_common(8))})"
+          f" -> {out}")
+    if sev["error"]:
+        sys.exit(1)
+
+
 def cmd_glossary(a):
     """Seed data/glossary.csv from the bank, keeping the team's confirmed and drafted rows."""
     sheets, _ = load_source(a)
@@ -539,6 +598,23 @@ def cmd_generate(a):
         print(f"glossary: named {len(drafted)} new documents ({by_rules} short names drafted by rules, "
               f"the rest given or drafted by the model; acronyms by the letter rule), saved as drafts in "
               f"{a.glossary}: confirm or change them there")
+
+    # Spec 02 G11: every sheet passes the check's content rules before it is
+    # written; a sheet with an error is listed, not written.
+    from . import check as ck
+    by_code = {c.code(a.prefix): c for c in cats}
+
+    def yes_is(rows, i):
+        v = book.lookup(trust.context_key(rows, i))
+        return v.yes_is if v else None
+    for p in list(plans):
+        errors = [f for f in ck.sheet_findings(to_sheet(p), a.client, by_code.get(p.target.code), True, yes_is)
+                  if f.severity == "error"]
+        if errors:
+            plans.remove(p)
+            rules = Counter(f.rule for f in errors)
+            failed.append((p.target.code, f"{len(errors)} check error(s): " + ", ".join(
+                f"{r} {n}" for r, n in rules.most_common()) + f" (first: {errors[0].message})"))
 
     # Whatever happened above, a sheet that does not total 100 is listed, not
     # written - and never stops the rest of the batch.
@@ -726,6 +802,17 @@ def main(argv=None):
     p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true")
     p.set_defaults(fn=cmd_refine_evaluate)
+
+    p = sub.add_parser("check", help="check a workbook after hand edits (never changes it; exit 1 on errors)")
+    p.add_argument("workbook")
+    p.add_argument("--client", help="client code, e.g. ERCS: codes must carry it, other clients' names are flagged")
+    p.add_argument("--categories", help="the categories table: each sheet is checked against its category")
+    p.add_argument("--against", help="the generated workbook: what changed since is listed")
+    p.add_argument("--yes-no", default="data/yesno_polarity.csv", help="Yes/No verdicts (default data/)")
+    p.add_argument("--out", help="the report workbook (default reports/<name>_check.xlsx)")
+    p.add_argument("--model", nargs="?", const="", help="model id for the AI read (default: TENDERSURE_MODEL)")
+    p.add_argument("--no-model", action="store_true", help="skip the AI read")
+    p.set_defaults(fn=cmd_check)
 
     p = sub.add_parser("learn", help="learn names and Yes/No verdicts for the whole bank; write the review")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")

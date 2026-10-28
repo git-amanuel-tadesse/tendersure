@@ -1789,3 +1789,100 @@ def test_a_category_whose_gate_disagrees_with_applies_to_is_not_written(corpus, 
     out = capsys.readouterr().out
     assert "NOT WRITTEN AAA-ET-2026-002: categories table: Gate Question is TRUE" in out
     assert [s for s in openpyxl.load_workbook(tmp_path / "o.xlsx").sheetnames] == ["AAA-ET-2026-001"]
+
+
+# --- check after hand edits ------------------------------------------------------------
+
+def _generated(corpus, tmp_path):
+    """A workbook generate wrote from the synthetic history, and its categories table."""
+    from tendersure import categories as cat
+    from tendersure.cli import main
+    cats = [cat.Category(1, "Supply of Office Stationery and Toners", "GENERAL", client="AAA"),
+            cat.Category(2, "Provision of Security and Guarding Services", "GENERAL", client="AAA")]
+    cat.save(cats, str(tmp_path / "cats.csv"))
+    main(["generate", str(corpus), "--categories", str(tmp_path / "cats.csv"), "--client", "AAA",
+          "--prefix", "AAA-ET-2026-", "--out", str(tmp_path / "gen.xlsx"), "--no-model",
+          "--audience", str(tmp_path / "aud.csv"), "--glossary", str(tmp_path / "g.csv"),
+          "--yes-no", str(tmp_path / "yn.csv")])
+    return tmp_path / "gen.xlsx", tmp_path / "cats.csv"
+
+
+def _check(path, tmp_path, *extra):
+    from tendersure.cli import main
+    out = tmp_path / "report.xlsx"
+    code = 0
+    try:
+        main(["check", str(path), "--client", "AAA", "--no-model", "--out", str(out),
+              "--yes-no", str(tmp_path / "yn.csv"), *extra])
+    except SystemExit as e:
+        code = e.code
+    rows = list(openpyxl.load_workbook(out)["Findings"].iter_rows(min_row=2, values_only=True))
+    return code, rows
+
+
+def test_a_generated_workbook_passes_the_check(corpus, tmp_path):
+    gen, cats = _generated(corpus, tmp_path)
+    before = gen.read_bytes()
+    code, rows = _check(gen, tmp_path, "--categories", str(cats))
+    assert code == 0 and [r for r in rows if r[3] == "error"] == []
+    assert gen.read_bytes() == before                                   # the check never writes
+
+
+def test_hand_edits_are_found(corpus, tmp_path):
+    import shutil
+    gen, cats = _generated(corpus, tmp_path)
+    edited = tmp_path / "edited.xlsx"
+    shutil.copy(gen, edited)
+    wb = openpyxl.load_workbook(edited)
+    ws = wb["AAA-ET-2026-001"]
+    find = lambda text: next(r for r in range(5, ws.max_row + 1) if ws.cell(r, 4).value == text)
+    ws.cell(find("Attach evidence e.g. PO or award letter"), 5, 45)            # a mark changed
+    ws.cell(find("Insert TIN number"), 12, 5)                                  # answer type retyped
+    ws.cell(find("Company name"), 4, "Company name as registered with SNV")    # another client's name
+    ws.cell(find("Organization type"), 9, "x")                                 # Kenya-only column (Evaluation)
+    ws.title = "AAA-ET-2026-01"                                               # tab renamed
+    wb.save(edited)
+    code, rows = _check(edited, tmp_path, "--categories", str(cats), "--against", str(gen))
+    rules = {r[2] for r in rows if r[0] == "AAA-ET-2026-01"}                  # findings carry the tab's name
+    assert code == 1
+    assert {"SUM-ROWS", "MARKS-SPLIT", "AT-ASKS-TEXT", "OTHER-CLIENT", "KENYA-COLUMN", "CODE-TAB",
+            "EDIT-CHANGED"} <= rules
+
+
+def test_incomplete_reference_blocks_and_missing_sections_are_found():
+    from tendersure.check import check_standard_blocks
+    from tendersure.parser import Row, Sheet
+    s = Sheet("f", "S", "S", "S", "d", "AAA", 4, 21)
+    ref = lambda n, q: Row("f", "S", 0, section="Trade Reference", sub_section=f"Ref {n}", criteria=q)
+    s.rows = [Row("f", "S", 0, section="Declaration", criteria="I/We declare"),
+              ref(1, "Client Name"), ref(1, "Contact person"), ref(1, "Attach evidence Project1"),
+              ref(2, "Client Name"), ref(2, "Attach evidence Project 2")]
+    got = [(f.rule, f.message) for f in check_standard_blocks(s)]
+    assert ("STD-SECTION", "No Submission section.") in got
+    assert any(rule == "STD-BLOCK" and "'Ref 2' lacks" in m and "contact person" in m for rule, m in got)
+    assert len(got) == 2                                    # "Project1" / "Project 2" are the same question
+
+
+def test_the_ai_read_asks_once_per_distinct_question_and_only_warns(corpus, tmp_path, monkeypatch):
+    from tendersure import check_ai
+    gen, _ = _generated(corpus, tmp_path)
+    monkeypatch.setattr(check_ai, "CACHE", str(tmp_path / "ai.json"))
+    t = FakeTransport({"problems": [{"id": 0, "kind": "wording", "reason": "unclear"}]})
+    found = check_ai.read(str(gen), llm=OpenRouterLLM(model="m", transport=t))
+    assert len(t.calls) == 1 and found and all(f.severity == "warning" and f.kind == "model" for f in found)
+    assert "more sheets" in found[0].message                 # the same question in both sheets: read once
+    check_ai.read(str(gen), llm=OpenRouterLLM(model="m", transport=t))
+    assert len(t.calls) == 1                                 # cached: nothing asked again
+
+
+def test_generate_refuses_a_sheet_the_check_finds_errors_in(corpus, tmp_path, capsys, monkeypatch):
+    # History with errors is quarantined and never copied, so plant one where generation checks.
+    from tendersure import check as ck
+    from tendersure.validate import Finding
+    real = ck.check_other_clients
+    monkeypatch.setattr(ck, "check_other_clients", lambda s, c: real(s, c) + (
+        [Finding(s.name, 9, "OTHER-CLIENT", "silent", "error", "names 'SNV'")] if s.name.endswith("002") else []))
+    _generated(corpus, tmp_path)
+    out = capsys.readouterr().out
+    assert "NOT WRITTEN AAA-ET-2026-002: 1 check error(s): OTHER-CLIENT 1 (first: names 'SNV')" in out
+    assert openpyxl.load_workbook(tmp_path / "gen.xlsx").sheetnames == ["AAA-ET-2026-001"]
