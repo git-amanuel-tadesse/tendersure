@@ -270,6 +270,77 @@ def test_every_cell_and_merged_block_is_bordered(corpus, tmp_path):
     assert open_edges == []
 
 
+SUBS = ["Ground Coffee", "Tea", "Sugar, Milk Powder"]
+
+
+def _plan_with_subs(corpus, subs, copied_options=None):
+    """A plan for a category with `subs`; `copied_options` puts a sub-category
+    question from another category into the skeleton."""
+    from tendersure.generate import PlannedRow
+    from tendersure.parser import Row
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client, sub_categories=subs))
+    if copied_options:
+        org = next(i for i, q in enumerate(p.rows) if q.kind == "question" and q.row.criteria == "Organization type")
+        p.rows.insert(org + 1, PlannedRow(kind="question", row=Row(
+            "", "", 0, section="Company Information", sub_section="Information", answer_type=3, mandatory=True,
+            criteria="Please select the subcategory you would like to participate in",
+            options=copied_options, option_scores="0,0,0")))
+    return p
+
+
+def test_sub_category_question_is_added_after_organization_type(corpus):
+    from tendersure.generate import finalise, to_sheet
+    from tendersure.validate import check_sub_category_question
+    p = _plan_with_subs(corpus, SUBS)
+    finalise(p)
+    texts = [q.row.criteria for q in p.questions]
+    i = texts.index("Please select the subcategory you would like to participate in")
+    assert texts[i - 1] == "Organization type"
+    r = p.questions[i].row
+    assert (r.section, r.sub_section, r.answer_type, r.mandatory) == ("Company Information", "Information", 3, True)
+    assert r.option_list() == ["Ground Coffee", "Tea", "Sugar / Milk Powder"]   # the comma would split it
+    assert (r.option_scores, r.marks, r.system) == ("0,0,0", 0, 0)
+    assert check_sub_category_question(to_sheet(p), SUBS) == []
+    assert p.total() == 100
+
+
+def test_copied_sub_category_question_takes_this_categorys_options(corpus):
+    from tendersure.generate import finalise
+    p = _plan_with_subs(corpus, SUBS, copied_options="Tyres and Tubes, Batteries, Lubricants")
+    finalise(p)
+    qs = [q for q in p.questions if "subcategory" in q.row.criteria]
+    assert len(qs) == 1 and qs[0].row.options == "Ground Coffee, Tea, Sugar / Milk Powder"
+    assert any("were: Tyres and Tubes" in n for n in qs[0].notes)
+
+
+def test_drafted_sub_category_question_moves_into_place(corpus):
+    from tendersure.generate import finalise, insert_rows
+    from tendersure.parser import Row
+    p = _plan_with_subs(corpus, SUBS)
+    drafted = Row("", "", 0, criteria="Please select the sub-categories of grocery items you supply",
+                  answer_type=3, options="Coffee, Tea", option_scores="0,0", marks=0)
+    insert_rows(p, "technical", [drafted], "newly drafted", "model draft", "drafted by the model")
+    finalise(p)
+    texts = [q.row.criteria for q in p.questions]
+    assert texts.count("Please select the subcategory you would like to participate in") == 1
+    assert not any("grocery items you supply" in t for t in texts)
+    i = texts.index("Please select the subcategory you would like to participate in")
+    assert texts[i - 1] == "Organization type" and p.questions[i].row.section == "Company Information"
+    assert any("moved from 'Technical" in n for n in p.questions[i].notes)
+
+
+def test_sub_category_question_goes_when_the_category_has_none(corpus):
+    from tendersure.generate import finalise, to_sheet
+    from tendersure.validate import check_sub_category_question
+    p = _plan_with_subs(corpus, [], copied_options="Tyres and Tubes, Batteries, Lubricants")
+    assert [f.rule for f in check_sub_category_question(to_sheet(p), [])] == ["SUBCAT-UNEXPECTED"]
+    finalise(p)
+    assert not any("subcategory" in q.row.criteria for q in p.questions)
+    assert "advert gives this one none" in p.dropped[-1][1]
+
+
 def _trade_license(marks=0.0, section="Registration and Statutory Requirements"):
     from tendersure.parser import Row
     return Row("", "", 0, section=section, sub_section="N/A", criteria="Please attach a valid Trade license",

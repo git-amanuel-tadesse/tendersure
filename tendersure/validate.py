@@ -331,6 +331,43 @@ def check_eligibility(sheet: Sheet) -> List[Finding]:
 
 TEMPLATE_CHECKS = [check_marks_columns, check_eligibility]
 
+SUB_CATEGORY_QUESTION = "Please select the subcategory you would like to participate in"
+SUB_CATEGORY = re.compile(r"select\s+the\s+sub-?\s*categor", re.I)
+
+
+def sub_category_options(sub_categories: List[str]) -> str:
+    """The Options cell for a category's sub-categories (spec 02 G5). A comma
+    inside one name would split it into two options, so it becomes ' / '."""
+    return ", ".join(" / ".join(part.strip() for part in s.split(",")) for s in sub_categories)
+
+
+def check_sub_category_question(sheet: Sheet, sub_categories: List[str]) -> List[Finding]:
+    """Spec 02 G5: one multi-select question listing the category's own
+    sub-categories, scored 0 - and none when the category has none."""
+    rows = [r for r in sheet.rows if SUB_CATEGORY.search(r.criteria)]
+    if not sub_categories:
+        return [Finding(sheet.name, r.excel_row, "SUBCAT-UNEXPECTED", SILENT, "error",
+                        "Sub-category question, but the advert gives this category no sub-categories.",
+                        "Remove the question.") for r in rows]
+    if not rows:
+        return [Finding(sheet.name, None, "SUBCAT-MISSING", SILENT, "error",
+                        f"The advert lists {len(sub_categories)} sub-categories but no question asks for them.",
+                        f"Add '{SUB_CATEGORY_QUESTION}' after the Organization type question.")]
+    out = [Finding(sheet.name, r.excel_row, "SUBCAT-REPEATED", SILENT, "error",
+                   "Second sub-category question.", "Keep one.") for r in rows[1:]]
+    r, want = rows[0], sub_category_options(sub_categories)
+    if r.option_list() != [o.strip() for o in want.split(",")]:
+        out.append(Finding(sheet.name, r.excel_row, "SUBCAT-OPTIONS", SILENT, "error",
+                           f"Options '{r.options}' are not this category's sub-categories.",
+                           f"Set Options to '{want}'."))
+    scores = r.score_list()
+    if r.answer_type != 3 or not r.mandatory or len(scores) != len(sub_categories) \
+            or any(not _is_number(s) or float(s) for s in scores):
+        out.append(Finding(sheet.name, r.excel_row, "SUBCAT-FIELDS", SILENT, "error",
+                           "Sub-category question must be multi-select (type 3), mandatory, every option scored 0.",
+                           "Set Answer Type 3, Mandatory TRUE, one 0 per option."))
+    return out
+
 
 def check_template(sheet: Sheet) -> List[Finding]:
     out = [f for fn in TEMPLATE_CHECKS for f in fn(sheet)]

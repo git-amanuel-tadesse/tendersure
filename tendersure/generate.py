@@ -32,7 +32,8 @@ from .parser import Row, Sheet, StructuralRow, normalise, section_key
 from .schema import CLIENT_NAMES, LAYOUT, SECTION_KEYS, TOTAL_MARKS
 from .similarity import Match, Retriever
 from .trust import CLEAN, CORRECTABLE, FIELDS, Conventions, Grade, context_key, usable
-from .validate import TRADE_LICENSE, Finding, fix_marks_columns, validate_sheet
+from .validate import (SUB_CATEGORY, SUB_CATEGORY_QUESTION, TRADE_LICENSE, Finding, fix_marks_columns,
+                       sub_category_options, validate_sheet)
 
 REUSED = "reused unchanged"
 ADAPTED = "adapted"
@@ -411,12 +412,68 @@ def place_eligibility(plan: Plan):
     _relabel_sections(plan)
 
 
+BUSINESS_TYPE = re.compile(r"organi[sz]ation\s+type", re.I)
+
+
+def _sub_category_anchor(plan: Plan) -> Optional[int]:
+    """The row the sub-category question follows: the business-type question,
+    else the last Company Information row."""
+    rows = [(i, p) for i, p in enumerate(plan.rows) if p.kind == "question"]
+    hit = next((i for i, p in rows if BUSINESS_TYPE.search(p.row.criteria)), None)
+    if hit is None:
+        hit = max((i for i, p in rows if section_key(p.row.section) == "company"), default=None)
+    return hit
+
+
+def place_sub_category_question(plan: Plan):
+    """One multi-select question listing the advert's sub-categories, right
+    after the business-type question (spec 02 G5; precedent ERCS-ET-2026-039).
+    A copied one takes this category's options, or goes if it has none."""
+    subs = plan.target.sub_categories
+    found = [i for i, p in enumerate(plan.rows)
+             if p.kind == "question" and SUB_CATEGORY.search(p.row.criteria)]
+    for i in reversed(found[1:] if subs else found):
+        drop_row(plan, i, "repeated sub-category question" if subs else
+                 "sub-category question copied from another category; the advert gives this one none")
+    if not subs:
+        return
+    if found:                       # one copied, or drafted by the model: it moves into place
+        p = plan.rows.pop(found[0])
+    else:
+        p = PlannedRow(kind="question", source="advert sub-categories",
+                       origin=ADAPTED, notes=["sub-category question added from the advert"],
+                       row=Row(source_file="", sheet="", excel_row=0, criteria=SUB_CATEGORY_QUESTION, marks=0.0))
+    at = _sub_category_anchor(plan)
+    plan.rows.insert(at + 1 if at is not None else 0, p)
+    r = p.row
+    if at is not None:
+        anchor = plan.rows[at].row
+        if found and r.section != anchor.section:
+            p.note(f"moved from '{r.section}' to sit after '{anchor.criteria}'")
+        r.section, r.sub_section = anchor.section, anchor.sub_section
+    if r.criteria != SUB_CATEGORY_QUESTION:
+        p.note(f"wording set to the standard question (was: {r.criteria})")
+        r.criteria = SUB_CATEGORY_QUESTION
+    options = sub_category_options(subs)
+    if found and r.options != options:
+        p.note(f"options set to this category's sub-categories (were: {r.options})")
+    if any("," in s for s in subs):
+        p.note("a comma inside a sub-category name became ' / ', so it stays one option", adapted=False)
+    r.answer_type, r.mandatory, r.options = 3, True, options
+    r.option_scores = ",".join("0" for _ in subs)
+    if r.marks:
+        p.note(f"sub-category question carries {r.marks:g} marks; options all score 0", adapted=False)
+        p.needs_reading = True
+
+
 def finalise(plan: Plan):
     """Apply the template rules (specs/02) once nothing else will change the
     plan's rows: after proposals, review answers and section splits. Running
     them here also keeps the AI's cached answers valid, as its prompts are
     built from the plan before this point."""
+    place_sub_category_question(plan)
     place_eligibility(plan)
+    _relabel_sections(plan)
     n = sum(fix_marks_columns(p.row) for p in plan.questions)
     if n:
         plan.notes.append(f"marks repeated in System or Compliance on {n} rows (template rule)")
