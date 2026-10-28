@@ -1899,3 +1899,40 @@ def test_a_named_text_question_gets_an_acronym_too(corpus):
     assert company.acronym == "CN"
     company.acronym = None                                   # as a hand edit might leave it
     assert [f.rule for f in check_names(to_sheet(p))] == ["NAMES-NO-ACRONYM"]
+
+
+def test_major_and_minor_are_not_duplicates_and_nested_eligibility_is_read():
+    from tendersure import refine as rf
+    drafts = [rf.Draft("1", "Provision of Major Electrical Works"), rf.Draft("2", "Provision of Minor Electrical Works"),
+              rf.Draft("3", "Provision of repairs of fire fighting equipment"),
+              rf.Draft("4", "Provision of Repairs of Fire Fighting Equipment")]
+    assert rf.duplicates(drafts) == {"4": "3"}
+    assert rf.rule_eligibility("Provision of Training Services (Cash and Learning Partnership (CALP)-Certified "
+                               "Trainers Only)") == ["CALP Certificate"]
+    assert rf.rule_eligibility("Provision of Travel Agency Services (IATA Registered Only)") == \
+           ["IATA Registration Certificate"]
+
+
+def test_a_kenyan_eligibility_section_keeps_its_typed_rows():
+    from tendersure.generate import Plan, PlannedRow, Target, finalise, to_sheet
+    from tendersure.parser import Row
+    from tendersure.validate import check_eligibility
+    E = "Eligibility"
+    rows = [Row("", "", 0, section="Company Information", criteria="Company name", answer_type=1, marks=0),
+            Row("", "", 0, section=E, criteria="Attach company registration certificate", answer_type=5, marks=0,
+                compliance_attach=True, eligibility=True),
+            Row("", "", 0, section=E, criteria="Insert company registration certificate number", answer_type=1, marks=0),
+            Row("", "", 0, section=E, criteria="Does your company have a valid business permit ? If yes attach a copy",
+                answer_type=5, marks=0, compliance_attach=True),
+            Row("", "", 0, section="Trade Reference", criteria="Attach evidence", answer_type=5, marks=100,
+                compliance=100, compliance_attach=True)]
+    p = Plan(Target("NRC_2027_28_005", "Supply of ICT Equipment", "NRC"), None, [],
+             [PlannedRow(kind="question", row=r) for r in rows] + [PlannedRow(kind="total")], 21)
+    finalise(p)
+    by = lambda start: next(q.row for q in p.questions if q.row.criteria.startswith(start))
+    typed = by("Insert company registration")
+    assert (typed.answer_type, typed.eligibility) == (1, False)            # a typed row stays typed
+    permit = by("Does your company have a valid")
+    assert permit.eligibility and permit.mandatory                          # Kenya's trade licence
+    assert [q.row.criteria for q in p.questions].count("Please attach a valid Trade license") == 0
+    assert check_eligibility(to_sheet(p)) == []

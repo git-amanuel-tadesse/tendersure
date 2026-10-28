@@ -408,15 +408,26 @@ def check_gate(sheet: Sheet, gate: bool, applies_to: List[str]) -> List[Finding]
     return out
 
 
-TRADE_LICENSE = re.compile(r"trade\s*licen[cs]e", re.I)
+# The Trade License - Kenya's is the (single) business permit.
+TRADE_LICENSE = re.compile(r"trade\s*licen[cs]e|business\s*permit", re.I)
+
+
+def asks_for_document(r: Row) -> bool:
+    """An upload, or a question whose wording asks for one ("Please attach",
+    "If yes attach a copy"); not a typed value ("Insert ... number")."""
+    low = r.criteria.lower().strip()
+    if low.startswith(("insert", "enter", "provide the number", "state")):
+        return False
+    return r.answer_type == 5 or bool(re.search(r"\b(attach|upload)\b", low))
 
 
 def check_eligibility(sheet: Sheet) -> List[Finding]:
-    """Spec 02 G3: Eligibility rows are mandatory, compliance-flagged uploads
-    marked Eligibility; no other row is; the section holds the Trade License."""
+    """Spec 02 G3: the documents in the Eligibility section are mandatory,
+    compliance-flagged uploads marked Eligibility; nothing else is marked; the
+    section holds the Trade License."""
     out = []
     in_section = [r for r in sheet.rows if section_key(r.section) == "eligibility"]
-    ids = {id(r) for r in in_section}
+    ids = {id(r) for r in in_section if asks_for_document(r)}
     for r in sheet.rows:
         if id(r) in ids and not (r.eligibility and r.answer_type == 5 and r.mandatory and r.compliance_attach):
             out.append(Finding(sheet.name, r.excel_row, "ELIG-ROW", SILENT, "error",
@@ -425,8 +436,9 @@ def check_eligibility(sheet: Sheet) -> List[Finding]:
                                "Set Eligibility TRUE, Answer Type 5, Mandatory TRUE, Compliance TRUE."))
         elif id(r) not in ids and r.eligibility:
             out.append(Finding(sheet.name, r.excel_row, "ELIG-OUTSIDE", SILENT, "error",
-                               f"Eligibility is TRUE on a row in '{r.section}'.",
-                               "Move the row to the Eligibility section, or clear Eligibility."))
+                               f"Eligibility is TRUE on a row that is not a document in the Eligibility section "
+                               f"('{r.section}').",
+                               "Clear Eligibility, or move the document to the Eligibility section."))
     if not any(TRADE_LICENSE.search(r.criteria) for r in in_section):
         out.append(Finding(sheet.name, None, "ELIG-NO-TRADE-LICENSE", SILENT, "error",
                            "The Eligibility section does not ask for the Trade License.",

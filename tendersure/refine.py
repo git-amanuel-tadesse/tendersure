@@ -164,12 +164,19 @@ class Line:
         return INDIVIDUAL in self.applies_to
 
 
+def _words(text: str) -> set:
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in _SMALL}
+
+
 def duplicates(drafts: List[Draft]) -> Dict[str, str]:
-    """Draft id -> the earlier draft it repeats."""
+    """Draft id -> the earlier draft it repeats: the same words, near enough
+    the same text. "Major Electrical Works" and "Minor Electrical Works" are
+    92% alike but different categories."""
     out = {}
     for i, d in enumerate(drafts):
         for e in drafts[:i]:
-            if e.id not in out and _same_text(d.description, e.description) >= DUPLICATE:
+            if e.id not in out and _words(d.description) == _words(e.description) and \
+                    _same_text(d.description, e.description) >= DUPLICATE:
                 out[d.id] = e.id
                 break
     return out
@@ -216,8 +223,17 @@ def rule_applies_to(description: str) -> List[str]:
     return COMPANIES[:]
 
 
+_ONLY_ABBREVIATION = re.compile(r"\b([A-Z]{2,})\)?\s*[-\u2013]?\s*(registered|certified|accredited|licensed)\b"
+                                r"[^()]*\bonly\b", re.I)
+
+
 def rule_eligibility(description: str) -> List[str]:
-    """'(IATA Registered Only)' -> 'IATA Registration Certificate'."""
+    """'(IATA Registered Only)' -> 'IATA Registration Certificate';
+    '(... (CALP)-Certified Trainers Only)' -> 'CALP Certificate'."""
+    m = _ONLY_ABBREVIATION.search(description)
+    if m and m.group(1).isupper():
+        name = m.group(1)
+        return [f"{name} Registration Certificate" if m.group(2).lower() == "registered" else f"{name} Certificate"]
     m = _ONLY.search(description)
     if not m:
         return []

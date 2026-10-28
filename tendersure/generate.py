@@ -32,7 +32,8 @@ from .parser import Row, Sheet, StructuralRow, normalise, section_key
 from .schema import CLIENT_NAMES, LAYOUT, SECTION_KEYS, TOTAL_MARKS
 from .similarity import Match, Retriever
 from .trust import CLEAN, CORRECTABLE, FIELDS, Conventions, Grade, context_key, usable
-from .validate import (SUB_CATEGORY, SUB_CATEGORY_QUESTION, TRADE_LICENSE, Finding, fix_marks_columns,
+from .validate import (SUB_CATEGORY, SUB_CATEGORY_QUESTION, TRADE_LICENSE, Finding, asks_for_document,
+                       fix_marks_columns,
                        fix_option_scores, sub_category_options, validate_sheet)
 
 REUSED = "reused unchanged"
@@ -403,10 +404,14 @@ def _eligibility_position(plan: Plan, in_section: List[PlannedRow]) -> int:
 
 
 def _flag_eligibility(plan: Plan):
-    """Every Eligibility row is a mandatory, compliance-flagged upload; no other row is Eligibility."""
+    """The documents asked in the Eligibility section are mandatory,
+    compliance-flagged uploads marked Eligibility; a typed row there ("Insert
+    company registration certificate number", as NRC's template has) stays as
+    it is, unmarked - as in the feedback's own example. No row outside the
+    section is Eligibility."""
     for p in plan.questions:
         r = p.row
-        if section_key(r.section) != "eligibility":
+        if section_key(r.section) != "eligibility" or not asks_for_document(r):
             r.eligibility = False
             continue
         if r.answer_type != 5:

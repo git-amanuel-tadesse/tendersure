@@ -70,9 +70,12 @@ always present.
   clearance and VAT stay in Registration and Statutory. A VAT question is
   kept when the client's sheet has one; it is never added (ERCS sheets have
   none).
-- Every row in the Eligibility section: Eligibility = TRUE, answer type 5,
-  Mandatory = TRUE, Compliance flag = TRUE, marks 0. No row outside the
-  section has Eligibility = TRUE.
+- Every document asked in the Eligibility section: Eligibility = TRUE,
+  answer type 5, Mandatory = TRUE, Compliance flag = TRUE, marks 0. A typed
+  row there ("Insert company registration certificate number", as NRC's
+  Kenyan template has) stays a typed row with Eligibility empty - as in the
+  feedback's own item 3 example. No row outside the section has
+  Eligibility = TRUE. Kenya's business permit counts as the Trade License.
 
 ## G4. Marks in two columns (item 3)
 
