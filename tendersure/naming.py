@@ -331,6 +331,23 @@ def complete_glossary(glossary: gl.Glossary, drafter) -> Tuple[int, int, int]:
     return rederived, reused, built
 
 
+def harmonise_drafts(glossary: gl.Glossary) -> int:
+    """Rewordings of one question share one name (spec 04 L1): drafts in a
+    group take the names of its most used draft. Seeded and confirmed names
+    are the clients' or the team's and stay. Returns the drafts changed."""
+    drafts = sorted((e for e in glossary.entries if e.status in (gl.DRAFTED, gl.RULE_DRAFTED)),
+                    key=lambda e: -e.uses)
+    rep = grouping.group([e.question_key for e in drafts])
+    lead: Dict[str, gl.Entry] = {}
+    changed = 0
+    for e in drafts:
+        first = lead.setdefault(rep[e.question_key], e)
+        if (e.short_name, e.acronym) != (first.short_name, first.acronym):
+            e.short_name, e.acronym = first.short_name, first.acronym
+            changed += 1
+    return changed
+
+
 def learn(sheets: Iterable[Tuple[str, List]], glossary: gl.Glossary, drafter) -> Tuple[List[gl.Entry], Tuple]:
     """Name every question in past sheets that needs names (spec 04 L3): fill
     the glossary's empty acronyms, then reuse confirmed rewordings, then
@@ -340,4 +357,5 @@ def learn(sheets: Iterable[Tuple[str, List]], glossary: gl.Glossary, drafter) ->
     new = reused + drafter.draft(rest)
     for e in new:
         glossary.add(e)
+    harmonise_drafts(glossary)
     return new, counts

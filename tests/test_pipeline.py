@@ -1503,3 +1503,16 @@ def test_learn_names_and_judges_the_history_and_applies_the_review(corpus, tmp_p
     main(["learn", str(corpus), "--store", str(store), "--out", str(tmp_path / "r3.xlsx"), "--no-model"])
     out = capsys.readouterr().out
     assert "0 questions newly named" in out and "0 questions judged" in out     # nothing new: nothing asked
+
+
+def test_rewordings_drafted_in_one_run_share_one_name():
+    from tendersure import glossary as gl, naming
+    E = gl.Entry
+    a = "please attach company profile/ individual profileincluding client and project portfolios"
+    b = "please attach company profile/ individual profile including client and project portfolios"
+    entries = [E("SNV", a, "x", "Company Or Individual Profile", "CIP", status=gl.DRAFTED, uses=4),
+               E("SNV", b, "x", "Company Profile And Portfolio", "CPP", status=gl.DRAFTED, uses=1),
+               E("ERCS", b, "x", "Company Profile", "CP", status=gl.SEEDED, uses=12)]      # the client's own: kept
+    assert naming.harmonise_drafts(gl.Glossary(entries)) == 1
+    assert [(e.short_name, e.acronym) for e in entries] == [
+        ("Company Or Individual Profile", "CIP"), ("Company Or Individual Profile", "CIP"), ("Company Profile", "CP")]
