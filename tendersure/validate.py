@@ -265,6 +265,51 @@ def validate_sheet(sheet: Sheet) -> List[Finding]:
     return sorted(out, key=lambda f: (f.excel_row or 0, f.rule))
 
 
+# --- template rules (specs/02) ------------------------------------------------
+# Rules the new template adds. They hold for generated and edited sheets, not
+# for the history: past sheets predate them, and counting them against a sheet
+# would change its trust grade. Each rule is a check (find) and a fix that
+# generation applies, kept side by side so the two cannot drift.
+
+def marks_column(r: Row) -> str:
+    """Where a row's marks go when neither System nor Compliance holds them:
+    Compliance for uploads and flagged rows, System otherwise (spec 02 G4)."""
+    if r.answer_type == 5 or r.attachment or r.compliance_attach or r.eligibility:
+        return "compliance"
+    return "system"
+
+
+def check_marks_columns(sheet: Sheet) -> List[Finding]:
+    out = []
+    for r in sheet.rows:
+        if r.marks is None or (r.system is None and r.compliance is None):
+            col = marks_column(r).title()
+            out.append(Finding(sheet.name, r.excel_row, "MARKS-ONE-COLUMN", SILENT, "error",
+                               f"Marks {'blank' if r.marks is None else f'{r.marks:g}'} is not repeated "
+                               f"in System or Compliance.",
+                               f"Write {0 if r.marks is None else f'{r.marks:g}'} in Marks and in {col}."))
+    return out
+
+
+def fix_marks_columns(r: Row) -> bool:
+    """Blank Marks becomes 0; Marks is repeated in System or Compliance."""
+    changed = False
+    if r.marks is None:
+        r.marks, changed = (r.system or 0) + (r.compliance or 0), True
+    if r.system is None and r.compliance is None:
+        setattr(r, marks_column(r), r.marks)
+        changed = True
+    return changed
+
+
+TEMPLATE_CHECKS = [check_marks_columns]
+
+
+def check_template(sheet: Sheet) -> List[Finding]:
+    out = [f for fn in TEMPLATE_CHECKS for f in fn(sheet)]
+    return sorted(out, key=lambda f: (f.excel_row or 0, f.rule))
+
+
 def _signature(sheet: Sheet):
     return [(r.criteria, r.marks, r.answer_type, r.options) for r in sheet.rows]
 

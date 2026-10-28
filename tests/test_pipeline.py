@@ -212,6 +212,24 @@ def test_writer_copies_styles_by_field_not_position(corpus, tmp_path):
     assert out["F4"].value == "Eligibility" and out["F4"].fill.fgColor.rgb == "FF0000FF"   # Mandatory's
 
 
+def test_marks_are_repeated_in_system_or_compliance(corpus):
+    from tendersure.generate import finalise, to_sheet
+    from tendersure.validate import check_template
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client))
+    upload = p.questions[3].row                             # "Attach evidence of physically registered office"
+    upload.compliance = None                                # an upload with its marks in Marks only
+    assert any(f.rule == "MARKS-ONE-COLUMN" for f in check_template(to_sheet(p)))
+
+    finalise(p)
+    assert check_template(to_sheet(p)) == []
+    rows = {q.row.criteria: q.row for q in p.questions}
+    assert (rows["Company name"].system, rows["Company name"].compliance) == (0, None)
+    assert (upload.marks, upload.system, upload.compliance) == (10, None, 10)
+    assert p.total() == 100
+
+
 def test_writer_refuses_off_total(corpus, tmp_path):
     _, g = _gen(corpus)
     p = g.plan(Target("AAA-ET-2026-004", "Supply of Cleaning Materials", "AAA"))

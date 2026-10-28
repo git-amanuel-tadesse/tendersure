@@ -32,7 +32,7 @@ from .parser import Row, Sheet, StructuralRow, normalise, section_key
 from .schema import CLIENT_NAMES, LAYOUT, SECTION_KEYS, TOTAL_MARKS
 from .similarity import Match, Retriever
 from .trust import CLEAN, CORRECTABLE, FIELDS, Conventions, Grade, context_key, usable
-from .validate import Finding, validate_sheet
+from .validate import Finding, fix_marks_columns, validate_sheet
 
 REUSED = "reused unchanged"
 ADAPTED = "adapted"
@@ -327,6 +327,14 @@ def rebalance_to_100(plan: Plan, why: str) -> Optional[str]:
             f"other sections in proportion ({', '.join(f'{k} {v:g}' for k, v in new.items())})")
     plan.notes.append(note)
     return note
+
+
+def finalise(plan: Plan):
+    """Apply the template rules (specs/02) once nothing else will change the
+    plan's rows: after proposals, review answers and section splits."""
+    n = sum(fix_marks_columns(p.row) for p in plan.questions)
+    if n:
+        plan.notes.append(f"marks repeated in System or Compliance on {n} rows (template rule)")
 
 
 def check_total(plan: Plan):

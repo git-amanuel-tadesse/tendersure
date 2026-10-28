@@ -23,7 +23,7 @@ from .bank import Bank
 from .evaluate import evaluate, summarise
 from .llm import LLMError
 from .privacy import PrivacyError
-from .generate import Generator, MarksError, Target, apply_section_marks, check_total
+from .generate import Generator, MarksError, Target, apply_section_marks, check_total, finalise
 from .parser import Sheet, parse_workbook
 from .reports import load_decisions, write_bank, write_qa_report, write_validation_report
 from .similarity import Retriever
@@ -331,6 +331,9 @@ def cmd_generate(a):
             print(f"review: {line}")
         for line in problems:
             print(f"REVIEW PROBLEM: {line}")
+
+    for p in plans:
+        finalise(p)
 
     # Whatever happened above, a sheet that does not total 100 is listed, not
     # written - and never stops the rest of the batch.
