@@ -329,7 +329,33 @@ def check_eligibility(sheet: Sheet) -> List[Finding]:
     return out
 
 
-TEMPLATE_CHECKS = [check_marks_columns, check_eligibility]
+def needs_names(r: Row) -> bool:
+    """Rows that must carry a Short Name and Acronym: uploads, and rows flagged
+    Attachment, Compliance or Eligibility (spec 02 G8)."""
+    return r.answer_type == 5 or r.attachment or r.compliance_attach or r.eligibility
+
+
+def check_names(sheet: Sheet) -> List[Finding]:
+    """Spec 02 G8: required rows have both names; acronyms are unique in a sheet."""
+    out, first = [], {}
+    for r in sheet.rows:
+        if not needs_names(r):
+            continue
+        missing = [n for n, v in (("Archive Short Name", r.archive_short_name), ("Acronym", r.acronym)) if not v]
+        if missing:
+            out.append(Finding(sheet.name, r.excel_row, "NAMES-MISSING", SILENT, "error",
+                               f"Upload or flagged row without {' and '.join(missing)}.",
+                               "Take the names from data/glossary.csv, or add them there."))
+        elif r.acronym in first:
+            out.append(Finding(sheet.name, r.excel_row, "NAMES-DUP-ACRONYM", SILENT, "error",
+                               f"Acronym '{r.acronym}' is also used on row {first[r.acronym]}.",
+                               "Give each document its own acronym (number repeated ones: REF 1, REF 2)."))
+        else:
+            first[r.acronym] = r.excel_row
+    return out
+
+
+TEMPLATE_CHECKS = [check_marks_columns, check_eligibility, check_names]
 
 SUB_CATEGORY_QUESTION = "Please select the subcategory you would like to participate in"
 SUB_CATEGORY = re.compile(r"select\s+the\s+sub-?\s*categor", re.I)

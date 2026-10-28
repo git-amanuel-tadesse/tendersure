@@ -223,7 +223,7 @@ def test_marks_are_repeated_in_system_or_compliance(corpus):
     assert any(f.rule == "MARKS-ONE-COLUMN" for f in check_template(to_sheet(p)))
 
     finalise(p)
-    assert check_template(to_sheet(p)) == []
+    assert not [f for f in check_template(to_sheet(p)) if f.rule == "MARKS-ONE-COLUMN"]
     rows = {q.row.criteria: q.row for q in p.questions}
     assert (rows["Company name"].system, rows["Company name"].compliance) == (0, None)
     assert (upload.marks, upload.system, upload.compliance) == (10, None, 10)
@@ -370,9 +370,10 @@ def test_trade_license_moves_to_an_eligibility_section(corpus, tmp_path):
 
     from tendersure.generate import to_sheet
     from tendersure.validate import check_template
-    assert check_template(to_sheet(p)) == []
+    elig = lambda: [f.rule for f in check_template(to_sheet(p)) if f.rule.startswith("ELIG")]
+    assert elig() == []
     next(q.row for q in p.questions if q.row.criteria == "Attach TIN certificate").eligibility = True
-    assert [f.rule for f in check_template(to_sheet(p))] == ["ELIG-OUTSIDE"]
+    assert elig() == ["ELIG-OUTSIDE"]
     next(q.row for q in p.questions if q.row.criteria == "Attach TIN certificate").eligibility = False
 
     Writer().write([p], str(tmp_path / "o.xlsx"))
@@ -1197,3 +1198,73 @@ def test_glossary_reseed_keeps_confirmed_and_drafted_rows(tmp_path):
     assert g.lookup("AAA", "attach tin certificate").names() == ("Tax ID", "TID")      # team's edit wins
     assert g.lookup("AAA", "attach office lease").status == gl.DRAFTED
     assert g.lookup("AAA", "attach bank letter").names() == ("Bank Letter", "BL")      # seeded row refreshed
+
+
+def _named_plan(corpus, shareholders=2):
+    """A finalised plan whose ID upload repeats once per shareholder."""
+    from tendersure.generate import finalise, insert_rows
+    from tendersure.parser import Row
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client))
+    finalise(p)
+    ids = [Row("", "", 0, criteria="Attach National ID or passport", answer_type=5, attachment=True,
+               archive_short_name="Shareholder ID or passport") for _ in range(shareholders)]
+    insert_rows(p, "registration", ids, "reused unchanged", "test", "test")
+    return p
+
+
+def test_names_come_from_the_glossary_and_repeats_are_numbered(corpus):
+    from tendersure import glossary as gl, naming
+    from tendersure.generate import to_sheet
+    from tendersure.validate import check_names
+    p = _named_plan(corpus)
+    g = gl.Glossary([gl.Entry("AAA", "attach evidence of physically registered office", "x", "Office Evidence", "OE"),
+                     gl.Entry(gl.ANY_CLIENT, "attach evidence of trained service staff", "x", "Service Staff", "SS")])
+    drafted = naming.name_documents([p], g, naming.RuleDrafter())
+    rows = {q.row.criteria: q for q in p.questions}
+
+    office = rows["Attach evidence of physically registered office"]
+    assert (office.row.archive_short_name, office.row.acronym) == ("Office", "OE")    # client's own name kept
+    assert any("differs from the glossary's 'Office Evidence'" in n for n in office.notes)
+    assert rows["Attach evidence of trained service staff"].row.acronym == "SS"       # cross-client entry
+    ref = rows["Attach evidence e.g. PO or award letter"].row
+    assert (ref.archive_short_name, ref.acronym) == ("Reference 1", "REF 1")         # its own number kept
+
+    ids = [q.row for q in p.questions if q.row.criteria == "Attach National ID or passport"]
+    assert [(r.archive_short_name, r.acronym) for r in ids] == \
+           [("Shareholder ID or passport 1", "SIDP 1"), ("Shareholder ID or passport 2", "SIDP 2")]
+    assert [e.status for e in drafted] == [gl.RULE_DRAFTED]                           # one question, drafted once
+    assert check_names(to_sheet(p)) == []
+
+
+def test_model_drafts_missing_names_and_rules_replace_bad_drafts(corpus):
+    from tendersure import glossary as gl, naming
+    p = _named_plan(corpus, shareholders=1)
+    t = FakeTransport({"names": [
+        {"id": 0, "short_name": "Office", "acronym": "OFF"},                          # in sheet order:
+        {"id": 1, "short_name": "Shareholder ID or passport", "acronym": "SIP"},      # registration
+        {"id": 2, "short_name": "Staff", "acronym": "TOOLONGX"}]})                    # 8 letters: refused
+    drafter = naming.ModelDrafter(llm=OpenRouterLLM(model="m", transport=t))
+    g = gl.Glossary([gl.Entry("AAA", "attach national id or passport", "x", "Shareholder ID or passport", "SIDP",
+                              status=gl.RULE_DRAFTED)])                               # a rules draft: redone
+    drafted = {e.example: e for e in naming.name_documents([p], g, drafter)}
+
+    sent = json.dumps(t.calls[0][2])
+    assert len(t.calls) == 1 and "given short_name: Office" in sent
+    assert (drafted["Attach evidence of physically registered office"].acronym,
+            drafted["Attach evidence of physically registered office"].status) == ("OFF", gl.DRAFTED)
+    staff = drafted["Attach evidence of trained service staff"]
+    assert (staff.short_name, staff.acronym, staff.status) == ("Staff", "STA", gl.RULE_DRAFTED)
+    ids = next(q for q in p.questions if q.row.criteria == "Attach National ID or passport")
+    assert ids.row.acronym == "SIP" and "drafted - confirm it in data/glossary.csv" in ids.notes[-1]
+
+
+def test_acronyms_stay_unique_within_a_sheet(corpus):
+    from tendersure import glossary as gl, naming
+    p = _named_plan(corpus, shareholders=0)
+    g = gl.Glossary([gl.Entry("AAA", "attach evidence of physically registered office", "x", "Office", "TIN"),
+                     gl.Entry("AAA", "attach evidence of trained service staff", "x", "Staff", "STF")])
+    naming.name_documents([p], g, naming.RuleDrafter())
+    acronyms = [q.row.acronym for q in p.questions if q.row.acronym]
+    assert len(acronyms) == len(set(acronyms)) and "TIN2" in acronyms

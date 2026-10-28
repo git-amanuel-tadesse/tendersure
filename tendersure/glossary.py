@@ -18,19 +18,15 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from .parser import Row, Sheet
+from .parser import Sheet
 from .trust import context_key
+from .validate import needs_names
 
 SEEDED, DRAFTED, CONFIRMED = "seeded", "drafted", "confirmed"
+RULE_DRAFTED = "drafted (rules)"     # drafted without a model; redrafted when one is available
 ANY_CLIENT = "*"
 COLUMNS = ["client", "question_key", "example", "short_name", "acronym", "numbered", "status", "uses"]
 _TRAILING_NUMBER = re.compile(r"^(.*\S)\s+(\d+)$")
-
-
-def needs_names(r: Row) -> bool:
-    """Rows that must carry a Short Name and Acronym: uploads, and rows flagged
-    Attachment, Compliance or Eligibility (spec 02 G8)."""
-    return r.answer_type == 5 or r.attachment or r.compliance_attach or r.eligibility
 
 
 @dataclass
@@ -52,7 +48,7 @@ class Entry:
                 f"{self.acronym} {n}" if self.acronym else "")
 
 
-def _unnumbered(name: Optional[str], n: int) -> Tuple[str, bool]:
+def unnumbered(name: Optional[str], n: int) -> Tuple[str, bool]:
     """'Reference 2' on the 2nd occurrence -> ('Reference', True). A number
     that is not the occurrence ('ISO 9001') is part of the name."""
     name = (name or "").strip()
@@ -85,8 +81,8 @@ def seed(sheets: List[Sheet]) -> List[Entry]:
                 continue
             key = context_key(s.rows, i)
             count[key] += 1
-            short, num_s = _unnumbered(r.archive_short_name, count[key])
-            acronym, num_a = _unnumbered(r.acronym, count[key])
+            short, num_s = unnumbered(r.archive_short_name, count[key])
+            acronym, num_a = unnumbered(r.acronym, count[key])
             obs = (short, acronym, num_s or num_a, r.criteria)
             seen[(s.client or ANY_CLIENT, key)].append(obs)
             if s.client:
@@ -99,8 +95,7 @@ def reseed(existing: List[Entry], fresh: List[Entry]) -> List[Entry]:
     """Fresh seeded entries, except where the team has confirmed or a draft is waiting."""
     kept = [e for e in existing if e.status != SEEDED]
     taken = {(e.client, e.question_key) for e in kept}
-    out = kept + [e for e in fresh if (e.client, e.question_key) not in taken]
-    return sorted(out, key=lambda e: (e.client, -e.uses, e.question_key))
+    return kept + [e for e in fresh if (e.client, e.question_key) not in taken]
 
 
 class Glossary:
@@ -111,6 +106,14 @@ class Glossary:
     def lookup(self, client: Optional[str], key: str) -> Optional[Entry]:
         """The client's own entry, else the cross-client one."""
         return self._by.get((client or ANY_CLIENT, key)) or self._by.get((ANY_CLIENT, key))
+
+    def add(self, entry: Entry):
+        """Add an entry, replacing one for the same client and question."""
+        old = self._by.get((entry.client, entry.question_key))
+        if old is not None:
+            self.entries.remove(old)
+        self.entries.append(entry)
+        self._by[(entry.client, entry.question_key)] = entry
 
 
 def load(path: str) -> List[Entry]:
@@ -124,6 +127,6 @@ def save(entries: List[Entry], path: str):
     with open(path, "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(COLUMNS)
-        for e in entries:
+        for e in sorted(entries, key=lambda e: (e.client, -e.uses, e.question_key)):
             w.writerow([e.client, e.question_key, e.example, e.short_name, e.acronym,
                         "TRUE" if e.numbered else "", e.status, e.uses])

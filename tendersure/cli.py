@@ -19,6 +19,7 @@ from typing import Dict, List
 
 from . import categories as cat
 from . import glossary as gl
+from . import naming
 from . import category_llm as cl
 from .bank import Bank
 from .evaluate import evaluate, summarise
@@ -219,6 +220,17 @@ def _model_wanted(a):
     return True, ""
 
 
+def _glossary(path: str, sheets: List[Sheet]) -> "gl.Glossary":
+    """The team's glossary; seeded from the bank the first time."""
+    if os.path.exists(path):
+        return gl.Glossary(gl.load(path))
+    entries = gl.seed(trust.usable(sheets, trust.grade(sheets)))
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    gl.save(entries, path)
+    print(f"glossary: seeded {len(entries)} entries from the bank -> {path}")
+    return gl.Glossary(entries)
+
+
 def cmd_glossary(a):
     """Seed data/glossary.csv from the bank, keeping the team's confirmed and drafted rows."""
     sheets, _ = load_source(a)
@@ -352,6 +364,15 @@ def cmd_generate(a):
 
     for p in plans:
         finalise(p)
+    glossary = _glossary(a.glossary, sheets)
+    drafter = naming.ModelDrafter(model=a.model or None, examples=glossary.entries) if use_model \
+        else naming.RuleDrafter()
+    drafted = naming.name_documents(plans, glossary, drafter)
+    if drafted:
+        gl.save(glossary.entries, a.glossary)
+        by_model = sum(e.status == gl.DRAFTED for e in drafted)
+        print(f"glossary: named {len(drafted)} new documents ({by_model} by the model, "
+              f"{len(drafted) - by_model} by rules), saved as drafts in {a.glossary}: confirm or change them there")
 
     # Whatever happened above, a sheet that does not total 100 is listed, not
     # written - and never stops the rest of the batch.
@@ -544,6 +565,8 @@ def main(argv=None):
                    help="model id to use (default: TENDERSURE_MODEL). The AI runs automatically whenever "
                         "a model is configured in .env")
     p.add_argument("--no-model", action="store_true", help="build without any AI step")
+    p.add_argument("--glossary", default="data/glossary.csv",
+                   help="short names and acronyms (default data/glossary.csv; seeded from the bank if absent)")
     p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_generate)
 
