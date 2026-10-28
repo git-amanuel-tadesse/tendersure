@@ -1151,3 +1151,49 @@ def test_apply_layer_refuses_ai_removal_of_protected_rows(corpus):
     p2, text2 = plan_with_flagged_trade_row()
     apply_answers([p2], {q.id: "remove all"})                            # a person's explicit answer
     assert text2 not in [x.row.criteria for x in p2.questions]
+
+
+# --- glossary: short names and acronyms ------------------------------------------
+
+def _gl_sheet(name, client, rows):
+    from tendersure.parser import Row, Sheet
+    s = Sheet("f.xlsx", name, name, name, "d", client, 4, 14)
+    s.rows = [Row("f.xlsx", name, 5 + i, criteria=c, answer_type=5, compliance_attach=True,
+                  archive_short_name=sn, acronym=ac) for i, (c, sn, ac) in enumerate(rows)]
+    return s
+
+
+def test_glossary_seeds_client_first_with_a_cross_client_fallback():
+    from tendersure import glossary as gl
+    ref = "Attach evidence e.g. PO or award letter"
+    sheets = [_gl_sheet("AAA-1", "AAA", [("Attach TIN certificate", "TIN Certificate", "TIN"),
+                                         (ref, "Reference 1", "REF 1"), (ref, "Reference 2", "REF 2"),
+                                         ("Attach ISO 9001 certificate", "ISO 9001", "ISO")]),
+              _gl_sheet("BBB-1", "BBB", [("Attach TIN certificate", "TIN Certificate", "TIN/PIN"),
+                                         ("Do you have a safety policy?", None, None),
+                                         ("If yes attach a copy", "SHE Policy", "SHE")]),
+              _gl_sheet("BBB-2", "BBB", [("Attach TIN certificate", "TIN Certificate", "TIN/PIN")])]
+    g = gl.Glossary(gl.seed(sheets))
+    assert g.lookup("AAA", "attach tin certificate").names() == ("TIN Certificate", "TIN")
+    assert g.lookup("BBB", "attach tin certificate").names() == ("TIN Certificate", "TIN/PIN")
+    assert g.lookup("CCC", "attach tin certificate").names() == ("TIN Certificate", "TIN/PIN")  # 2 of 3 uses
+    e = g.lookup("AAA", "attach evidence eg po or award letter")
+    assert e.numbered and e.names(3) == ("Reference 3", "REF 3")
+    assert g.lookup("AAA", "attach iso 9001 certificate").names() == ("ISO 9001", "ISO")      # not item 9001
+    assert g.lookup("BBB", "do you have a safety policy >> if yes attach a copy").names() == ("SHE Policy", "SHE")
+    assert g.lookup("BBB", "if yes attach a copy") is None                                  # only in context
+
+
+def test_glossary_reseed_keeps_confirmed_and_drafted_rows(tmp_path):
+    from tendersure import glossary as gl
+    old = [gl.Entry("AAA", "attach tin certificate", "x", "Tax ID", "TID", status=gl.CONFIRMED),
+           gl.Entry("AAA", "attach office lease", "x", "Lease", "LSE", status=gl.DRAFTED),
+           gl.Entry("AAA", "attach bank letter", "x", "Old", "OLD", status=gl.SEEDED)]
+    fresh = [gl.Entry("AAA", "attach tin certificate", "x", "TIN Certificate", "TIN", uses=3),
+             gl.Entry("AAA", "attach bank letter", "x", "Bank Letter", "BL", uses=2)]
+    merged = gl.reseed(old, fresh)
+    gl.save(merged, str(tmp_path / "g.csv"))
+    g = gl.Glossary(gl.load(str(tmp_path / "g.csv")))
+    assert g.lookup("AAA", "attach tin certificate").names() == ("Tax ID", "TID")      # team's edit wins
+    assert g.lookup("AAA", "attach office lease").status == gl.DRAFTED
+    assert g.lookup("AAA", "attach bank letter").names() == ("Bank Letter", "BL")      # seeded row refreshed

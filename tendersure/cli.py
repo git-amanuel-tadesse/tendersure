@@ -18,6 +18,7 @@ from collections import Counter, defaultdict
 from typing import Dict, List
 
 from . import categories as cat
+from . import glossary as gl
 from . import category_llm as cl
 from .bank import Bank
 from .evaluate import evaluate, summarise
@@ -216,6 +217,23 @@ def _model_wanted(a):
     if not os.environ.get("OPENROUTER_API_KEY"):
         return False, "no model key in .env (see .env.example)"
     return True, ""
+
+
+def cmd_glossary(a):
+    """Seed data/glossary.csv from the bank, keeping the team's confirmed and drafted rows."""
+    sheets, _ = load_source(a)
+    usable = trust.usable(sheets, trust.grade(sheets))
+    fresh = gl.seed(usable)
+    existing = gl.load(a.out) if os.path.exists(a.out) else []
+    entries = gl.reseed(existing, fresh)
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+    gl.save(entries, a.out)
+    kept = sum(e.status != gl.SEEDED for e in entries)
+    full = sum(bool(e.short_name and e.acronym) for e in entries)
+    clients = Counter(e.client for e in entries)
+    print(f"glossary: {len(entries)} entries from {len(usable)} usable sheets "
+          f"({', '.join(f'{c} {n}' for c, n in sorted(clients.items()))}); "
+          f"{full} with both names, {len(entries) - full} with one; {kept} confirmed or drafted kept -> {a.out}")
 
 
 def cmd_generate(a):
@@ -496,6 +514,12 @@ def main(argv=None):
     p.add_argument("--model", help="OpenRouter model id for --engine llm/both, e.g. "
                    "google/gemini-4-argon (default: $TENDERSURE_MODEL)")
     p.set_defaults(fn=cmd_categories)
+
+    p = sub.add_parser("glossary", help="seed the short name / acronym glossary from the bank")
+    p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")
+    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
+    p.add_argument("--out", default="data/glossary.csv")
+    p.set_defaults(fn=cmd_glossary)
 
     p = sub.add_parser("generate", help="build criteria sheets for categories")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")
