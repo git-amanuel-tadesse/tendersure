@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
-from .schema import ANSWER_TYPES, TOTAL_MARKS
+from .schema import ANSWER_TYPES, TOTAL_MARKS, business_types
 from .parser import Sheet, Row, normalise, section_key
 
 PLATFORM = "platform"
@@ -362,6 +362,36 @@ def check_yes_no(sheet: Sheet, yes_is: Callable[[List[Row], int], Optional[str]]
             out.append(Finding(sheet.name, r.excel_row, "YESNO-TYPE", SILENT, "error",
                                f"Yes is {verdict} here{'' if marks > 0 else ' (no marks)'}, so the question is {how}.",
                                f"Set it to {how}."))
+    return out
+
+
+def check_gate(sheet: Sheet, gate: bool, applies_to: List[str]) -> List[Finding]:
+    """Spec 02 G7: with a gate, one gate question whose options are the
+    category's business types, and Applies To values among them; without
+    one, both columns empty."""
+    out = []
+    gates = [r for r in sheet.rows if r.gate_question]
+    used = [r for r in sheet.rows if r.applies_to]
+    if not gate:
+        return [Finding(sheet.name, r.excel_row, "GATE-UNEXPECTED", SILENT, "error",
+                        "Gate Question or Applies To set, but the category has no gate.",
+                        "Clear both columns.") for r in gates + [r for r in used if r not in gates]]
+    types = business_types(applies_to)
+    if len(gates) != 1:
+        out.append(Finding(sheet.name, gates[1].excel_row if len(gates) > 1 else None, "GATE-ROWS", SILENT,
+                           "error", f"{len(gates)} gate questions; the category needs exactly one.",
+                           "Set Gate Question TRUE on the Organization type question only."))
+    for g in gates[:1]:
+        if business_types(g.options) != types:
+            out.append(Finding(sheet.name, g.excel_row, "GATE-OPTIONS", SILENT, "error",
+                               f"Gate options '{g.options}' are not the category's business types.",
+                               f"Set them to '{', '.join(types)}'."))
+    for r in used:
+        stray = [t for t in business_types(r.applies_to) if t not in types]
+        if stray:
+            out.append(Finding(sheet.name, r.excel_row, "GATE-APPLIES", SILENT, "error",
+                               f"Applies To names {', '.join(stray)}, not an option of the gate question.",
+                               "Use only the gate question's options."))
     return out
 
 

@@ -136,3 +136,24 @@ PROTECTED_SECTIONS = {"trade_reference", "declaration", "submission"}
 COUNTRY_CODES = {"ET", "KE", "UG", "TZ", "RW", "SO", "SS"}
 
 TOTAL_MARKS = 100
+
+# Supplier business types: the options of the gate question (spec 02 G7) and
+# the values of Applies To. Clients write them several ways.
+BUSINESS_TYPES = ["Sole Proprietor", "Private Limited Company", "Share Company", "Individual Consultant"]
+INDIVIDUAL = "Individual Consultant"
+_BUSINESS_ALIASES = {
+    "sole proprietor": "Sole Proprietor", "sole proprietorship": "Sole Proprietor",
+    "private limited company": "Private Limited Company", "plc": "Private Limited Company",
+    "share company": "Share Company",
+    "individual consultant": INDIVIDUAL, "individual": INDIVIDUAL,
+    "partnership": "Partnership", "public limited company": "Public Limited Company",
+}
+
+
+def business_types(text) -> list:
+    """'sole proprietor,plc, Share company' -> the canonical names, in
+    BUSINESS_TYPES order; unknown names are kept as written, at the end."""
+    items = text if isinstance(text, (list, tuple)) else str(text or "").split(",")
+    names = [_BUSINESS_ALIASES.get(" ".join(str(x).lower().split()), " ".join(str(x).split())) for x in items]
+    names = [n for n in dict.fromkeys(names) if n]
+    return sorted(names, key=lambda n: BUSINESS_TYPES.index(n) if n in BUSINESS_TYPES else len(BUSINESS_TYPES))

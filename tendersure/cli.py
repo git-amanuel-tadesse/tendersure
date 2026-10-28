@@ -19,6 +19,7 @@ from typing import Dict, List
 
 from . import categories as cat
 from . import glossary as gl
+from . import gating
 from . import naming
 from . import yesno
 from . import category_llm as cl
@@ -30,6 +31,7 @@ from .generate import Generator, MarksError, Target, apply_section_marks, check_
 from .parser import Sheet, parse_workbook
 from .reports import load_decisions, write_bank, write_qa_report, write_validation_report
 from .similarity import Retriever
+from .schema import INDIVIDUAL, business_types
 from .validate import check_corpus, validate_sheet
 from . import trust
 from .writer import Writer
@@ -221,6 +223,16 @@ def _model_wanted(a):
     return True, ""
 
 
+def _audience(path: str, sheets: List[Sheet]) -> "gating.Book":
+    """Who answers each question; seeded from the bank the first time."""
+    entries = gating.load(path)
+    if not entries:
+        entries = gating.seed(trust.usable(sheets, trust.grade(sheets)))
+        gating.save(entries, path)
+        print(f"audience: seeded {len(entries)} questions from the bank -> {path}")
+    return gating.Book(entries)
+
+
 def _glossary(path: str, sheets: List[Sheet]) -> "gl.Glossary":
     """The team's glossary; seeded from the bank the first time."""
     if os.path.exists(path):
@@ -259,12 +271,14 @@ def cmd_learn(a):
         history = [(s.client, s.rows) for s in usable]
         named, (rebuilt, reused, built) = naming.learn(history, g, drafter)
         judged = yesno.learn(history, book, judge)
+        audience = gating.reseed(gating.load(store), gating.seed(usable))
         gl.save(g.entries, store)
         yesno.save(book, store)
+        gating.save(audience, store)
         similar = sum(e.status == gl.SIMILAR for e in named) + sum(v.status == yesno.SIMILAR for v in judged)
         print(f"learn: {len(usable)} usable sheets; names: {len(named)} questions newly named, {rebuilt + reused + built} "
               f"acronyms filled or rebuilt; Yes/No: {len(judged)} questions judged; {similar} taken from a "
-              f"confirmed rewording")
+              f"confirmed rewording; audience: {len(audience)} questions")
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     n, y = lr.write_review(g, book, a.out)
     print(f"learn: {n} name lines and {y} Yes/No lines wait for review -> {a.out}"
@@ -393,11 +407,18 @@ def cmd_generate(a):
     gen = Generator(sheets, Retriever(sheets, groups), decisions, grades, rulings)
 
     plans, failed = [], []
+    for c in list(cats):
+        # spec 02 G7 / T19: the gate is TRUE exactly when individuals may apply
+        if c.gate_question != (INDIVIDUAL in business_types(c.applies_to)):
+            failed.append((c.code(a.prefix), f"categories table: Gate Question is {'TRUE' if c.gate_question else 'empty'} "
+                                             f"but Applies To ({', '.join(c.applies_to) or 'empty'}) "
+                                             f"{'lacks' if c.gate_question else 'includes'} {INDIVIDUAL}"))
+            cats.remove(c)
     for c in cats:
         code = c.code(a.prefix)
         exclude = {s.name for s in sheets if s.code == code} if a.rebuild_existing else None
         target = Target(code, c.description, a.client, c.group, a.client_name, c.sub_categories,
-                        c.requirements, c.eligibility, c.gate_question, c.applies_to)
+                        c.requirements, c.eligibility, c.gate_question, business_types(c.applies_to))
         try:
             plan = gen.plan(target, exclude=exclude, marks=marks.get(code))
             check_total(plan)
@@ -488,6 +509,10 @@ def cmd_generate(a):
         for line in problems:
             print(f"REVIEW PROBLEM: {line}")
 
+    audience = _audience(a.audience, sheets)
+    donor_rows = gating.donors(trust.usable(sheets, grades), audience)
+    for p in plans:
+        gating.apply(p, audience, donor_rows)
     for p in plans:
         finalise(p)
     book = yesno.load(a.yes_no)
@@ -745,6 +770,8 @@ def main(argv=None):
                    help="model id to use (default: TENDERSURE_MODEL). The AI runs automatically whenever "
                         "a model is configured in .env")
     p.add_argument("--no-model", action="store_true", help="build without any AI step")
+    p.add_argument("--audience", default="data/audience.csv",
+                   help="which business types answer each question (default data/audience.csv)")
     p.add_argument("--yes-no", default="data/yesno_polarity.csv",
                    help="whether Yes is the good answer, per Yes/No question (default data/yesno_polarity.csv)")
     p.add_argument("--glossary", default="data/glossary.csv",

@@ -31,14 +31,13 @@ from openpyxl.styles import Alignment, Font, PatternFill
 
 from .categories import Category, category_kind
 from .llm import LLMError, make_llm
+from .schema import BUSINESS_TYPES, INDIVIDUAL
 from .similarity import TfidfEmbedder, cosine
 
 KEPT, RENAMED, MERGED, SEPARATED, REPEATED = "Kept", "Renamed", "Merged", "Separated", "Repeated"
 ADDITIONAL, REMOVED = "Additional (suggested)", "Removed"
 STATUSES = [KEPT, RENAMED, MERGED, SEPARATED, REPEATED, ADDITIONAL, REMOVED]
-COMPANIES = ["Sole Proprietor", "Private Limited Company", "Share Company"]
-INDIVIDUAL = "Individual Consultant"
-BUSINESS_TYPES = COMPANIES + [INDIVIDUAL]
+COMPANIES = BUSINESS_TYPES[:3]
 OVERLAP = 0.2            # subject similarity above which two draft rows are worth a question
 OVERLAP_HEAD = 0.6       # the same for the subject outside brackets ("ICT Equipment (...)")
 DUPLICATE = 0.92         # text similarity above which two draft rows are the same category
