@@ -35,6 +35,41 @@ def test_parses_synthetic_corpus(corpus):
     assert validate_sheet(s) == []
 
 
+def test_reads_fields_by_header_in_the_21_column_layout(tmp_path):
+    from tendersure.schema import LAYOUT
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.cell(2, 2, "NNN_2027_001: Supply of ICT Equipment")
+    for i, (_, label) in enumerate(LAYOUT):
+        ws.cell(4, 2 + i, label)
+    row = {"section": "Eligibility", "sub_section": "N/A", "criteria": "Please attach a valid Trade license",
+           "marks": 0, "eligibility": True, "compliance": 0, "archive_short_name": "Trade License",
+           "acronym": "TL", "answer_type": 5, "mandatory": True, "compliance_attach": True,
+           "gate_question": True, "applies_to": "Sole Proprietor, Share Company"}
+    col = {f: 2 + i for i, (f, _) in enumerate(LAYOUT)}
+    for f, v in row.items():
+        ws.cell(5, col[f], v)
+    ws.cell(5, col["system"], 7)            # System sits in G here, where 14-column sheets have Compliance
+    path = tmp_path / "new.xlsx"
+    wb.save(path)
+
+    r = parse_workbook(str(path))[0].rows[0]
+    assert (r.marks, r.system, r.compliance) == (0, 7, 0)
+    assert r.eligibility and r.compliance_attach and not r.attachment
+    assert (r.archive_short_name, r.acronym, r.answer_type) == ("Trade License", "TL", 5)
+    assert r.gate_question and r.applies_to == "Sole Proprietor, Share Company"
+
+
+def test_unknown_header_labels_fall_back_to_14_column_positions(tmp_path):
+    wb = openpyxl.Workbook()
+    write_sheet(wb.active, "AAA-ET-2026-009", "Test", GENERIC + TAIL, "AAA")
+    for c in range(3, 16):
+        wb.active.cell(4, c, f"col {c}")    # only "Section" survives, so the sheet is still found
+    wb.save(tmp_path / "odd.xlsx")
+    r = next(r for r in parse_workbook(str(tmp_path / "odd.xlsx"))[0].rows if r.criteria == "Attach TIN certificate")
+    assert (r.answer_type, r.archive_short_name, r.compliance_attach) == (5, "TIN", True)
+
+
 def test_validator_catches_silent_and_arithmetic_errors(tmp_path):
     rows = GENERIC + tech("goods") + TAIL
     rows = [list(r) for r in rows]
