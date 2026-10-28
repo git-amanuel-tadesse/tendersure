@@ -17,6 +17,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+from . import grouping
 from .generate import Plan, PlannedRow
 from .learned_store import YES_NO, resolve
 from .llm import LLMError, make_llm
@@ -24,6 +25,8 @@ from .trust import context_key
 from .validate import YES_BAD, YES_GOOD, is_yes_no, yes_no_target
 
 DRAFTED, RULE_DRAFTED, CONFIRMED = "drafted", "drafted (rules)", "confirmed"
+SIMILAR = "drafted (from similar)"   # taken from a confirmed rewording of the question
+CHUNK = 40                           # questions per model call (spec 04 L5)
 COLUMNS = ["question_key", "example", "yes_is", "status"]
 _RISK = re.compile(r"litigation|criminal|default|terminat|negative media|adverse|debar|sanction|blacklist|"
                    r"bankrupt|insolven|conflict of interest|associated with|politically exposed|fraud|"
@@ -103,8 +106,10 @@ SCHEMA = {"type": "object", "required": ["answers"], "properties": {"answers": {
 
 
 class ModelJudge:
-    """Verdicts from any configured model; the keyword rule for anything it misses."""
+    """Verdicts from any configured model; the keyword rule for anything it
+    misses. Questions go CHUNK at a time; a failed call costs only its chunk."""
     redoes_rules = True
+    chunk = CHUNK
 
     def __init__(self, llm=None, model: Optional[str] = None):
         self.llm = llm or make_llm(model=model)
@@ -124,9 +129,11 @@ class ModelJudge:
             by_client[n.client].append(n)
         out = []
         for client, group in by_client.items():
-            answers = self._ask(client, group)
-            out += [Verdict(n.key, n.example, answers[i], DRAFTED) if i in answers else
-                    Verdict(n.key, n.example, rule_yes_is(n.example), RULE_DRAFTED) for i, n in enumerate(group)]
+            for part in (group[i:i + self.chunk] for i in range(0, len(group), self.chunk)):
+                answers = self._ask(client, part)
+                out += [Verdict(n.key, n.example, answers[i], DRAFTED) if i in answers else
+                        Verdict(n.key, n.example, rule_yes_is(n.example), RULE_DRAFTED)
+                        for i, n in enumerate(part)]
         return out
 
 
@@ -162,10 +169,31 @@ def apply(plan: Plan, book: Book):
             r.answer_type, r.options, r.option_scores = target
 
 
+def reuse_similar(needs_: List[Need], book: Book) -> Tuple[List[Verdict], List[Need]]:
+    """A question takes the confirmed verdict of a rewording of it (spec 04
+    L2), as a draft: a rewording can flip the meaning ("... no contracts
+    terminated"). Returns (reused verdicts, still needed)."""
+    confirmed = {v.question_key: v for v in book.verdicts if v.status == CONFIRMED}
+    if not confirmed:
+        return [], needs_
+    rep = grouping.group(list(dict.fromkeys(list(confirmed) + [n.key for n in needs_])),
+                         apart=lambda a, b: a in confirmed and b in confirmed)
+    by_group = {rep[k]: v for k, v in confirmed.items()}
+    reused, rest = [], []
+    for n in needs_:
+        twin = by_group.get(rep[n.key])
+        if twin:
+            reused.append(Verdict(n.key, n.example, twin.yes_is, SIMILAR))
+        else:
+            rest.append(n)
+    return reused, rest
+
+
 def settle(plans: List[Plan], book: Book, judge) -> List[Verdict]:
     """Judge what the book lacks (adding it there), then apply the rule to
     every sheet. Returns the new verdicts."""
-    new = judge.judge(needs(plans, book, judge.redoes_rules))
+    reused, rest = reuse_similar(needs(plans, book, judge.redoes_rules), book)
+    new = reused + judge.judge(rest)
     for v in new:
         book.add(v)
     for plan in plans:

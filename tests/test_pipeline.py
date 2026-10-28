@@ -1427,3 +1427,45 @@ def test_rewordings_group_and_confirmed_questions_stay_apart():
     confirmed = {keys[2], keys[3]}
     g = grouping.group(keys, apart=lambda a, b: a in confirmed and b in confirmed)
     assert g[keys[3]] == keys[3]                          # the team confirmed both: never merged
+
+
+def test_a_rewording_takes_its_confirmed_twins_answers_without_a_model():
+    from tendersure import glossary as gl, naming, yesno
+    twin = "does your company have the necessary technology and equipment to manage your operations efficiently"
+    new = "does your organization have the necessary technology and equipment to manage your operations efficiently"
+    book = yesno.Book([yesno.Verdict(twin, "x", "good", yesno.CONFIRMED)])
+    reused, rest = yesno.reuse_similar([yesno.Need("AAA", new, "Does your organization ...")], book)
+    assert rest == [] and (reused[0].yes_is, reused[0].status) == ("good", yesno.SIMILAR)
+
+    doc = "please attach evidence of ownership or rent agreement for welding machine"
+    g = gl.Glossary([gl.Entry("AAA", doc, "x", "Welding Machine Ownership", "WMO", status=gl.CONFIRMED)])
+    reused, rest = naming.reuse_similar([naming.Need("BBB", doc.replace("rent", "lease"), "...")], g)
+    assert rest == [] and (reused[0].short_name, reused[0].acronym, reused[0].status) == \
+           ("Welding Machine Ownership", "WMO", gl.SIMILAR)
+    _, rest = naming.reuse_similar([naming.Need("BBB", "attach a fire safety certificate", "...")], g)
+    assert len(rest) == 1                                  # nothing similar: still needs drafting
+
+
+def test_model_calls_go_in_chunks_and_a_failed_chunk_falls_back_alone():
+    from tendersure import yesno
+    from tendersure.llm import LLMError
+
+    class Transport:
+        calls = 0
+
+        def __call__(self, url, headers, body):
+            Transport.calls += 1
+            if "FAIL" in json.dumps(body):
+                raise LLMError("provider down")
+            return {"model": "m", "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(
+                {"answers": [{"id": 0, "yes_is": "bad"}, {"id": 1, "yes_is": "bad"}]})}}]}
+
+    judge = yesno.ModelJudge(llm=OpenRouterLLM(model="m", transport=Transport()))
+    judge.chunk = 2
+    needs = [yesno.Need("AAA", f"q{i}", text) for i, text in
+             enumerate(["Do you recycle? A", "Do you recycle? B", "Do you recycle? FAIL", "Do you recycle? D",
+                        "Do you recycle? E"])]
+    got = judge.judge(needs)
+    assert Transport.calls == 3
+    assert [(v.yes_is, v.status) for v in got] == [("bad", yesno.DRAFTED)] * 2 + \
+           [("good", yesno.RULE_DRAFTED)] * 2 + [("bad", yesno.DRAFTED)]

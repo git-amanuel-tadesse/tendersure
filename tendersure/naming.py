@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from . import glossary as gl
+from . import grouping
 from .generate import Plan, PlannedRow
 from .llm import LLMError, make_llm
 from .trust import context_key
@@ -99,10 +100,19 @@ SCHEMA = {"type": "object", "required": ["names"], "properties": {"names": {"typ
     "properties": {"id": {"type": "integer"}, "short_name": {"type": "string"}}}}}}
 
 
+CHUNK = 40      # questions per model call (spec 04 L5)
+
+
+def _chunks(items: list, size: int):
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
 class ModelDrafter:
     """Short Names from any configured model; the rule for whatever it gets
-    wrong. A question that already has a Short Name needs no model."""
+    wrong. A question that already has a Short Name needs no model. Questions
+    go CHUNK at a time; a failed call costs only its own chunk."""
     redraws_rules = True
+    chunk = CHUNK
 
     def __init__(self, llm=None, model: Optional[str] = None, examples: Optional[List[gl.Entry]] = None):
         self.llm = llm or make_llm(model=model)
@@ -131,13 +141,19 @@ class ModelDrafter:
             if not n.short_name:
                 by_client[n.client].append(n)
         for client, group in by_client.items():
-            answers = self._ask(client, group)
-            for i, n in enumerate(group):
-                short = answers.get(i, "")
-                if 1 <= len(short.split()) <= 4 and len(short) <= 45:
-                    out.append(_entry(n, short, gl.DRAFTED))
-                else:
-                    out.append(_entry(n, rule_short_name(n.example), gl.RULE_DRAFTED))
+            for part in _chunks(group, self.chunk):
+                out += self._draft_part(client, part)
+        return out
+
+    def _draft_part(self, client: Optional[str], group: List[Need]) -> List[gl.Entry]:
+        out = []
+        answers = self._ask(client, group)
+        for i, n in enumerate(group):
+            short = answers.get(i, "")
+            if 1 <= len(short.split()) <= 4 and len(short) <= 45:
+                out.append(_entry(n, short, gl.DRAFTED))
+            else:
+                out.append(_entry(n, rule_short_name(n.example), gl.RULE_DRAFTED))
         return out
 
 
@@ -215,10 +231,36 @@ def _unique_acronyms(plan: Plan):
         used.setdefault(a, key)
 
 
+def reuse_similar(needs_: List[Need], glossary: gl.Glossary) -> Tuple[List[gl.Entry], List[Need]]:
+    """A question with no Short Name takes the names of a confirmed rewording
+    of it (spec 04 L2) - the client's own first - as a draft, since a
+    rewording can change the document. Returns (reused entries, still needed)."""
+    confirmed = [e for e in glossary.entries if e.status == gl.CONFIRMED and e.short_name]
+    if not confirmed:
+        return [], needs_
+    keys = {e.question_key for e in confirmed}
+    rep = grouping.group(list(dict.fromkeys([e.question_key for e in confirmed] + [n.key for n in needs_])),
+                         apart=lambda a, b: a in keys and b in keys)
+    by_group: Dict[str, List[gl.Entry]] = defaultdict(list)
+    for e in confirmed:
+        by_group[rep[e.question_key]].append(e)
+    reused, rest = [], []
+    for n in needs_:
+        group_ = by_group.get(rep[n.key], [])
+        twins = [e for e in group_ if e.client == n.client] + [e for e in group_ if e.client != n.client]
+        if n.short_name or not twins:
+            rest.append(n)
+        else:
+            t = twins[0]
+            reused.append(gl.Entry(n.client, n.key, n.example, t.short_name, t.acronym, t.numbered, gl.SIMILAR))
+    return reused, rest
+
+
 def name_documents(plans: List[Plan], glossary: gl.Glossary, drafter) -> List[gl.Entry]:
     """Draft what the glossary lacks (adding it there), then name every sheet.
     Returns the new glossary entries."""
-    drafted = drafter.draft(needs(plans, glossary, drafter.redraws_rules))
+    reused, rest = reuse_similar(needs(plans, glossary, drafter.redraws_rules), glossary)
+    drafted = reused + drafter.draft(rest)
     for e in drafted:
         glossary.add(e)
     for plan in plans:

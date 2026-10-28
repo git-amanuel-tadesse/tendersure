@@ -24,6 +24,7 @@ from .validate import needs_names
 
 SEEDED, DRAFTED, CONFIRMED = "seeded", "drafted", "confirmed"
 RULE_DRAFTED = "drafted (rules)"     # drafted without a model; redrafted when one is available
+SIMILAR = "drafted (from similar)"   # taken from a confirmed rewording of the question
 ANY_CLIENT = "*"
 COLUMNS = ["client", "question_key", "example", "short_name", "acronym", "numbered", "status", "uses"]
 _TRAILING_NUMBER = re.compile(r"^(.*\S)\s+(\d+)$")
