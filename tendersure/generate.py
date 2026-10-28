@@ -32,7 +32,7 @@ from .parser import Row, Sheet, StructuralRow, normalise, section_key
 from .schema import CLIENT_NAMES, LAYOUT, SECTION_KEYS, TOTAL_MARKS
 from .similarity import Match, Retriever
 from .trust import CLEAN, CORRECTABLE, FIELDS, Conventions, Grade, context_key, usable
-from .validate import Finding, fix_marks_columns, validate_sheet
+from .validate import TRADE_LICENSE, Finding, fix_marks_columns, validate_sheet
 
 REUSED = "reused unchanged"
 ADAPTED = "adapted"
@@ -329,9 +329,94 @@ def rebalance_to_100(plan: Plan, why: str) -> Optional[str]:
     return note
 
 
+ELIGIBILITY_LABEL = "Eligibility"
+
+
+def _standard_trade_license() -> Row:
+    return Row(source_file="", sheet="", excel_row=0, section=ELIGIBILITY_LABEL, sub_section="N/A",
+               criteria="Please attach a valid Trade license", marks=0.0,
+               archive_short_name="Trade License", acronym="TL", answer_type=5,
+               mandatory=True, compliance_attach=True, eligibility=True)
+
+
+def _relabel_sections(plan: Plan):
+    """Column B carries a section's label on its first row only."""
+    prev = None
+    for p in plan.rows:
+        if p.kind != "question":
+            prev = None
+            continue
+        p.section_label = p.row.section if p.row.section != prev else None
+        prev = p.row.section
+
+
+def _trade_license_to_move(plan: Plan, in_section: List[PlannedRow]) -> List[PlannedRow]:
+    """Trade License questions outside Eligibility with no marks; a standard
+    one if the sheet has none. One that carries marks stays where it is:
+    moving it would change that section's marks."""
+    found = [p for p in plan.questions if TRADE_LICENSE.search(p.row.criteria) and p not in in_section]
+    for p in found:
+        if p.row.marks:
+            p.note(f"Trade License question carries {p.row.marks:g} marks in '{p.row.section}', so it was "
+                   f"not moved to Eligibility; move it by hand if the marks can go", adapted=False)
+            p.needs_reading = True
+    if not found and not in_section:
+        return [PlannedRow(kind="question", row=_standard_trade_license(), origin=ADAPTED,
+                           source="standard Trade License row",
+                           notes=["Trade License added: the source sheet had none"])]
+    return [p for p in found if not p.row.marks]
+
+
+def _eligibility_position(plan: Plan, in_section: List[PlannedRow]) -> int:
+    """After the section's own rows; else after the sections that precede it
+    (and a Sub Total closing them)."""
+    if in_section:
+        return plan.rows.index(in_section[-1]) + 1
+    before = _canonical_index("eligibility")
+    at = 0
+    for i, p in enumerate(plan.rows):
+        if p.kind == "question" and _canonical_index(section_key(p.row.section)) < before:
+            at = i + 1
+    if at < len(plan.rows) and plan.rows[at].kind == "subtotal":
+        at += 1
+    return at
+
+
+def _flag_eligibility(plan: Plan):
+    """Every Eligibility row is a mandatory, compliance-flagged upload; no other row is Eligibility."""
+    for p in plan.questions:
+        r = p.row
+        if section_key(r.section) != "eligibility":
+            r.eligibility = False
+            continue
+        if r.answer_type != 5:
+            p.note(f"answer type {r.answer_type} -> 5: Eligibility asks for a document")
+        r.eligibility, r.answer_type, r.mandatory, r.compliance_attach = True, 5, True, True
+
+
+def place_eligibility(plan: Plan):
+    """An Eligibility section right after Company Information, holding the
+    Trade License (spec 02 G2, G3)."""
+    in_section = [p for p in plan.questions if section_key(p.row.section) == "eligibility"]
+    moving = _trade_license_to_move(plan, in_section)
+    for p in moving:
+        if p in plan.rows:
+            plan.rows.remove(p)
+            p.note(f"moved from '{p.row.section}' to Eligibility")
+        p.row.section = in_section[0].row.section if in_section else ELIGIBILITY_LABEL
+        p.row.sub_section = in_section[-1].row.sub_section if in_section else "N/A"
+    at = _eligibility_position(plan, in_section)
+    plan.rows[at:at] = moving
+    _flag_eligibility(plan)
+    _relabel_sections(plan)
+
+
 def finalise(plan: Plan):
     """Apply the template rules (specs/02) once nothing else will change the
-    plan's rows: after proposals, review answers and section splits."""
+    plan's rows: after proposals, review answers and section splits. Running
+    them here also keeps the AI's cached answers valid, as its prompts are
+    built from the plan before this point."""
+    place_eligibility(plan)
     n = sum(fix_marks_columns(p.row) for p in plan.questions)
     if n:
         plan.notes.append(f"marks repeated in System or Compliance on {n} rows (template rule)")

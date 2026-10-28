@@ -112,6 +112,7 @@ CLIENT_NAMES = ["ERCS", "SNV", "ILRI", "TASL", "Schindler"]
 SECTION_KEYS = [
     ("declaration", "declaration"),
     ("company information", "company"),
+    ("eligibility", "eligibility"),
     ("registration", "registration"),
     ("shareholder", "shareholder"),
     ("integrity", "integrity"),

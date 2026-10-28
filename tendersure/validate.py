@@ -13,11 +13,12 @@ Every finding is advisory. Nothing here blocks: the odd case is sometimes
 deliberate and the reviewer overrides.
 """
 
+import re
 from dataclasses import dataclass
 from typing import List, Optional
 
 from .schema import ANSWER_TYPES, TOTAL_MARKS
-from .parser import Sheet, Row, normalise
+from .parser import Sheet, Row, normalise, section_key
 
 PLATFORM = "platform"
 SILENT = "silent"
@@ -302,7 +303,33 @@ def fix_marks_columns(r: Row) -> bool:
     return changed
 
 
-TEMPLATE_CHECKS = [check_marks_columns]
+TRADE_LICENSE = re.compile(r"trade\s*licen[cs]e", re.I)
+
+
+def check_eligibility(sheet: Sheet) -> List[Finding]:
+    """Spec 02 G3: Eligibility rows are mandatory, compliance-flagged uploads
+    marked Eligibility; no other row is; the section holds the Trade License."""
+    out = []
+    in_section = [r for r in sheet.rows if section_key(r.section) == "eligibility"]
+    ids = {id(r) for r in in_section}
+    for r in sheet.rows:
+        if id(r) in ids and not (r.eligibility and r.answer_type == 5 and r.mandatory and r.compliance_attach):
+            out.append(Finding(sheet.name, r.excel_row, "ELIG-ROW", SILENT, "error",
+                               "Row in the Eligibility section is not a mandatory, compliance-flagged upload "
+                               "marked Eligibility.",
+                               "Set Eligibility TRUE, Answer Type 5, Mandatory TRUE, Compliance TRUE."))
+        elif id(r) not in ids and r.eligibility:
+            out.append(Finding(sheet.name, r.excel_row, "ELIG-OUTSIDE", SILENT, "error",
+                               f"Eligibility is TRUE on a row in '{r.section}'.",
+                               "Move the row to the Eligibility section, or clear Eligibility."))
+    if not any(TRADE_LICENSE.search(r.criteria) for r in in_section):
+        out.append(Finding(sheet.name, None, "ELIG-NO-TRADE-LICENSE", SILENT, "error",
+                           "The Eligibility section does not ask for the Trade License.",
+                           "Add 'Please attach a valid Trade license' to the Eligibility section."))
+    return out
+
+
+TEMPLATE_CHECKS = [check_marks_columns, check_eligibility]
 
 
 def check_template(sheet: Sheet) -> List[Finding]:

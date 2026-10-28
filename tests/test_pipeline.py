@@ -251,6 +251,73 @@ def test_inserted_rows_keep_the_sub_section_block_whole(corpus, tmp_path):
     assert any(m.min_row == tech[0] and m.max_row == tech[-1] for m in blocks)
 
 
+def _trade_license(marks=0.0, section="Registration and Statutory Requirements"):
+    from tendersure.parser import Row
+    return Row("", "", 0, section=section, sub_section="N/A", criteria="Please attach a valid Trade license",
+               marks=marks, compliance=marks, answer_type=1, archive_short_name="Business Permit", acronym="BP")
+
+
+def test_trade_license_moves_to_an_eligibility_section(corpus, tmp_path):
+    from tendersure.generate import finalise
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client))
+    tin = next(i for i, q in enumerate(p.rows) if q.kind == "question" and q.row.criteria == "Insert TIN number")
+    from tendersure.generate import PlannedRow
+    p.rows.insert(tin, PlannedRow(kind="question", row=_trade_license()))
+    finalise(p)
+
+    order = []
+    for q in p.questions:
+        if not order or order[-1] != q.row.section:
+            order.append(q.row.section)
+    assert order[:4] == ["Declaration", "Company Information", "Eligibility", "Registration and Statutory Requirements"]
+    tl = next(q.row for q in p.questions if q.row.criteria == "Please attach a valid Trade license")
+    assert (tl.eligibility, tl.answer_type, tl.mandatory, tl.compliance_attach) == (True, 5, True, True)
+    assert (tl.archive_short_name, tl.acronym) == ("Business Permit", "BP")     # the client's own names kept
+    assert [q.row.criteria for q in p.questions if q.row.eligibility] == ["Please attach a valid Trade license"]
+    assert p.total() == 100
+
+    from tendersure.generate import to_sheet
+    from tendersure.validate import check_template
+    assert check_template(to_sheet(p)) == []
+    next(q.row for q in p.questions if q.row.criteria == "Attach TIN certificate").eligibility = True
+    assert [f.rule for f in check_template(to_sheet(p))] == ["ELIG-OUTSIDE"]
+    next(q.row for q in p.questions if q.row.criteria == "Attach TIN certificate").eligibility = False
+
+    Writer().write([p], str(tmp_path / "o.xlsx"))
+    ws = openpyxl.load_workbook(tmp_path / "o.xlsx").active
+    labels = [ws.cell(r, 2).value for r in range(5, ws.max_row + 1) if ws.cell(r, 2).value]
+    assert labels[:5] == ["Declaration", "Company Information", "Sub Total", "Eligibility",
+                          "Registration and Statutory Requirements"]
+
+
+def test_sheet_without_trade_license_gets_the_standard_row(corpus):
+    from tendersure.generate import finalise
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client))
+    finalise(p)
+    elig = [q for q in p.questions if q.row.eligibility]
+    assert [q.row.criteria for q in elig] == ["Please attach a valid Trade license"]
+    assert elig[0].row.compliance == 0 and elig[0].source == "standard Trade License row"
+
+
+def test_trade_license_with_marks_stays_and_is_flagged(corpus):
+    from tendersure.generate import PlannedRow, finalise
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, src.description, src.client))
+    tl = PlannedRow(kind="question", row=_trade_license(marks=0.0, section="Technical Specifications-TECH"))
+    tl.row.marks = 2.0                                       # an ILRI-style scored Trade License
+    tech = next(i for i, q in enumerate(p.rows) if q.kind == "question" and q.row.section.startswith("Technical"))
+    p.rows.insert(tech, tl)
+    finalise(p)
+    assert tl.row.section == "Technical Specifications-TECH" and not tl.row.eligibility
+    assert tl.needs_reading and "not moved to Eligibility" in tl.notes[-1]
+    assert not any(q.row.eligibility for q in p.questions)
+
+
 def test_writer_refuses_off_total(corpus, tmp_path):
     _, g = _gen(corpus)
     p = g.plan(Target("AAA-ET-2026-004", "Supply of Cleaning Materials", "AAA"))
