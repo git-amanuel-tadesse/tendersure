@@ -153,11 +153,12 @@ class Line:
     reason: str = ""
     question: str = ""
     sub_categories: List[str] = field(default_factory=list)
-    eligibility: List[str] = field(default_factory=list)
+    eligibility: List[str] = field(default_factory=list)       # stated by the draft: applied
     applies_to: List[str] = field(default_factory=list)
     code: str = ""
     decision: str = ""
     comment: str = ""
+    suggested_eligibility: List[str] = field(default_factory=list)   # the model's: shown, not applied
 
     @property
     def gate_question(self) -> bool:
@@ -355,8 +356,9 @@ def _line_from_model(raw: dict, by_id: Dict[str, Draft], dups: Dict[str, str]) -
     status, reason = raw["status"], (raw.get("reason") or "").strip()
     d0 = by_id[ids[0]]
     line = Line(" ".join(raw["description"].split()) or d0.description, status, ids, d0.group, reason,
-                (raw.get("question") or "").strip(), _clean(raw.get("sub_categories")),
-                _clean(raw.get("eligibility")), [b for b in raw.get("applies_to") or [] if b in BUSINESS_TYPES])
+                (raw.get("question") or "").strip(), _clean(raw.get("sub_categories")), [],
+                [b for b in raw.get("applies_to") or [] if b in BUSINESS_TYPES],
+                suggested_eligibility=_clean(raw.get("eligibility")))
     if status == MERGED and (len(ids) < 2 or not reason):
         return [Line(by_id[i].description, KEPT, [i], by_id[i].group,
                      question=f"Merge with #{', #'.join(x for x in ids if x != i)} into "
@@ -378,6 +380,18 @@ def _line_from_model(raw: dict, by_id: Dict[str, Draft], dups: Dict[str, str]) -
         line.status, line.description = KEPT, d0.description
         line.question = (line.question + " " if line.question else "") + f"Separate into '{raw['description']}'?"
     return [line]
+
+
+def _settle_eligibility(ln: Line, by_id: Dict[str, Draft]):
+    """Eligibility is a pass/fail upload in every sheet of the category, so
+    only what the draft itself states is applied ("(IATA Registered Only)");
+    other documents the model proposes are shown as suggestions."""
+    stated = list(dict.fromkeys(e for text in [ln.description] + [by_id[i].description for i in ln.from_draft
+                                                                    if i in by_id]
+                                for e in rule_eligibility(text)))
+    ln.eligibility = ln.eligibility or stated
+    have = {e.lower() for e in ln.eligibility}
+    ln.suggested_eligibility = [e for e in ln.suggested_eligibility if e.lower() not in have]
 
 
 def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[str]]) -> List[Line]:
@@ -412,7 +426,7 @@ def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[
             ln.status, ln.reason = RENAMED, f"capitalisation; was: {ln.description}"
         ln.description = new
         ln.applies_to = [b for b in BUSINESS_TYPES if b in (ln.applies_to or rule_applies_to(ln.description))]
-        ln.eligibility = ln.eligibility or rule_eligibility(ln.description)
+        _settle_eligibility(ln, by_id)
     order = {d.id: i for i, d in enumerate(drafts)}
     gpos = {g: i for i, g in enumerate(groups_order)}
     lines.sort(key=lambda ln: (gpos.get(ln.group, len(gpos)),
@@ -434,8 +448,8 @@ def traceability(lines: List[Line], drafts: List[Draft]) -> List[str]:
 # --- workbooks ------------------------------------------------------------------
 
 REVISED_HEADERS = ["#", "Category Code", "Category Description", "Status", "From draft #", "Reason",
-                   "Question for client", "Sub-categories", "Eligibility", "Gate Question", "Applies To",
-                   "Decision", "Client comment", "Group"]
+                   "Question for client", "Sub-categories", "Eligibility", "Suggested eligibility (not applied)",
+                   "Gate Question", "Applies To", "Decision", "Client comment", "Group"]
 HEAD = PatternFill("solid", fgColor="FFC5D9F1")
 GROUP = PatternFill("solid", fgColor="FFDCE6F1")
 ANSWER = PatternFill("solid", fgColor="FFFFF2CC")
@@ -484,14 +498,14 @@ def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str
     ws = wb.create_sheet("Revised")
     _write_lines(ws, lines, REVISED_HEADERS, lambda n, ln: [
         n, ln.code, ln.description, ln.status, ", ".join(ln.from_draft), ln.reason, ln.question,
-        " | ".join(ln.sub_categories), " | ".join(ln.eligibility), "TRUE" if ln.gate_question else "",
-        ", ".join(ln.applies_to), ln.decision, ln.comment, ln.group or ""],
-        [5, 13, 60, 20, 10, 40, 40, 36, 28, 9, 34, 11, 30, 4])
+        " | ".join(ln.sub_categories), " | ".join(ln.eligibility), " | ".join(ln.suggested_eligibility),
+        "TRUE" if ln.gate_question else "", ", ".join(ln.applies_to), ln.decision, ln.comment, ln.group or ""],
+        [5, 13, 60, 20, 10, 40, 40, 36, 28, 34, 9, 34, 11, 30, 4])
     decision, comment = REVISED_HEADERS.index("Decision") + 1, REVISED_HEADERS.index("Client comment") + 1
     for row in ws.iter_rows(min_row=2):
         if row[3].value:                                   # a line, not a group row
             row[decision - 1].fill = row[comment - 1].fill = ANSWER
-    ws.column_dimensions["N"].hidden = True
+    ws.column_dimensions["O"].hidden = True
 
     ws = wb.create_sheet("Summary")
     kept = [ln for ln in lines if ln.status != REPEATED]
@@ -507,7 +521,10 @@ def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str
              ["remove", "the category is dropped"], ["edit", "use the wording typed in Client comment"],
              ["", "A Client comment without a decision is a note: it is turned into a proposed change for "
                   "the team, never applied on its own. Other cells (Eligibility, Applies To...) may be "
-                  "edited directly."]]
+                  "edited directly."],
+             ["Eligibility", "Only what the draft states is applied: every document there becomes a mandatory "
+                             "pass/fail upload in the category's sheet. 'Suggested eligibility' lists documents "
+                             "proposed beyond the draft; copy any the client wants into Eligibility."]]
     for r in rows:
         ws.append(r)
     ws.column_dimensions["A"].width, ws.column_dimensions["B"].width = 34, 60
@@ -528,14 +545,16 @@ def read_revised(path: str) -> Tuple[List[Draft], List[Line]]:
     for r in ws.iter_rows(min_row=2, values_only=True):
         if not r[col["Status"]]:
             continue
-        g = lambda name: r[col[name]] if col[name] < len(r) else None
+        g = lambda name: r[col[name]] if name in col and col[name] < len(r) else None
         lines.append(Line(str(g("Category Description") or "").strip(), str(g("Status")).strip(),
                           _split(g("From draft #"), ","), g("Group") or None, str(g("Reason") or ""),
                           str(g("Question for client") or ""), _split(g("Sub-categories"), "|"),
                           _split(g("Eligibility"), "|"),
                           [b for b in _split(g("Applies To"), ",") if b in BUSINESS_TYPES],
                           str(g("Category Code") or "").strip(), str(g("Decision") or "").strip().lower(),
-                          str(g("Client comment") or "").strip()))
+                          str(g("Client comment") or "").strip(),
+                          _split(g("Suggested eligibility (not applied)"), "|")
+                          if "Suggested eligibility (not applied)" in col else []))
     return drafts, lines
 
 

@@ -70,9 +70,13 @@ Command: `python -m tendersure refine <draft> --client X [--target a-b] --out re
 - **R8. Proposed columns.** For each category the tool proposes:
   - **Sub-categories**, when the description lists distinct items the
     client may want suppliers to choose between.
-  - **Eligibility**: category-specific eligibility documents, e.g. "IATA
+  - **Eligibility**: only documents the draft itself states, e.g. "IATA
     Registration Certificate" for "(IATA Registered Only)", a CALP
-    certificate for "(CALP Certified Trainers Only)".
+    certificate for "(CALP Certified Trainers Only)". Each becomes a
+    mandatory pass/fail upload in the category's sheet, so other licences
+    the model proposes go to a separate "Suggested eligibility (not
+    applied)" column; the team copies any the client wants (decided
+    2026-10-29).
   - **Gate Question** and **Applies To**: whether Individual Consultants may
     apply (typically consultancy, training, translation), and the accepted
     business types. See spec 02, G7.

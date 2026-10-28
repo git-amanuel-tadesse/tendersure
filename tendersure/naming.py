@@ -29,7 +29,7 @@ _LEAD = {"please", "kindly", "attach", "upload", "provide", "submit", "include",
          "valid", "copy", "copies", "of", "scanned", "current", "recent", "evidence"}
 _CUT = re.compile(r"\(|,|;|\s(?:e\.?g\.?|for|from|issued|if|that|which|showing|including|by)\s", re.I)
 _DOCUMENT_WORDS = {"certificate", "certificates", "license", "licence", "licenses", "policy", "form",
-                   "membership", "document"}
+                   "membership", "document", "registration"}
 
 
 @dataclass
@@ -50,12 +50,12 @@ def acronym_for(short_name: str) -> str:
     own sheets follow: the initials of the Short Name's words, small words
     skipped (Tax Compliance Certificate -> TCC); a word already in capitals,
     or a number, stays whole (Structural Engineer CV -> SECV); after such an
-    abbreviation a closing document word is dropped (TIN Certificate -> TIN,
-    SHE Policy -> SHE); a one-word name gives its first three letters
+    abbreviation closing document words are dropped (TIN Certificate -> TIN,
+    SHE Policy -> SHE, IATA Registration Certificate -> IATA); a one-word name gives its first three letters
     (Accounts -> ACC, Reference -> REF)."""
     words = [w.strip("()[],.:") for w in short_name.split()]
     words = [w for w in words if w and w.lower() not in _SMALL]
-    if len(words) > 1 and words[-1].lower() in _DOCUMENT_WORDS and any(_is_abbreviation(w) for w in words):
+    while len(words) > 1 and words[-1].lower() in _DOCUMENT_WORDS and any(_is_abbreviation(w) for w in words):
         words = words[:-1]
     if not words:
         return ""

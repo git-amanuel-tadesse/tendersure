@@ -1659,3 +1659,19 @@ def test_evaluation_counts_the_teams_categories_and_separations(tmp_path):
     assert got["team separations proposed"] == "1/1"
     assert got["proposals the team did not make"] == ["Supply of Pharmaceutical Products"]
     assert got["rows the team dropped (removed or merged)"] == 1
+
+
+def test_only_eligibility_the_draft_states_is_applied():
+    from tendersure import refine as rf
+    from tendersure.naming import acronym_for
+    drafts = [rf.Draft("1", "Provision of travel agency services (IATA Registered Only)", "T"),
+              rf.Draft("2", "Supply of assorted pharmaceuticals", "M")]
+    raw = {"lines": [{"from": ["1"], "status": "Kept", "description": "x",
+                      "eligibility": ["IATA Registration Certificate", "Business Travel Licence"]},
+                     {"from": ["2"], "status": "Kept", "description": "x",
+                      "eligibility": ["Pharmacy Wholesale License"]}], "additional": []}
+    travel, pharma = rf.check(raw, drafts, ["T", "M"])
+    assert (travel.eligibility, travel.suggested_eligibility) == (["IATA Registration Certificate"],
+                                                                  ["Business Travel Licence"])
+    assert (pharma.eligibility, pharma.suggested_eligibility) == ([], ["Pharmacy Wholesale License"])
+    assert acronym_for("IATA Registration Certificate") == "IATA"
