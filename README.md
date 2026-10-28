@@ -37,6 +37,21 @@ any folder works, with subfolders (e.g. one per year).
     #      gate_question  TRUE when Organization type gates the sheet
     #      applies_to     organization types accepted, comma-separated
 
+    # 2b. Refine a draft category list before it goes to the client (spec 01)
+    python -m tendersure refine "Red Cross Categories 1st Draft.xlsx" --client ERCS --target 50-60
+    #    -> reports/<draft> - Revised.xlsx   every draft row with a status (Kept, Renamed, Merged,
+    #       Separated, Repeated, Additional (suggested)), reasons, questions for the client and the
+    #       proposed Eligibility / Gate Question / Applies To. Answer its Decision column
+    #       (accept, reject, remove, edit + Client comment), then:
+    python -m tendersure refine --client ERCS --apply "reports/<draft> - Revised.xlsx" \
+        --categories-out data/ercs_categories.csv
+    #    -> the final list, and the categories table step 3 reads
+
+    # 2c. After ingesting history: learn names and Yes/No verdicts for every question (spec 04)
+    python -m tendersure learn            # only questions not seen before go to the model
+    #    -> reports/learned_review.xlsx   answer it, then: learn --review reports/learned_review.xlsx
+    #    The learned files (data/glossary.csv, data/yesno_polarity.csv) are client data, kept out of git.
+
     # 3. Generate all categories in one pass
     python -m tendersure generate --categories data/ercs_categories.csv \
         --client ERCS --prefix ERCS-ET-2026- --out out/ERCS-2026-2029.xlsx
