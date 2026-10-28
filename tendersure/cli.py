@@ -271,6 +271,83 @@ def cmd_learn(a):
           + ("  (answer the Decision column, then: learn --review <file>)" if n or y else ""))
 
 
+def _past_categories(bank: str) -> List[str]:
+    """Category descriptions from past exercises, for suggested additions."""
+    if not os.path.exists(bank):
+        return []
+    from .store import BankStore
+    seen = {}
+    for s in BankStore(bank).load_sheets():
+        if s.description:
+            seen.setdefault(" ".join(s.description.lower().split()), s.description.strip())
+    return sorted(seen.values())
+
+
+def cmd_refine(a):
+    """Spec 01: a draft category list -> revised list -> final list."""
+    from . import refine as rf
+    from .privacy import register_clients
+    register_clients([a.client])
+    use_model, why_not = _model_wanted(a)
+    if a.apply:
+        drafts, lines = rf.read_revised(a.apply)
+        notes = [(ln, ln.comment) for ln in lines if ln.comment and ln.decision != "edit"]
+        final, excluded, problems = rf.apply_review(drafts, lines)
+        changes = rf.ModelRefiner(model=a.model or None).interpret(notes, a.client) if use_model and notes \
+            else ["" for _ in notes]
+        out = a.out or os.path.splitext(a.apply)[0] + "_final.xlsx"
+        rf.write_final(out, final, [(ln, c, ch) for (ln, c), ch in zip(notes, changes)])
+        print(f"refine: {len(drafts)} draft rows -> {len(final)} final categories "
+              f"({len(excluded)} lines removed, rejected or folded); {len(notes)} client comments listed -> {out}")
+        if a.categories_out:
+            cat.save(rf.to_categories(final, a.client, a.version), a.categories_out)
+            print(f"refine: categories table -> {a.categories_out} (the input of generate)")
+        for p in problems:
+            print(f"REVIEW PROBLEM: {p}")
+        return
+    if not a.draft:
+        sys.exit("give a draft category list, or --apply <reviewed revised list>")
+    drafts = rf.read_draft(a.draft, a.sheet)
+    target = tuple(int(x) for x in a.target.split("-")) if a.target else None
+    if not use_model:
+        print(f"refine: without a model ({why_not}): duplicates folded, overlaps raised as questions")
+    raw = rf.ModelRefiner(model=a.model or None).propose(drafts, a.client, _past_categories(a.bank), target) \
+        if use_model else None
+    lines = rf.check(raw, drafts, rf.groups_of(drafts))
+    out = a.out or os.path.join("reports", os.path.splitext(os.path.basename(a.draft))[0] + " - Revised.xlsx")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    rf.write_revised(out, drafts, lines, a.client, target)
+    kept = sum(ln.status != rf.REPEATED for ln in lines)
+    counts = Counter(ln.status for ln in lines)
+    print(f"refine: {len(drafts)} draft rows -> {kept} proposed categories"
+          + (f" (target {target[0]}-{target[1]})" if target else "") + "; "
+          + ", ".join(f"{n} {s}" for s, n in counts.most_common())
+          + f"; {sum(bool(ln.question) for ln in lines)} questions for the client -> {out}")
+
+
+def cmd_refine_evaluate(a):
+    """Spec 01: compare a proposal with the list a team and client settled on."""
+    from . import refine as rf
+    from .privacy import register_clients
+    register_clients([a.client])
+    drafts = rf.read_draft(a.workbook, a.draft_tab)
+    team = [d.description for d in rf.read_draft(a.workbook, a.final_tab)]
+    use_model, why_not = _model_wanted(a)
+    raw = rf.ModelRefiner(model=a.model or None).propose(drafts, a.client, _past_categories(a.bank), None) \
+        if use_model else None
+    lines = rf.check(raw, drafts, rf.groups_of(drafts))
+    if a.out:
+        rf.write_revised(a.out, drafts, lines, a.client)
+    print(f"refine-evaluate ({'model' if use_model else 'rules: ' + why_not}):")
+    for k, v in rf.evaluate(drafts, lines, team).items():
+        if isinstance(v, list):
+            print(f"  {k}: {len(v)}")
+            for x in v:
+                print(f"      {x}")
+        else:
+            print(f"  {k}: {v}")
+
+
 def cmd_glossary(a):
     """Seed data/glossary.csv from the bank, keeping the team's confirmed and drafted rows."""
     sheets, _ = load_source(a)
@@ -599,6 +676,31 @@ def main(argv=None):
     p.add_argument("--model", help="OpenRouter model id for --engine llm/both, e.g. "
                    "google/gemini-4-argon (default: $TENDERSURE_MODEL)")
     p.set_defaults(fn=cmd_categories)
+
+    p = sub.add_parser("refine", help="propose a revised category list from a draft; or apply its review")
+    p.add_argument("draft", nargs="?", help="the draft category list (.xlsx or .csv)")
+    p.add_argument("--client", required=True, help="client code, e.g. ERCS")
+    p.add_argument("--sheet", help="the tab holding the draft (default: the first)")
+    p.add_argument("--target", help="category count to aim at, e.g. 50-60 (reported against, never forced)")
+    p.add_argument("--apply", help="a revised list with its Decision column answered: write the final list")
+    p.add_argument("--categories-out", help="with --apply: write the categories table for generate here")
+    p.add_argument("--version", help="with --apply: label for this version of the list")
+    p.add_argument("--out", help="the workbook to write")
+    p.add_argument("--bank", default="data/bank.sqlite", help="past exercises, for suggested additions")
+    p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
+    p.add_argument("--no-model", action="store_true", help="propose by rules only")
+    p.set_defaults(fn=cmd_refine)
+
+    p = sub.add_parser("refine-evaluate", help="compare a refinement with the list a team settled on")
+    p.add_argument("workbook", help="a workbook with the team's draft and final category tabs")
+    p.add_argument("--draft-tab", required=True)
+    p.add_argument("--final-tab", required=True)
+    p.add_argument("--client", required=True)
+    p.add_argument("--out", help="also write the proposal as a revised list")
+    p.add_argument("--bank", default="data/bank.sqlite")
+    p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
+    p.add_argument("--no-model", action="store_true")
+    p.set_defaults(fn=cmd_refine_evaluate)
 
     p = sub.add_parser("learn", help="learn names and Yes/No verdicts for the whole bank; write the review")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")

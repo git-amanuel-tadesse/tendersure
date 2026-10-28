@@ -1516,3 +1516,146 @@ def test_rewordings_drafted_in_one_run_share_one_name():
     assert naming.harmonise_drafts(gl.Glossary(entries)) == 1
     assert [(e.short_name, e.acronym) for e in entries] == [
         ("Company Or Individual Profile", "CIP"), ("Company Or Individual Profile", "CIP"), ("Company Profile", "CP")]
+
+
+# --- category refinement -----------------------------------------------------------
+
+def _draft_book(path, rows, header=("No", "Category Description")):
+    """A draft list laid out like the clients': numbers in B, text in C, group rows."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws["B3"], ws["C3"] = header
+    for i, (num, text) in enumerate(rows, 4):
+        ws.cell(i, 2, num)
+        ws.cell(i, 3, text)
+    wb.save(path)
+    return str(path)
+
+
+RC = [(None, "GENERAL"),
+      (1, "Supply of office stationery"),
+      (2, "Provision of Translation and Interpretation services"),
+      (3, "Provision of travel agency services (IATA Registered Only)"),
+      ("ICT", None),                                          # a group label in the number column
+      (4, "Supply, installation and maintenance of ICT equipment (Servers, Routers)"),
+      (5, "Supply and Maintenance of ICT Equipment (Computers, Laptops)"),
+      (6, "Provision of repairs and maintenance of fire fighting eqiupment"),
+      (7, "Provision of repairs and maintenance of fire fighting eqiupment")]
+
+
+def test_draft_lists_are_read_in_both_client_layouts(tmp_path):
+    from tendersure.refine import read_draft
+    rc = read_draft(_draft_book(tmp_path / "rc.xlsx", RC))
+    assert [(d.id, d.group) for d in rc][:2] == [("1", "GENERAL"), ("2", "GENERAL")]
+    assert [d.group for d in rc][3:] == ["ICT"] * 4
+    nrc = read_draft(_draft_book(tmp_path / "nrc.xlsx", [
+        ("NRC/2026-27/001", "Supply of ICT Equipment"), ("NRC/2026-27/023", "Supply of Stationery"),
+        ("Category B", None), ("Reference", "Prequalification for Provision of Services"),
+        ("NRC/2026 27/006", "Provision of household movers' services")],
+        header=("Reference", "Prequalification for Supply of Goods")))
+    assert [(d.id, d.group) for d in nrc] == [("1", "Prequalification for Supply of Goods"),
+                                              ("23", "Prequalification for Supply of Goods"),
+                                              ("6", "Prequalification for Provision of Services")]
+
+
+@pytest.mark.parametrize("text,title", [
+    ("Supply of office stationery and genuine toners & cartridges",
+     "Supply of Office Stationery and Genuine Toners & Cartridges"),
+    ("Provision of disposal services (e-waste, incineration etc.)",
+     "Provision of Disposal Services (E-Waste, Incineration etc.)"),
+    ("Supply of water, sanitation and hygiene (WASH) equipment", "Supply of Water, Sanitation and Hygiene (WASH) Equipment"),
+])
+def test_title_case_keeps_capitals_and_small_words(text, title):
+    from tendersure.refine import title_case
+    assert title_case(text) == title
+
+
+def test_rules_fold_duplicates_raise_overlaps_and_fill_the_columns(tmp_path):
+    from tendersure import refine as rf
+    drafts = rf.read_draft(_draft_book(tmp_path / "rc.xlsx", RC))
+    lines = {ln.from_draft[0]: ln for ln in rf.check(None, drafts, rf.groups_of(drafts))}
+    assert (lines["7"].status, lines["7"].reason) == (rf.REPEATED, "same as #6")
+    assert "Overlaps with #4" in lines["5"].question                     # ICT equipment twice
+    assert lines["2"].gate_question and "Individual Consultant" in lines["2"].applies_to
+    assert not lines["1"].gate_question and lines["1"].applies_to == rf.COMPANIES
+    assert lines["3"].eligibility == ["IATA Registration Certificate"]
+    assert (lines["1"].status, lines["1"].description) == (rf.RENAMED, "Supply of Office Stationery")
+
+
+def test_model_proposals_are_checked_before_they_are_kept(tmp_path):
+    from tendersure import refine as rf
+    drafts = rf.read_draft(_draft_book(tmp_path / "rc.xlsx", RC))
+    raw = {"lines": [
+        {"from": ["4", "5"], "status": "Merged", "description": "Supply of ICT Equipment"},          # no reason
+        {"from": ["6"], "status": "Renamed", "description": "Provision of Repairs and Maintenance of Fire "
+                                                            "Fighting Equipment", "reason": "spelling"},
+        {"from": ["7"], "status": "Repeated", "description": "x"},
+        {"from": ["1"], "status": "Repeated", "description": "x"},                                  # not a duplicate
+        {"from": ["2"], "status": "Separated", "description": "Provision of Translation Services", "reason": "two trades"},
+        {"from": ["2"], "status": "Separated", "description": "Provision of Interpretation Services", "reason": "two trades",
+         "applies_to": ["Individual Consultant", "Share Company"]}],
+        "additional": [{"description": "Supply of office stationery", "reason": "dup", "group": "GENERAL"},
+                       {"description": "Provision of Cleaning Services", "reason": "common", "group": "general"}]}
+    lines = rf.check(raw, drafts, rf.groups_of(drafts))
+    by = lambda i: [ln for ln in lines if i in ln.from_draft]
+    assert [ln.status for ln in by("4")] == [rf.RENAMED] and "Merge with #5" in by("4")[0].question
+    assert by("6")[0].reason == "spelling; was: Provision of repairs and maintenance of fire fighting eqiupment"
+    assert by("1")[0].status == rf.RENAMED and "duplicate" in by("1")[0].question
+    assert [ln.description for ln in by("2")] == ["Provision of Translation Services",
+                                                   "Provision of Interpretation Services"]
+    assert by("2")[1].gate_question and by("2")[1].applies_to == ["Share Company", "Individual Consultant"]
+    assert by("3")[0].question == "(not reviewed by the model)"                   # skipped: kept as is
+    added = [ln for ln in lines if ln.status == rf.ADDITIONAL]
+    assert [(ln.description, ln.group) for ln in added] == [("Provision of Cleaning Services", "GENERAL")]
+    assert rf.traceability(lines, drafts) == []
+
+
+def test_refine_review_loop_ends_in_a_categories_table(tmp_path, capsys):
+    from tendersure import categories as cat, refine as rf
+    from tendersure.cli import main
+    draft = _draft_book(tmp_path / "rc.xlsx", RC)
+    revised = tmp_path / "revised.xlsx"
+    main(["refine", draft, "--client", "AAA", "--no-model", "--out", str(revised), "--bank", str(tmp_path / "none")])
+    wb = openpyxl.load_workbook(revised)
+    ws = wb["Revised"]
+    col = {c.value: c.column for c in ws[1]}
+    rows = {str(ws.cell(r, col["From draft #"]).value): r for r in range(2, ws.max_row + 1)
+            if ws.cell(r, col["Status"]).value}
+    ws.cell(rows["1"], col["Decision"], "edit")
+    ws.cell(rows["1"], col["Client comment"], "Supply of Stationery and Toners")
+    ws.cell(rows["2"], col["Decision"], "remove")
+    ws.cell(rows["3"], col["Client comment"], "Only for flights within Ethiopia?")       # a note, not applied
+    ws.cell(rows["4"], col["Category Code"], "G0005")
+    wb.save(revised)
+    out, table = tmp_path / "final.xlsx", tmp_path / "cats.csv"
+    main(["refine", "--client", "AAA", "--apply", str(revised), "--out", str(out), "--categories-out", str(table),
+          "--no-model"])
+    assert "7 draft rows -> 5 final categories" in capsys.readouterr().out
+
+    cats = cat.load(str(table))
+    assert [c.description for c in cats][:2] == ["Supply of Stationery and Toners",
+                                                 "Provision of Travel Agency Services (IATA Registered Only)"]
+    assert len(cats) == 5                                 # 7 rows: one removed, one duplicate folded
+    assert cats[1].eligibility == ["IATA Registration Certificate"] and not cats[1].gate_question
+    final = openpyxl.load_workbook(out)
+    assert final["Client comments"]["B2"].value == "Only for flights within Ethiopia?"
+    codes = [c.value for c in final["Final Categories"]["B"]]
+    assert "G0005" in codes
+
+
+def test_evaluation_counts_the_teams_categories_and_separations(tmp_path):
+    from tendersure import refine as rf
+    drafts = [rf.Draft("1", "Supply of ICT Equipment"),
+              rf.Draft("2", "Provision of Cleaning, Gardening and Pest Control Services"),
+              rf.Draft("3", "Supply of Pharmaceutical Products")]
+    lines = [rf.Line("Supply of ICT Equipment", rf.KEPT, ["1"]),
+             rf.Line("Provision of Cleaning Services", rf.SEPARATED, ["2"]),
+             rf.Line("Provision of Pest Control Services", rf.SEPARATED, ["2"]),
+             rf.Line("Supply of Pharmaceutical Products", rf.KEPT, ["3"])]
+    team = ["Supply of ICT Equipment", "Provision of Cleaning Services", "Provision of Gardening Services",
+            "Provision of Pest Control Services"]                       # pharmaceuticals removed by the client
+    got = rf.evaluate(drafts, lines, team)
+    assert got["team categories proposed"] == "3/4"                    # gardening not proposed
+    assert got["team separations proposed"] == "1/1"
+    assert got["proposals the team did not make"] == ["Supply of Pharmaceutical Products"]
+    assert got["rows the team dropped (removed or merged)"] == 1

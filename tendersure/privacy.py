@@ -34,6 +34,7 @@ CLIENT_ALIASES: Dict[str, List[str]] = {
     "ERCS": ["Ethiopian Red Cross Society", "Ethiopian Red Cross", "Red Cross Society", "ERCS"],
     "SNV": ["SNV Netherlands Development Organisation", "SNV Netherlands", "SNV"],
     "ILRI": ["International Livestock Research Institute", "ILRI"],
+    "NRC": ["Norwegian Refugee Council", "NRC"],
     "TASL": ["TASL"],
     "Schindler": ["Schindler"],
 }
