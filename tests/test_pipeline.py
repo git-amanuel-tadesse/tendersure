@@ -544,6 +544,26 @@ def test_category_table_keeps_eligibility_gate_and_applies_to(tmp_path):
 
 # --- real corpus (skipped without client data) ---------------------------------
 
+def test_real_notice_sub_categories_are_all_read(real_corpus):
+    import glob
+    from tendersure.categories import extract_categories
+    pdfs = glob.glob(f"{real_corpus}/ERCS*Invitation*.pdf")
+    if not pdfs:
+        pytest.skip("ERCS notice not present")
+    cats = {c.number: c.sub_categories for c in extract_categories(pdfs[0], "ERCS")}
+    # The notice's SUB-CATEGORY column, as printed (checked by hand, 2026-10-28).
+    assert {n: subs for n, subs in cats.items() if subs} == {
+        1: ["Supply of office Stationery", "Supply of Toners and Cartridges"],
+        16: ["Laundry and Body Soaps", "Mattresses, Blankets, sleeping Matts and Bedsheets, Trapulin",
+             "Jerry Can, Bucket, Washing Basin", "Sanitary pads and Dignity Kits", "Kitchen Sets"],
+        34: ["Ground Coffee", "Tea", "Sugar, Milk Powder", "Fresh fruits, Vegetables, Tubers and Herbs",
+             "Ethiopian Traditional Ingredients (Spices, Ghee Etc.)", "Dairy Products"],
+        39: ["Motor Vehicle Tyres and Tubes", "Batteries", "Lubricants"],
+        42: ["Feasibility Study and Assessment", "Market survey", "Business plan",
+             "Monitoring and Evaluation on base line, Midterm, End term", "Gender and Social Inclusion"],
+    }
+
+
 def test_real_corpus_round_trip(real_corpus, tmp_path):
     sheets = load_corpus(real_corpus)
     g = Generator(sheets, Retriever(sheets))
