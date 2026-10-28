@@ -397,7 +397,7 @@ def cmd_generate(a):
         code = c.code(a.prefix)
         exclude = {s.name for s in sheets if s.code == code} if a.rebuild_existing else None
         target = Target(code, c.description, a.client, c.group, a.client_name, c.sub_categories,
-                        c.requirements)
+                        c.requirements, c.eligibility, c.gate_question, c.applies_to)
         try:
             plan = gen.plan(target, exclude=exclude, marks=marks.get(code))
             check_total(plan)

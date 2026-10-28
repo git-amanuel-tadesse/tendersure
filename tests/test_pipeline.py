@@ -1675,3 +1675,23 @@ def test_only_eligibility_the_draft_states_is_applied():
                                                                   ["Business Travel Licence"])
     assert (pharma.eligibility, pharma.suggested_eligibility) == ([], ["Pharmacy Wholesale License"])
     assert acronym_for("IATA Registration Certificate") == "IATA"
+
+
+def test_category_eligibility_documents_join_the_eligibility_section(corpus):
+    from tendersure import glossary as gl, naming
+    from tendersure.generate import finalise, to_sheet
+    from tendersure.validate import check_template
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, "Provision of Travel Agency Services (IATA Registered Only)", src.client,
+                      eligibility=["IATA Registration Certificate"]))
+    finalise(p)
+    naming.name_documents([p], gl.Glossary([]), naming.RuleDrafter())
+    elig = [q.row for q in p.questions if q.row.eligibility]
+    assert [r.criteria for r in elig] == ["Please attach a valid Trade license",
+                                          "Please attach a valid IATA Registration Certificate"]
+    iata = elig[1]
+    assert (iata.section, iata.answer_type, iata.mandatory, iata.compliance_attach, iata.compliance) == \
+           ("Eligibility", 5, True, True, 0)
+    assert (iata.archive_short_name, iata.acronym) == ("IATA Registration Certificate", "IATA")
+    assert check_template(to_sheet(p)) == [] and p.total() == 100

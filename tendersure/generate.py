@@ -61,6 +61,9 @@ class Target:
     client_name: Optional[str] = None   # how the client is named in text; defaults to `client`
     sub_categories: List[str] = field(default_factory=list)
     requirements: str = ""          # the client's stated requirements for this category, if any
+    eligibility: List[str] = field(default_factory=list)    # documents the Eligibility section asks for
+    gate_question: bool = False     # the business-type question gates the sheet
+    applies_to: List[str] = field(default_factory=list)     # business types the category accepts
 
     @property
     def name_in_text(self) -> str:
@@ -368,6 +371,22 @@ def _trade_license_to_move(plan: Plan, in_section: List[PlannedRow]) -> List[Pla
     return [p for p in found if not p.row.marks]
 
 
+def _eligibility_documents(plan: Plan, in_section: List[PlannedRow]) -> List[PlannedRow]:
+    """An upload row per document in the category's Eligibility column (from
+    the categories table) that the sheet does not ask for yet (spec 02 G3)."""
+    asked = " ".join(p.row.criteria.lower() for p in plan.questions)
+    out = []
+    for doc in plan.target.eligibility:
+        if doc.lower() in asked:
+            continue
+        out.append(PlannedRow(kind="question", origin=ADAPTED, source="categories table",
+                              notes=[f"eligibility document from the categories table: {doc}"],
+                              row=Row(source_file="", sheet="", excel_row=0, criteria=f"Please attach a valid {doc}",
+                                      marks=0.0, archive_short_name=doc if len(doc.split()) <= 4 else None,
+                                      answer_type=5, mandatory=True, compliance_attach=True, eligibility=True)))
+    return out
+
+
 def _eligibility_position(plan: Plan, in_section: List[PlannedRow]) -> int:
     """After the section's own rows; else after the sections that precede it
     (and a Sub Total closing them)."""
@@ -397,9 +416,11 @@ def _flag_eligibility(plan: Plan):
 
 def place_eligibility(plan: Plan):
     """An Eligibility section right after Company Information, holding the
-    Trade License (spec 02 G2, G3)."""
+    Trade License and the category's own eligibility documents (spec 02 G2,
+    G3)."""
     in_section = [p for p in plan.questions if section_key(p.row.section) == "eligibility"]
     moving = _trade_license_to_move(plan, in_section)
+    moving += _eligibility_documents(plan, in_section)
     for p in moving:
         if p in plan.rows:
             plan.rows.remove(p)
