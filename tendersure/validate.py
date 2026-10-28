@@ -441,10 +441,15 @@ def needs_names(r: Row) -> bool:
 
 
 def check_names(sheet: Sheet) -> List[Finding]:
-    """Spec 02 G8: required rows have both names; acronyms are unique in a sheet."""
+    """Spec 02 G8: required rows have both names, any other row with a Short
+    Name has an acronym too, and acronyms are unique in a sheet."""
     out, first = [], {}
     for r in sheet.rows:
         if not needs_names(r):
+            if r.archive_short_name and not r.acronym:
+                out.append(Finding(sheet.name, r.excel_row, "NAMES-NO-ACRONYM", SILENT, "warning",
+                                   f"Short Name '{r.archive_short_name}' has no Acronym.",
+                                   "Add the acronym (the letters of the Short Name, e.g. Company Name -> CN)."))
             continue
         missing = [n for n, v in (("Archive Short Name", r.archive_short_name), ("Acronym", r.acronym)) if not v]
         if missing:

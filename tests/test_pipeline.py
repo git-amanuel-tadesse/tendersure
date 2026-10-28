@@ -1886,3 +1886,16 @@ def test_generate_refuses_a_sheet_the_check_finds_errors_in(corpus, tmp_path, ca
     out = capsys.readouterr().out
     assert "NOT WRITTEN AAA-ET-2026-002: 1 check error(s): OTHER-CLIENT 1 (first: names 'SNV')" in out
     assert openpyxl.load_workbook(tmp_path / "gen.xlsx").sheetnames == ["AAA-ET-2026-001"]
+
+
+def test_a_named_text_question_gets_an_acronym_too(corpus):
+    from tendersure import glossary as gl, naming
+    from tendersure.generate import finalise, to_sheet
+    from tendersure.validate import check_names
+    p = _named_plan(corpus, shareholders=0)
+    company = next(q.row for q in p.questions if q.row.criteria == "Company name")
+    assert (company.answer_type, company.archive_short_name, company.acronym) == (1, "Company Name", None)
+    naming.name_documents([p], gl.Glossary([]), naming.RuleDrafter())
+    assert company.acronym == "CN"
+    company.acronym = None                                   # as a hand edit might leave it
+    assert [f.rule for f in check_names(to_sheet(p))] == ["NAMES-NO-ACRONYM"]

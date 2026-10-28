@@ -173,6 +173,10 @@ always present.
   DAF/MAF, TIN/PIN) are kept.
 - Within a sheet, acronyms are unique; repeated blocks are numbered
   (REF 1, REF 2, REF 3; Staff 1, Staff 2).
+- A row that carries a Short Name although it needs none (a text question
+  the client named: "Company name" -> "Company Name") gets an acronym by the
+  same letter rule (Company Name -> CN), so no Short Name stands without one
+  (decided 2026-10-29).
 - A copied pair that contradicts the glossary is reported, not changed
   (e.g. ERCS "Website address" carries the short name "Main Office
   Location").

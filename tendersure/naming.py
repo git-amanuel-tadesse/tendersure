@@ -221,12 +221,27 @@ def fill(plan: Plan, glossary: gl.Glossary):
                    else "from the glossary")
             p.note(f"{' and '.join(took)} {how}", adapted=False)
         p.row.archive_short_name, p.row.acronym = short or None, acronym or None
+    _acronyms_for_other_names(plan)
     _unique_acronyms(plan)
+
+
+def _acronyms_for_other_names(plan: Plan):
+    """A row that has a Short Name though it needs none (a text question the
+    client named, e.g. "Company name" -> "Company Name") gets its acronym by
+    the letter rule too, so no Short Name stands without one (decided
+    2026-10-29)."""
+    for p in plan.questions:
+        r = p.row
+        if r.archive_short_name and not r.acronym and not needs_names(r):
+            r.acronym = acronym_for(r.archive_short_name) or None
 
 
 def _unique_acronyms(plan: Plan):
     used: Dict[str, str] = {}
-    for p, key in _named_rows(plan):
+    qs = plan.questions
+    rows = [q.row for q in qs]
+    for i, p in enumerate(qs):
+        key = context_key(rows, i)
         a = p.row.acronym
         if not a:
             continue
