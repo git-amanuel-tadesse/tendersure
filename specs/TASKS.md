@@ -73,6 +73,17 @@ the same `find` functions, so a rule cannot drift between the two flows.
 | T32 | Evaluate on NRC history (draft → revised → final). | 01 | T30 | S | Report of the team's changes the tool proposed, and its extra proposals. |
 | T33 | Run on the Red Cross draft and hand the revised list to the team. | 01 | T30 | S | `revised.xlsx` delivered. |
 
+## Phase 3b: learning from the bank (spec 04)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T36 | Group rewordings of a question (similarity threshold, a setting); never merge questions confirmed separately. | 04 L1 | | M | The bank's 69 scored Yes/No questions form about 53 groups; the warranty and "company / organization" variants group. |
+| T37 | Reuse a group's confirmed answer for a new rewording, as `drafted (from similar)`. | 04 L2 | T36 | S | A reworded question gets the verdict and names of its confirmed twin, marked as a draft. |
+| T38 | Chunked model calls (at most 40 per call, per client) for names and verdicts; a failed chunk falls back to rules alone. | 04 L5 | | S | 100 new questions make 3 calls; one failing call leaves the other chunks' answers. |
+| T39 | `learn` command (and `ingest --learn`): seed and fill the glossary, judge every scored Yes/No question, for new questions only. | 04 L3, L4 | T36–T38 | M | A second run with no new history makes no call. |
+| T40 | Review workbook of drafts, one line per group; `learn --review` applies the answers as `confirmed`. | 04 L6 | T39 | M | Answering `ok` or a correction on a line confirms every question in its group. |
+| T41 | `generate` asks only about questions new to the batch, chunked, and lists those drafts in the QA report. | 04 L7 | T38, T39 | S | After `learn`, an ERCS build makes no model call for questions the bank already holds. |
+
 ## Phase 4: wrap-up
 
 | ID | Task | Spec | Depends | Size | Done when |

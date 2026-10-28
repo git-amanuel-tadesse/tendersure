@@ -13,6 +13,7 @@ from these specs until the task list is reviewed.
 | [01-category-refinement.md](01-category-refinement.md) | Draft category list → revised list for the client → final list | 9 |
 | [02-criteria-generation.md](02-criteria-generation.md) | Final category list → one criteria sheet per category | 1, 2, 3, 4, 5, 7, 8, 10, 11 |
 | [03-check.md](03-check.md) | A sheet edited by hand → list of problems | 6 |
+| [04-bank-learning.md](04-bank-learning.md) | History → the learned names and Yes/No verdicts every build reuses | 5, 11 at scale |
 
 The build order is in [TASKS.md](TASKS.md).
 
