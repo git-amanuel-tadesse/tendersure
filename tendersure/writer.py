@@ -19,13 +19,21 @@ import openpyxl
 from openpyxl.utils import get_column_letter
 
 from .generate import Plan, check_total
-from .parser import section_key
+from .parser import header_columns, section_key
 from .schema import LAYOUT
 
 FIRST_COL = 2           # B
 COL = {f: FIRST_COL + i for i, (f, _) in enumerate(LAYOUT)}
 LAST_COL = FIRST_COL + len(LAYOUT) - 1
 MARK_FIELDS = ("marks", "system", "compliance")     # summed on Sub Total and Total rows
+
+# Columns an older skeleton lacks take the style of a column like them.
+STYLE_SIBLING = {
+    "eligibility": "mandatory", "gate_question": "mandatory",
+    "evaluation": "system",
+    "eval_options": "options", "eval_option_scores": "option_scores",
+    "verify_against": "options", "applies_to": "options",
+}
 
 
 def _num(v):
@@ -64,15 +72,26 @@ class _Styles:
         # A plain (non-first) question row for D..Q avoids a one-off fill.
         plain = next((r.excel_row for r in sk.rows[1:] if r.section == sk.rows[0].section), first_q)
         self.rows["plain"] = plain
-        self.n_template_cols = sk.n_columns
+        # Output column -> the skeleton column holding the same field, or a
+        # sibling's when the skeleton has no such column (older layouts).
+        found = header_columns(ws, sk.header_row)
+        self.source_col = {}
+        for f, col in COL.items():
+            src = found.get(f) or found.get(STYLE_SIBLING.get(f))
+            if src:
+                self.source_col[col] = src
 
     def cell(self, role: str, col: int):
         r = self.rows.get(role)
-        if r is None:
+        src = self.source_col.get(col)
+        if r is None or src is None:
             return None
-        if role == "header" and col >= FIRST_COL + self.n_template_cols:
-            col = FIRST_COL + 12          # borrow the Options header style (N)
-        return self.ws.cell(r, col)
+        return self.ws.cell(r, src)
+
+    def width(self, col: int) -> Optional[float]:
+        src = self.source_col.get(col)
+        dim = self.ws.column_dimensions.get(get_column_letter(src)) if src else None
+        return dim.width if dim else None
 
 
 class Writer:
@@ -110,13 +129,10 @@ class Writer:
         ws = wb.create_sheet(title)
         last_col = LAST_COL
 
-        for col in range(1, max(last_col, tpl_ws.max_column) + 1):
-            letter = get_column_letter(col)
-            if letter in tpl_ws.column_dimensions:
-                ws.column_dimensions[letter].width = tpl_ws.column_dimensions[letter].width
-        if len(LAYOUT) > st.n_template_cols:
-            for col in range(FIRST_COL + st.n_template_cols, last_col + 1):
-                ws.column_dimensions[get_column_letter(col)].width = 18
+        if "A" in tpl_ws.column_dimensions:
+            ws.column_dimensions["A"].width = tpl_ws.column_dimensions["A"].width
+        for col in range(FIRST_COL, last_col + 1):
+            ws.column_dimensions[get_column_letter(col)].width = st.width(col) or 18
         for r in range(1, st.header_row + 1):
             h = tpl_ws.row_dimensions[r].height
             if h:
@@ -128,7 +144,7 @@ class Writer:
         _copy_style(st.cell("title", FIRST_COL), c)
         # The 'Marks' banner spans Marks to Evaluation, as in the template.
         for col in range(COL["marks"], COL["evaluation"] + 1):
-            _copy_style(st.cell("banner", col), ws.cell(3, col))
+            _copy_style(st.cell("banner", COL["marks"]), ws.cell(3, col))
         ws.cell(3, COL["marks"], "Marks")
         ws.merge_cells(start_row=3, start_column=COL["marks"], end_row=3, end_column=COL["evaluation"])
 

@@ -193,6 +193,25 @@ def test_writer_uses_the_21_column_template(corpus, tmp_path):
            (True, True, "Sole Proprietor, Share Company")
 
 
+def test_writer_copies_styles_by_field_not_position(corpus, tmp_path):
+    from openpyxl.styles import PatternFill
+    path = corpus / "AAA.xlsx"
+    wb = openpyxl.load_workbook(path)
+    ws = wb["AAA-ET-2026-003"]                     # 14 columns: Compliance in G, Mandatory in K
+    ws["G4"].fill = PatternFill("solid", fgColor="FFFF0000")
+    ws["K4"].fill = PatternFill("solid", fgColor="FF0000FF")
+    ws.column_dimensions["G"].width = 33
+    wb.save(path)
+
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    Writer().write([g.plan(Target(src.code, src.description, src.client))], str(tmp_path / "o.xlsx"))
+    out = openpyxl.load_workbook(tmp_path / "o.xlsx").active
+    assert out["H4"].value == "Compliance" and out["H4"].fill.fgColor.rgb == "FFFF0000"
+    assert out.column_dimensions["H"].width == 33
+    assert out["F4"].value == "Eligibility" and out["F4"].fill.fgColor.rgb == "FF0000FF"   # Mandatory's
+
+
 def test_writer_refuses_off_total(corpus, tmp_path):
     _, g = _gen(corpus)
     p = g.plan(Target("AAA-ET-2026-004", "Supply of Cleaning Materials", "AAA"))
