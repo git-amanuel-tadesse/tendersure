@@ -76,10 +76,13 @@ class _Styles:
         # sibling's when the skeleton has no such column (older layouts).
         found = header_columns(ws, sk.header_row)
         self.source_col = {}
+        self.borrowed = set()           # output columns styled from a sibling
         for f, col in COL.items():
             src = found.get(f) or found.get(STYLE_SIBLING.get(f))
             if src:
                 self.source_col[col] = src
+            if f not in found:
+                self.borrowed.add(col)
 
     def cell(self, role: str, col: int):
         r = self.rows.get(role)
@@ -131,8 +134,11 @@ class Writer:
 
         if "A" in tpl_ws.column_dimensions:
             ws.column_dimensions["A"].width = tpl_ws.column_dimensions["A"].width
-        for col in range(FIRST_COL, last_col + 1):
-            ws.column_dimensions[get_column_letter(col)].width = st.width(col) or 18
+        for (_, label), col in zip(LAYOUT, range(FIRST_COL, last_col + 1)):
+            width = st.width(col) or 18
+            if col in st.borrowed:          # a sibling's width may not fit this header
+                width = max(width, len(label) + 4)
+            ws.column_dimensions[get_column_letter(col)].width = width
         for r in range(1, st.header_row + 1):
             h = tpl_ws.row_dimensions[r].height
             if h:

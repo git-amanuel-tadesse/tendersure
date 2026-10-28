@@ -6,6 +6,11 @@ with no dependency between them can be built in any order.
 
 Size: **S** under half a day, **M** about a day, **L** two days or more.
 
+**Done:** T01, T02, T03, T06, T07 (first slice, 2026-10-28). ERCS batch
+regenerated: 21 columns, 0 rows with marks only in Marks (was 3,508), split
+Sub Section blocks fixed. One one-row Technical section in ERCS-041 keeps the
+blank Sub Section of the client's own sheet.
+
 ## Design note: one rule, two uses
 
 Every sheet rule in spec 02 is needed twice: generation applies it, and the
