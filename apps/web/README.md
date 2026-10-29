@@ -9,5 +9,5 @@ Tailwind, Vite.
 - `src/lib/answers.ts`: the Decisions grammar, built from the controls and
   read back (tested in `answers.test.ts`).
 
-`make dev` runs it at http://127.0.0.1:5173/ against the API on :5000;
+`make dev` runs it at http://127.0.0.1:5173/ against the API on :8765;
 `make build` puts it in `dist/` for `tendersure-api` to serve.

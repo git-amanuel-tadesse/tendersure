@@ -122,7 +122,7 @@ apps/web ──▶ packages/api-client ──HTTP──▶ apps/api ──▶ te
   (`pip install -e packages/core -e apps/api -e apps/cli`); `requirements.txt`
   is replaced by the packages' `pyproject.toml` files.
 - JavaScript: pnpm workspace over `apps/web` and `packages/api-client`.
-- `make dev` runs Flask (:5000) and Vite (:5173, proxying `/api`) together.
+- `make dev` runs Flask (:8765) and Vite (:5173, proxying `/api`) together.
 - Files are moved with `git mv` so their history follows them.
 
 ## Architecture
@@ -130,7 +130,7 @@ apps/web ──▶ packages/api-client ──HTTP──▶ apps/api ──▶ te
 ```
 apps/web  (TanStack Router + Query + Table)
   │  packages/api-client (generated types, typed fetch)
-  │  dev: Vite proxy → :5000        local use: served by Flask from apps/web/dist
+  │  dev: Vite proxy → :8765        local use: served by Flask from apps/web/dist
   ▼
 apps/api  (Flask blueprints: bank, exercises, refine, categories, generate, jobs;
   │        pydantic schemas; job runner; workspaces)
@@ -171,7 +171,7 @@ reading the file into the same dicts).
 
 ### W2. Flask server
 
-- Started with `tendersure-api [--port 5000]` (or `make serve`); opens the
+- Started with `tendersure-api [--port 8765]` (or `make serve`); opens the
   browser. Serves the built frontend from `apps/web/dist` and the API under
   `/api`.
 - Binds to `127.0.0.1`, with no option to listen anywhere else.
@@ -348,3 +348,7 @@ Where the build differs from the plan above, and why:
 - **Schema names are unique.** OpenAPI names a schema after its pydantic
   class, and two `Import` classes had silently shared one schema. A test now
   fails on any repeated model name in the API.
+- **Port 8765, not 5000.** On macOS the AirPlay Receiver holds 5000 on every
+  address. `http://localhost:5000` tries IPv6 first and got AirPlay's empty
+  403, even though the server answered on 127.0.0.1. The server now opens
+  127.0.0.1, and refuses to start on a port another program holds.

@@ -94,3 +94,25 @@ def test_every_model_the_api_uses_has_a_name_of_its_own():
             if issubclass(cls, BaseModel) and cls.__module__ == mod.__name__:
                 seen.setdefault(name, set()).add(mod.__name__)
     assert {n: sorted(ms) for n, ms in seen.items() if len(ms) > 1} == {}
+
+
+def test_the_server_refuses_a_port_another_program_holds(monkeypatch):
+    """On macOS the AirPlay Receiver holds 5000; binding 127.0.0.1 beside it works, but localhost then reaches
+    AirPlay. A port anyone else answers on is refused, with the way out."""
+    import socket
+
+    from tendersure_api import server
+    monkeypatch.setattr("flask.Flask.run", lambda self, **kw: None)
+    with socket.socket() as other:
+        other.bind(("127.0.0.1", 0))
+        other.listen()
+        port = other.getsockname()[1]
+        assert server.taken(port) == ["127.0.0.1"]
+        with pytest.raises(SystemExit) as e:
+            server.main(["--no-browser", "--port", str(port)])
+        assert f"port {port} is already used by another program" in str(e.value) and "--port" in str(e.value)
+
+
+def test_the_default_port_is_not_5000():
+    from tendersure_api import server
+    assert server.PORT == 8765

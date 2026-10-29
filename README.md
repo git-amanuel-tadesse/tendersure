@@ -34,8 +34,13 @@ repo root (or wherever `$TENDERSURE_HOME` points), so commands work from any fol
 
 ## The web app
 
-    make serve      # builds the web app; the API serves it at http://localhost:5000/
-    make dev        # while working on it: the API on :5000 and Vite on http://127.0.0.1:5173/
+    make serve      # builds the web app; the API serves it at http://127.0.0.1:8765/
+    make dev        # while working on it: the API on :8765 and Vite on http://127.0.0.1:5173/
+
+Open the 127.0.0.1 address rather than localhost. On macOS, `localhost` tries
+IPv6 first, where another program (the AirPlay Receiver on 5000, for one) may
+answer instead. The server refuses to start on a port another program holds:
+use `tendersure-api --port <n>`.
 
 An exercise is one client's round. Its three steps follow the CLI's:
 **1 Refine categories** (draft list → revised list → the client's review → final list),

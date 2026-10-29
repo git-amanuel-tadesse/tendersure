@@ -12,13 +12,13 @@ install:
 	$(PY) -m pip install -e "packages/core[test]" -e "apps/cli[test]" -e "apps/api[test]" "import-linter>=2.1"
 	pnpm install
 
-# the API on :5000 and the web app on :5173 (open that one); Ctrl-C stops both
+# the API on :8765 and the web app on http://127.0.0.1:5173/ (open that one); Ctrl-C stops both
 dev:
 	@trap 'kill 0' INT TERM EXIT; \
 	$(BIN)tendersure-api --no-browser --debug & \
 	pnpm --filter @tendersure/web dev
 
-# the web app into apps/web/dist, which tendersure-api serves at http://localhost:5000/
+# the web app into apps/web/dist, which tendersure-api serves at http://127.0.0.1:8765/
 build:
 	pnpm --filter @tendersure/web build
 
