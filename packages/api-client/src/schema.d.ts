@@ -289,7 +289,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Answer Decisions items of a finished run; '' clears an answer. Nothing is built yet. */
+        /**
+         * Answer Decisions items of a finished run; '' clears an answer (accepts the proposal), and is
+         * @description kept as such, so it also clears an answer the run carried from the one before. Nothing is built yet.
+         */
         patch: operations["generate_answer_runs__int_number__answers_patch"];
         trace?: never;
     };

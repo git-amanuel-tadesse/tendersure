@@ -3338,6 +3338,7 @@
     },
     "/api/exercises/{exercise_id}/generate/runs/{number}/answers": {
       "patch": {
+        "description": "kept as such, so it also clears an answer the run carried from the one before. Nothing is built yet.",
         "operationId": "generate_answer_runs__int_number__answers_patch",
         "parameters": [
           {
@@ -3394,7 +3395,7 @@
             "description": "Unprocessable Content"
           }
         },
-        "summary": "Answer Decisions items of a finished run; '' clears an answer. Nothing is built yet.",
+        "summary": "Answer Decisions items of a finished run; '' clears an answer (accepts the proposal), and is",
         "tags": [
           "generate"
         ]
