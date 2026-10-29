@@ -163,3 +163,19 @@ def test_a_benchmark_is_chosen_mapped_corrected_and_used(client, ex):
     run = client.get(f"/api/exercises/{ex}/generate/runs/{job.result['run']}").json
     assert run["settings"]["benchmark"] == "uploads/bench.xlsx" and run["written"] == 3
     assert client.delete(f"/api/exercises/{ex}/benchmark", headers=W).json["file"] is None
+
+
+def test_clearing_a_carried_answer_sticks(client, ex):
+    """PSI: a refused marks answer (99) was carried run after run; clearing it in the browser did nothing."""
+    _run(client, client.post(f"/api/exercises/{ex}/generate", json={"use_model": False}, headers=W))
+    first = client.get(f"/api/exercises/{ex}/generate/runs/1").json
+    m = next(i for i in first["result"]["items"] if i["id"].startswith("M-") and i["codes"] == ["AAA-ET-2026-004"])
+    bad = "company 9, experience 40, trade_reference 50"                        # 99: refused
+    client.patch(f"/api/exercises/{ex}/generate/runs/1/answers", json={"answers": {m["id"]: bad}}, headers=W)
+    two = _run(client, client.post(f"/api/exercises/{ex}/generate/runs/1/apply", headers=W)).result["run"]
+    carried = _items(client.get(f"/api/exercises/{ex}/generate/runs/{two}").json)[m["id"]]
+    assert carried["answer"] == bad and carried["status"].startswith("NOT APPLIED")
+    client.patch(f"/api/exercises/{ex}/generate/runs/{two}/answers", json={"answers": {m["id"]: ""}}, headers=W)   # as proposed
+    three = _run(client, client.post(f"/api/exercises/{ex}/generate/runs/{two}/apply", headers=W)).result["run"]
+    now = _items(client.get(f"/api/exercises/{ex}/generate/runs/{three}").json)[m["id"]]
+    assert now["answer"] == "" and not now["status"].startswith("NOT APPLIED")

@@ -201,7 +201,8 @@ def get_run(path: RunPath):
 
 @bp.patch("/runs/<int:number>/answers", responses={200: Run})
 def answer(path: RunPath, body: Answers):
-    """Answer Decisions items of a finished run; '' clears an answer. Nothing is built yet."""
+    """Answer Decisions items of a finished run; '' clears an answer (accepts the proposal), and is
+    kept as such, so it also clears an answer the run carried from the one before. Nothing is built yet."""
     folder = _folder(path.exercise_id)
     d = _run_dir(folder, path.number)
     result = _read(os.path.join(d, "result.json"))
@@ -213,10 +214,7 @@ def answer(path: RunPath, body: Answers):
         abort(400, description=f"no such Decisions item in run {path.number}: {', '.join(unknown)}")
     answers = _read(os.path.join(d, "answers.json"), {})
     for k, v in body.answers.items():
-        if v.strip():
-            answers[k] = v.strip()
-        else:
-            answers.pop(k, None)
+        answers[k] = v.strip()                         # '' too: "as proposed" must beat a carried answer
     _write(os.path.join(d, "answers.json"), answers)
     return _summary(folder, path.number, full=True)
 
@@ -231,6 +229,7 @@ def apply(path: RunPath):
     if result is None:
         abort(409, description=f"run {path.number} has not finished: nothing to apply")
     answers = {i["id"]: i["answer"] for i in result["items"] if i["answer"]}
-    answers.update(_read(os.path.join(d, "answers.json"), {}))
+    answers.update(_read(os.path.join(d, "answers.json"), {}))      # a cleared answer ('') overrides a carried one
+    answers = {k: v for k, v in answers.items() if v}
     settings = RunSettings(**{**_read(os.path.join(d, "settings.json")), "review_of": path.number})
     return _start(path.exercise_id, folder, settings, _read(os.path.join(d, "proposals.json"), {}), answers), 202
