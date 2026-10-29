@@ -26,3 +26,10 @@ def client(web_dist):
     app = create_app(web_dist=str(web_dist))
     app.testing = True
     return app.test_client()
+
+
+@pytest.fixture
+def corpus(tmp_path_factory):
+    """The synthetic history, in a folder of its own (a build reads every workbook under it)."""
+    from tendersure.testing import write_corpus
+    return write_corpus(tmp_path_factory.mktemp("corpus"))

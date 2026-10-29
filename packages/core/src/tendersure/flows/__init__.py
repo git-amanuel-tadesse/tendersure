@@ -3,12 +3,16 @@ modules directly (spec 06 M1).
 
 Each step reports through the `tendersure` logger and returns a result; it
 never prints and never exits (FlowError when it cannot go on; LLMError and
-PrivacyError when a model step stops).
+PrivacyError when a model step stops). Draft, Line, Category and Item are the
+steps' inputs and outputs, so they are part of this API too.
 """
 
+from ..categories import Category
 from ..llm import LLMError
 from ..paths import Paths, current, use
 from ..privacy import PrivacyError
+from ..refine import Draft, Line
+from ..review import Item
 from .categories import CategoriesResult, extract as extract_categories, ENGINES
 from .check import CheckResult, check
 from .common import FlowError, Model, load_corpus, load_source, log
@@ -22,6 +26,7 @@ from .research import ResearchResult, apply_review as apply_research_review, res
 
 __all__ = [
     "FlowError", "LLMError", "PrivacyError", "Model", "Paths", "current", "use", "log",
+    "Draft", "Line", "Category", "Item",
     "load_corpus", "load_source",
     "ingest", "IngestResult",
     "extract_categories", "CategoriesResult", "ENGINES",
