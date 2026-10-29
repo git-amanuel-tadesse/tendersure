@@ -209,10 +209,17 @@ reading the file into the same dicts).
 
 - One background worker thread per server (steps share the bank and the
   learned files, so they run one at a time; a second request queues).
-- A job's progress lines and status are kept in memory and written to
-  `workspaces/<id>/jobs/<job>.json`, so a page reload shows them. A job that
-  was running when the server stopped is shown as `interrupted`; rerunning
-  generation reuses the model answers already cached (`.cache/build_*`).
+- A job's lines are every line the `tendersure` logger emits while it runs,
+  the same lines the CLI prints. They come from the worker or from threads
+  the step starts itself (e.g. research resolving links in parallel), never
+  from a thread answering an HTTP request.
+- Each job is written to `workspaces/.jobs/<job>.json` on every change, so a
+  page reload shows it and a crash loses no line. Jobs share one folder
+  because some, like ingest, belong to no exercise; each job records its
+  `exercise_id`.
+- A job that was queued or running when the server stopped is shown as
+  `interrupted`. Rerunning generation reuses the model answers already
+  cached (`.cache/build_*`).
 - The UI polls `GET /api/jobs/<id>` (TanStack Query `refetchInterval`) while
   a job runs. No websockets.
 

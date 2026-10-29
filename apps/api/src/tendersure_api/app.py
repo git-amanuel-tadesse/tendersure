@@ -53,12 +53,24 @@ def _invalid(e):
 
 def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = None) -> OpenAPI:
     from .exercises import MAX_UPLOAD, bp as exercises
+    from .jobs import Runner
+    from .jobs_api import bp as jobs
     from .workspaces import Workspaces
     app = OpenAPI(__name__, info=Info(title="TenderSure", version=VERSION), doc_ui=False, static_folder=None,
                   validation_error_callback=_invalid)
     app.json.sort_keys = False
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD
-    app.config["WORKSPACES"] = Workspaces(workspaces)
+    app.config["WORKSPACES"] = store = Workspaces(workspaces)
+    app.config["JOBS"] = runner = Runner(os.path.join(store.root, ".jobs"))
+
+    # a request's own log lines are not a running job's progress
+    @app.before_request
+    def serving():
+        runner.serving(True)
+
+    @app.teardown_request
+    def served(_exc):
+        runner.serving(False)
 
     @app.before_request
     def local_only():
@@ -90,6 +102,7 @@ def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = N
         return Health(ok=True, version=VERSION).model_dump()
 
     app.register_api(exercises)
+    app.register_api(jobs)
 
     # Plain Flask routes, outside the OpenAPI document: the document itself,
     # and the built web app (apps/web/dist) - its files, and index.html for
