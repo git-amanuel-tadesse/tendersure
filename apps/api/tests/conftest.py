@@ -21,9 +21,14 @@ def web_dist(tmp_path):
 
 
 @pytest.fixture
-def client(web_dist):
+def workspaces(tmp_path):
+    return tmp_path / "workspaces"
+
+
+@pytest.fixture
+def client(web_dist, workspaces):
     from tendersure_api import create_app
-    app = create_app(web_dist=str(web_dist))
+    app = create_app(web_dist=str(web_dist), workspaces=str(workspaces))
     app.testing = True
     return app.test_client()
 

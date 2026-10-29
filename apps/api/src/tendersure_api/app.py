@@ -44,9 +44,21 @@ def _host(netloc: str) -> str:
     return netloc.rsplit(":", 1)[0] if netloc.count(":") == 1 else netloc
 
 
-def create_app(web_dist: Optional[str] = WEB_DIST) -> OpenAPI:
-    app = OpenAPI(__name__, info=Info(title="TenderSure", version=VERSION), doc_ui=False, static_folder=None)
+def _invalid(e):
+    """A request that does not match its schema: the same JSON shape as every other error."""
+    r = jsonify(error="Invalid request", detail=e.errors(include_url=False, include_context=False))
+    r.status_code = 422
+    return r                             # flask-openapi3 aborts with this response as it is
+
+
+def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = None) -> OpenAPI:
+    from .exercises import MAX_UPLOAD, bp as exercises
+    from .workspaces import Workspaces
+    app = OpenAPI(__name__, info=Info(title="TenderSure", version=VERSION), doc_ui=False, static_folder=None,
+                  validation_error_callback=_invalid)
     app.json.sort_keys = False
+    app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD
+    app.config["WORKSPACES"] = Workspaces(workspaces)
 
     @app.before_request
     def local_only():
@@ -60,6 +72,8 @@ def create_app(web_dist: Optional[str] = WEB_DIST) -> OpenAPI:
 
     @app.errorhandler(HTTPException)
     def http_error(e: HTTPException):
+        if e.response is not None:       # already a full JSON response (an invalid request)
+            return e.response
         return jsonify(error=e.name, detail=e.description), e.code
 
     @app.errorhandler(flows.FlowError)
@@ -74,6 +88,8 @@ def create_app(web_dist: Optional[str] = WEB_DIST) -> OpenAPI:
     @app.get("/api/health", responses={200: Health})
     def health():
         return Health(ok=True, version=VERSION).model_dump()
+
+    app.register_api(exercises)
 
     # Plain Flask routes, outside the OpenAPI document: the document itself,
     # and the built web app (apps/web/dist) - its files, and index.html for

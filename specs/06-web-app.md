@@ -195,7 +195,15 @@ reading the file into the same dicts).
 - Browser edits are saved as JSON next to the files they belong to
   (`revised.json`, `answers.json`); the Excel files are written from that
   state on download. The JSON is the source of truth inside the app.
-- Upload names are sanitised; only `.xlsx`, `.csv` and `.pdf` are accepted.
+- An uploaded file keeps the name it was sent with, or is refused. A name
+  with a folder in it, `..`, a leading dot or an unusual character is
+  refused rather than cut down, and only `.xlsx`, `.csv` and `.pdf` are
+  accepted, at most 100 MB. Uploads go to `uploads/` and never overwrite:
+  a second `draft.xlsx` becomes `draft (2).xlsx`.
+- A download resolves inside its exercise's folder or is a 404, never a file
+  elsewhere (`..`, links, `exercise.json` itself).
+- Exercise ids are readable slugs of the name (`ERCS 2026–2029` →
+  `ercs-2026-2029`); a repeated name gets `-2`.
 
 ### W4. Jobs
 
