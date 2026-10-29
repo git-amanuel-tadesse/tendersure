@@ -2113,3 +2113,64 @@ def test_generate_researches_only_categories_the_bank_has_no_source_for(corpus):
     assert any("Remote Pilot Licence" in n and "not applied" in n for n in p.notes)
     assert any("Remotely Piloted Aircraft System permit" in n for n in p.questions[0].notes)
     assert not any(q.origin == "newly drafted" and "drone" in q.row.criteria for q in covered.questions)
+
+
+def _grounded(payload, sources):
+    """A Gemini stand-in answering `payload` with these grounding pages."""
+    from tendersure.llm import GeminiLLM
+
+    def transport(url, headers, body):
+        chunks = [{"web": {"uri": u, "title": t}} for t, u in sources]
+        return {"candidates": [{"content": {"parts": [{"text": json.dumps(payload)}]}, "finishReason": "STOP",
+                                "groundingMetadata": {"groundingChunks": chunks}}]}
+    return GeminiLLM(model="m", transport=transport, paid_tier=True)
+
+
+def test_web_licences_drop_what_every_supplier_holds_and_links_resolve():
+    from tendersure import research as rs
+    redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AbC"
+    web = rs.WebResearcher(llm=_grounded({"licences": [
+        {"name": "Business License (Trade License)"}, {"name": "Commercial Registration Certificate"},
+        {"name": "TIN Certificate"}, {"name": "Certificate of Competency for Building Contractor",
+                                      "issuer": "Ministry of Urban Development"}]}, [("moud.gov.et", redirect)]),
+        resolve=lambda u: "https://moud.gov.et/coc" if "redirect" in u else u)
+    f = web.research("Provision of Building Construction Works", "ET", ["licences"])[0]
+    assert [x["name"] for x in f.proposal["licences"]] == ["Certificate of Competency for Building Contractor"]
+    assert f.sources == ["moud.gov.et | https://moud.gov.et/coc"]
+    only_generic = rs.WebResearcher(llm=_grounded({"licences": [{"name": "Trade License"}]}, [("x", "https://x")]))
+    assert only_generic.research("Supply of Stationery", "ET", ["licences"]) == []
+
+
+def test_topics_the_web_found_nothing_on_are_reported(caplog):
+    import logging
+    from tendersure import research as rs
+    web = rs.WebResearcher(llm=_grounded({"names": {"technical_name": "X"}}, []))      # no grounding: no source
+    with caplog.at_level(logging.INFO, logger="tendersure"):
+        rs.research(["Provision of Obscure Services"], "ET", ["names"], rs.Table([]), None, web)
+    assert web.unanswered == ["Provision of Obscure Services"]
+    assert "found nothing sourced for 1 topic(s)" in caplog.text and "Provision of Obscure Services" in caplog.text
+
+
+def test_tied_bank_licences_come_out_in_the_same_order_every_run():
+    from tendersure import research as rs
+    tech = "Technical Specifications-TECH"
+    rows = [(tech, "Attach the national standards certificate"), (tech, "Attach the dealership authorization")]
+    for order in (rows, rows[::-1]):
+        bank = rs.BankKnowledge([_past("AAA-ET-2026-033", "Supply of Toiletries and Consumables", order)])
+        got = [x["name"] for x in bank.licences("Supply of Toiletries", "ET").proposal["licences"]]
+        assert got == sorted(got)
+
+
+def test_tidy_brings_stored_findings_up_to_the_rules_without_searching():
+    from tendersure import research as rs
+    k = rs.topic_key("Supply of x")
+    redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/Q"
+    t = rs.Table([rs.Finding("licences", k, "ET", "Supply of x", {"licences": [{"name": "Trade License"}]},
+                             ["a | " + redirect], rs.WEB),
+                  rs.Finding("names", k, "ET", "Supply of x", {"technical_name": "X"}, ["a | " + redirect], rs.WEB),
+                  rs.Finding("licences", rs.topic_key("y"), "ET", "y", {"licences": [{"name": "Trade License"}]},
+                             ["team"], rs.WEB, rs.CONFIRMED)])
+    assert rs.tidy(t, resolve=lambda u: "https://a/page") == (1, 1)
+    assert t.lookup("licences", "Supply of x", "ET") is None                  # only generic: gone
+    assert t.lookup("names", "Supply of x", "ET").sources == ["a | https://a/page"]
+    assert t.lookup("licences", "y", "ET") is not None                         # the team's word stands

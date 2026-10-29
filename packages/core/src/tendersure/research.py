@@ -40,6 +40,12 @@ _COUNTRY_WORDS = {"ET": ("Ethiopia", "Ethiopian"), "KE": ("Kenya", "Kenyan", "KE
                   "TZ": ("Tanzania", "Tanzanian"), "RW": ("Rwanda", "Rwandan"), "SO": ("Somalia", "Somali"),
                   "SS": ("South Sudan",)}
 _LICENCE_SECTIONS = {"technical", "hr", "experience", "sla"}     # not statutory registration documents
+# Documents every supplier provides, whatever it sells: they belong in
+# Eligibility and Registration, so a researched "licence" that is one of them
+# is no finding about the category.
+_GENERIC_DOCUMENT = re.compile(
+    r"\b(trade|business)\s+licen[cs]e|business\s+permit|\b(commercial|company|business|principal)\s+registration|"
+    r"\bTIN\b|\bVAT\b|tax\s*(clearance|compliance|identification|registration)|taxpayer", re.I)
 _PEOPLE = re.compile(r"\b(cv|resumes?|curriculum|staff|workforce|personnel|technicians?|engineers?)\b", re.I)
 _VERBS = re.compile(r"\b(supply|supplies|provision|provide|installation|install|maintenance|maintain|repairs?|"
                     r"delivery|servicing|services?|and|of|the|for|etc|related|general)\b", re.I)
@@ -110,6 +116,32 @@ def sheet_country(s: Sheet) -> str:
     return best if counts[best] else ""
 
 
+def specific_licences(items: List[dict]) -> List[dict]:
+    """Researched licences without the documents every supplier holds."""
+    return [x for x in items if x.get("name") and not _GENERIC_DOCUMENT.search(x["name"])]
+
+
+_REDIRECT = "grounding-api-redirect"
+
+
+def resolve_link(uri: str, timeout: float = 8) -> str:
+    """The page a Google grounding link redirects to - its own address lasts,
+    the redirect may expire. Only the link is requested; nothing else is
+    sent. On any failure the link is kept as it was."""
+    import urllib.error
+    import urllib.request
+    if _REDIRECT not in uri:
+        return uri
+    try:
+        with urllib.request.urlopen(urllib.request.Request(uri, method="HEAD"), timeout=timeout) as resp:
+            return resp.geturl() or uri
+    except urllib.error.HTTPError as e:              # the page refused HEAD, but the redirect was followed
+        final = e.geturl() or uri
+        return uri if _REDIRECT in final else final
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        return uri
+
+
 def _subject(text: str) -> str:
     return _VERBS.sub(" ", re.sub(r"\([^)]*\)?", " ", text or ""))
 
@@ -151,9 +183,10 @@ class BankKnowledge:
         hits = [(sc, s) for sc, s in self.similar(topic, LICENCE_MATCH) if self.country[s.name] == country][:5]
         asked = Counter()
         for _, s in hits:
-            asked.update({r.archive_short_name or r.criteria.strip() for r in s.rows
-                          if needs_names(r) and _LICENCE.search(r.criteria) and not _PEOPLE.search(r.criteria)
-                          and section_key(r.section) in _LICENCE_SECTIONS})
+            asked.update(sorted({r.archive_short_name or r.criteria.strip() for r in s.rows
+                                 if needs_names(r) and _LICENCE.search(r.criteria) and not _PEOPLE.search(r.criteria)
+                                 and not _GENERIC_DOCUMENT.search(r.criteria)
+                                 and section_key(r.section) in _LICENCE_SECTIONS}))
         if not asked:
             return None
         return Finding("licences", topic_key(topic), country, topic,
@@ -204,8 +237,10 @@ def build_prompt(topic: str, country: str, kinds: List[str]) -> str:
 class WebResearcher:
     """Gemini with Google Search. A finding the search gave no source for is dropped."""
 
-    def __init__(self, llm=None, model: Optional[str] = None):
+    def __init__(self, llm=None, model: Optional[str] = None, resolve=resolve_link):
         self.llm = llm or make_llm(model=model)
+        self.resolve = resolve
+        self.unanswered: List[str] = []      # topics the search found nothing sourced for
 
     def research(self, topic: str, country: str, kinds: List[str], client: Optional[str] = None) -> List[Finding]:
         schema = {"type": "object", "properties": {k: _SCHEMAS[k] for k in kinds}}
@@ -215,15 +250,17 @@ class WebResearcher:
         except LLMError as e:
             log.info(f"research: '{topic[:50]}' not researched on the web ({e})")
             return []
-        sources = [f"{s['title']} | {s['uri']}" for s in self.llm.last_sources]
-        if not sources:
-            return []
+        sources = list(dict.fromkeys(f"{s['title']} | {self.resolve(s['uri'])}" for s in self.llm.last_sources))
         out = []
-        for k in kinds:
+        for k in kinds if sources else []:
             value = raw.get(k)
+            if k == "licences":
+                value = specific_licences(value or [])
             if value:
                 proposal = value if k == "names" else {k: value}
                 out.append(Finding(k, topic_key(topic), country, topic, proposal, sources, WEB))
+        if not out:
+            self.unanswered.append(topic)
         return out
 
 
@@ -245,7 +282,37 @@ def research(topics: List[str], country: str, kinds: List[str], table: Table, ba
             for f in web.research(topic, country, todo, client):
                 table.add(f)
                 new.append(f)
+    unanswered = getattr(web, "unanswered", [])
+    if unanswered:
+        log.info(f"research: the web search found nothing sourced for {len(unanswered)} topic(s) - "
+                 f"worth a look by hand: " + "; ".join(t[:60] for t in unanswered))
     return new
+
+
+def tidy(table: Table, resolve=resolve_link) -> Tuple[int, int]:
+    """Bring stored findings up to today's rules, with no new search: generic
+    documents out of licences (a finding left empty goes), redirect links
+    replaced by the pages' own addresses. Confirmed findings are the team's
+    and are left alone. Returns (findings dropped, links resolved)."""
+    dropped = resolved = 0
+    for f in list(table.findings):
+        if f.status == CONFIRMED:
+            continue
+        if f.kind == "licences":
+            f.proposal["licences"] = specific_licences(f.proposal.get("licences", []))
+            if not f.proposal["licences"]:
+                table.findings.remove(f)
+                del table._by[(f.kind, f.topic_key, f.country)]
+                dropped += 1
+                continue
+        links = []
+        for src in f.sources:
+            title, sep, uri = src.partition(" | ")
+            new_uri = resolve(uri) if sep else uri
+            resolved += new_uri != uri
+            links.append(f"{title} | {new_uri}" if sep else src)
+        f.sources = list(dict.fromkeys(links))
+    return dropped, resolved
 
 
 def describe(f: Finding) -> str:
