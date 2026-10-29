@@ -140,6 +140,11 @@ def _http(url: str, headers: dict, body: dict, timeout: float = 600) -> dict:
         if e.code in (401, 403):
             raise LLMError(f"the provider rejected the key (HTTP {e.code}); check the key in .env") from None
         raise LLMError(f"HTTP {e.code}: {detail}") from None
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        # No connection, a DNS failure, a timeout: a model error like any
+        # other, so every step falls back (rules, or "nothing applied")
+        # instead of stopping the batch.
+        raise LLMError(f"network: {getattr(e, 'reason', e)}") from None
 
 
 # --- shared request path -------------------------------------------------------

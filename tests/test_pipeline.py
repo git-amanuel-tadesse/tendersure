@@ -1936,3 +1936,18 @@ def test_a_kenyan_eligibility_section_keeps_its_typed_rows():
     assert permit.eligibility and permit.mandatory                          # Kenya's trade licence
     assert [q.row.criteria for q in p.questions].count("Please attach a valid Trade license") == 0
     assert check_eligibility(to_sheet(p)) == []
+
+
+def test_a_network_failure_is_a_model_error_steps_can_fall_back_on(monkeypatch):
+    import urllib.error
+    import urllib.request
+    from tendersure import llm, yesno
+
+    def down(*a, **k):
+        raise urllib.error.URLError("[Errno 8] nodename nor servname provided, or not known")
+    monkeypatch.setattr(urllib.request, "urlopen", down)
+    with pytest.raises(llm.LLMError, match="network"):
+        llm._http("https://example.invalid", {}, {})
+    judge = yesno.ModelJudge(llm=OpenRouterLLM(model="m", transport=llm._http))
+    got = judge.judge([yesno.Need("AAA", "k", "Have you had any contracts terminated?")])
+    assert [(v.yes_is, v.status) for v in got] == [("bad", yesno.RULE_DRAFTED)]     # fell back, no crash
