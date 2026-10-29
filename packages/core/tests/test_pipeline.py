@@ -2893,3 +2893,19 @@ def test_a_reference_block_missing_a_field_gets_it_from_the_first(corpus):
     assert ref2[-1].startswith("Attach")                                          # before the evidence upload
     finalise(p)
     assert check_standard_blocks(to_sheet(p)) == []
+
+
+def test_the_ai_review_leaves_the_client_s_split_to_the_team(corpus, tmp_path):
+    from tendersure.generate import finalise
+    from tendersure.reviewer import ModelReviewer, ai_review
+    from tendersure import benchmark as bm
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-031", "Provision of Catering Services", "AAA"))
+    tab = bm.load(_benchmark_book(tmp_path / "bench.xlsx"), "AAA")[0]
+    p.benchmark = bm.reference(tab)
+    t = FakeTransport({"drop": [], "reword": [], "add": [], "drafts": []})
+    ModelSelector(llm=OpenRouterLLM(model="m", transport=t)).propose(p)
+    verdicts = FakeTransport({"verdicts": []})
+    items, _ = ai_review(g, [p], ModelReviewer(llm=OpenRouterLLM(model="m", transport=verdicts)), progress=lambda *_: None)
+    bench = next(i for i in items if i.id.startswith("M-BENCH-"))
+    assert (bench.answer, bench.status) == ("", "")                   # open: shown to the team, not settled

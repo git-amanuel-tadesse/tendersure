@@ -262,7 +262,7 @@ def ai_review(gen: Generator, plans: List[Plan], reviewer: ModelReviewer, progre
             it.answer = answers[it.id]
             it.status = f"AI: {it.status}" + (f" | {'; '.join(notes[it.id])}" if notes.get(it.id) else "")
         elif it.id.startswith("M-BENCH-"):
-            continue                                    # the client's benchmark split: the team's call, left open
+            it.status = ""                              # the client's benchmark split: the team's call, left open
         elif it.type == "marks" and not it.id.startswith("M-FREED-"):
             it.status = "AI: kept the client's marks (marks are the client's decision)"
         elif it.type == "marks":
