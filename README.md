@@ -13,8 +13,13 @@ category refinement, the check command, learning from the bank).
 
 ## Install
 
-    python -m venv .venv && source .venv/bin/activate
-    pip install -r requirements.txt
+    make install                    # .venv at the root, core installed editable
+    source .venv/bin/activate
+
+The repo is a monorepo (spec 06): `packages/core` is the `tendersure`
+package (every rule, the bank, the CLI for now). `apps/` (API, CLI, web)
+arrive with the web app. Commands run from the repo root, where `.env` and
+`data/` live (or wherever `$TENDERSURE_HOME` points).
 
 ## Run
 
@@ -81,9 +86,8 @@ any folder works, with subfolders (e.g. one per year).
     # 4. How good is it? Leave-one-out against existing sheets
     python -m tendersure evaluate --client ERCS --categories data/ercs_categories.csv
 
-    python -m pytest tests          # synthetic data; corpus tests run if "sample file/" exists
+    make test                       # synthetic data; corpus tests run if "sample file/" exists
 
-`python run_ingest.py [folder]` is kept as a shortcut for step 1.
 
 ### Generate options
 
@@ -244,7 +248,13 @@ removals and additions in the QA file; write the prequalification workbook.
 
 ## Layout
 
-    tendersure/
+    pyproject.toml   monorepo root: shared tool settings, marks where .env and data/ live
+    Makefile         make install | test
+    packages/core/   the tendersure package: pyproject.toml, src/tendersure/, tests/
+    data/            the bank and learned files (client data, git-ignored)
+
+    packages/core/src/tendersure/
+      paths.py       where .env and data/ live ($TENDERSURE_HOME, else the repo root)
       schema.py      column map, answer-type codes, section keys, constants
       parser.py      workbook -> structured Row objects (deterministic)
       validate.py    corpus rules (platform vs silent) and the template rules (check + fix)
@@ -267,12 +277,12 @@ removals and additions in the QA file; write the prequalification workbook.
       learned_store.py  storage driver for the learned files (CSV today)
       learned_review.py the review workbook for learned drafts
       refine.py      category refinement: draft list -> revised -> final
+      research.py    research: technical names, questions, licences, documents (bank first, then the web)
       check.py       check a workbook after hand edits
       check_ai.py    the AI read of a checked workbook (warnings only)
       evaluate.py    leave-one-out evaluation
       cli.py         python -m tendersure ...
-    tests/           pytest, synthetic workbooks
-    run_ingest.py    shortcut for `ingest`
+    packages/core/tests/   pytest, synthetic workbooks
 
 ## Rules to keep
 

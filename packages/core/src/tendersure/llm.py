@@ -40,6 +40,7 @@ import urllib.error
 import urllib.request
 from typing import Callable, List, Optional, Sequence
 
+from .paths import home
 from .privacy import Anonymiser, PrivacyError
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -60,7 +61,7 @@ class SchemaError(LLMError):
 def load_dotenv(path: Optional[str] = None):
     """KEY=VALUE lines from .env into the environment, never overriding
     variables already set. No dependency; quotes and comments are handled."""
-    path = path or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    path = path or os.path.join(home(), ".env")
     if not os.path.exists(path):
         return
     with open(path) as fh:

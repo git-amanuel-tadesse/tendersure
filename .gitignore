@@ -16,3 +16,11 @@ data/glossary.csv
 data/yesno_polarity.csv
 data/audience.csv
 data/research.csv
+
+# monorepo build output
+*.egg-info/
+build/
+node_modules/
+apps/web/dist/
+# exercises created in the web app: client data
+workspaces/

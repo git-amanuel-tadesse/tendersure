@@ -10,6 +10,8 @@ os.environ["TENDERSURE_NO_CACHE"] = "1"      # throwaway test workbooks must not
 os.environ["TENDERSURE_OUTBOX"] = tempfile.mkdtemp(prefix="outbox-")   # nor the real audit log
 import pytest
 
+from tendersure.paths import home
+
 HEADERS = ["Section", "Sub Section", "Criteria", "Marks", "System", "Compliance",
            "Archive Short Name", "Acronym", "Answer Type", "Mandatory", "Attachment",
            "Compliance", "Options", "Options Scores"]
@@ -109,7 +111,7 @@ def corpus(tmp_path):
 @pytest.fixture
 def real_corpus():
     """Client workbooks: $TENDERSURE_CORPUS, else the project's 'sample file' folder."""
-    here = os.environ.get("TENDERSURE_CORPUS") or os.path.join(os.path.dirname(__file__), "..", "sample file")
+    here = os.environ.get("TENDERSURE_CORPUS") or os.path.join(home(), "sample file")
     if not os.path.isdir(here) or not any(f.endswith(".xlsx") for f in os.listdir(here)):
         pytest.skip("client sample workbooks not present")
     return here

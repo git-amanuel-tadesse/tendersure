@@ -113,7 +113,7 @@ and the service layer land first, so the CLI and the API share every step.
 
 | ID | Task | Spec | Depends | Size | Done when |
 |---|---|---|---|---|---|
-| T49 | Move to the monorepo layout with `git mv`: `tendersure/` → `packages/core/src/tendersure/`, `tests/` → `packages/core/tests/`; core `pyproject.toml`; root dev `pyproject.toml`, `Makefile`, `.gitignore`; `requirements.txt` and `run_ingest.py` go. `cli.py` stays in core for now. | 06 M4 | | S | `pip install -e packages/core` then `pytest packages/core` passes the 104 tests; `git log --follow` shows history on moved files. |
+| T49 | Move to the monorepo layout with `git mv`: `tendersure/` → `packages/core/src/tendersure/`, `tests/` → `packages/core/tests/`; core `pyproject.toml`; root dev `pyproject.toml`, `Makefile`, `.gitignore`; `requirements.txt` and `run_ingest.py` go. `cli.py` stays in core for now. | 06 M4 | | S | `pip install -e packages/core` then `make test` passes all 129 tests (corpus included); `git log --follow` shows history on moved files. |
 | T50 | `Paths` in core (data, cache, outbox) replacing the cwd-relative literals; no `.env` read at import time. | 06 M3 | T49 | S | Tests run with `Paths` pointing at a temp folder and write nothing under the repo. |
 | T51 | `tendersure.flows`: ingest, refine (propose, apply) and generate orchestration out of `cli.py`; progress callback (incl. the 5 fallback prints), result dataclasses, errors instead of `sys.exit`. | 06 W1 | T50 | L | An ERCS generate and a Red Cross refine give identical workbooks before and after. |
 | T52 | Generation takes `proposals` and `answers` in memory; reading a QA file fills the same dicts. | 06 W1 | T51 | S | Answers from a dict and from the QA file give the same workbook. |

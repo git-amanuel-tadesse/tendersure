@@ -1,0 +1,9 @@
+# The monorepo root. Not a package: each party has its own pyproject.toml
+# (packages/core, apps/api, apps/cli). This file holds shared tool settings,
+# and its [tool.tendersure] table marks the root, where .env and data/ live
+# (see packages/core/src/tendersure/paths.py).
+
+[tool.tendersure]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/core/tests"]

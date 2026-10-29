@@ -28,6 +28,8 @@ import os
 import re
 from typing import Dict, Iterable, List, Optional
 
+from .paths import home
+
 # Known clients and how they are written in sheets and notices. Longest
 # aliases first, so "Ethiopian Red Cross Society" is replaced before "Red Cross".
 CLIENT_ALIASES: Dict[str, List[str]] = {
@@ -67,8 +69,7 @@ def _is_phone(s: str) -> bool:
 
 
 def _extra_terms(path: str = None) -> List[str]:
-    path = path or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                "data", "privacy_terms.txt")
+    path = path or os.path.join(home(), "data", "privacy_terms.txt")
     if not os.path.exists(path):
         return []
     with open(path) as fh:
