@@ -174,10 +174,14 @@ reading the file into the same dicts).
 - Started with `tendersure-api [--port 5000]` (or `make serve`); opens the
   browser. Serves the built frontend from `apps/web/dist` and the API under
   `/api`.
-- Binds to `127.0.0.1`. Rejects requests whose `Host` is not
-  `localhost`/`127.0.0.1` (DNS rebinding), and requires an
-  `X-TenderSure: 1` header on every non-GET request (a page on another site
-  cannot set it without a CORS preflight, which the server never grants).
+- Binds to `127.0.0.1`, with no option to listen anywhere else.
+- Rejects a request whose `Host` is not `localhost`, `127.0.0.1` or `[::1]`
+  (DNS rebinding).
+- Rejects a request whose `Origin`, when the browser sends one, is another
+  site.
+- Requires an `X-TenderSure: 1` header on every request other than
+  GET/HEAD/OPTIONS. A page on another site cannot set that header without a
+  CORS preflight, and the server never grants one.
 - JSON everywhere; errors as `{"error": "...", "detail": ...}` with a 4xx/5xx.
 - Never returns secrets: the settings endpoint says which provider and model
   are configured and whether the paid-tier guard passes, never the key.

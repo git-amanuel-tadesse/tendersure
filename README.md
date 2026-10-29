@@ -13,13 +13,14 @@ category refinement, the check command, learning from the bank).
 
 ## Install
 
-    make install                    # .venv at the root; core and the CLI installed editable
-    source .venv/bin/activate       # puts the `tendersure` command on the PATH
+    make install                    # .venv at the root; core, the CLI and the API installed editable
+    source .venv/bin/activate       # puts `tendersure` and `tendersure-api` on the PATH
 
 The repo is a monorepo (spec 06). `packages/core` is the `tendersure`
 package: every rule, the bank, and `tendersure.flows`, the steps every app
-calls. `apps/cli` is the `tendersure` command: arguments in, flows out. The
-API and the web app follow in `apps/`. `.env` and `data/` live at the repo
+calls. `apps/cli` is the `tendersure` command: arguments in, flows out.
+`apps/api` is the local server for the web app (`tendersure-api`, on
+127.0.0.1 only): HTTP in, flows out. The web app follows in `apps/web`. `.env` and `data/` live at the repo
 root (or wherever `$TENDERSURE_HOME` points), so commands work from any folder.
 
 ## Run
@@ -253,6 +254,7 @@ removals and additions in the QA file; write the prequalification workbook.
     Makefile         make install | test
     packages/core/   the tendersure package: pyproject.toml, src/tendersure/, tests/
     apps/cli/        the tendersure command (tendersure_cli): pyproject.toml, src/, tests/
+    apps/api/        the local API server (tendersure_api, Flask): pyproject.toml, src/, tests/
     data/            the bank and learned files (client data, git-ignored)
 
     packages/core/src/tendersure/flows/   the steps: one function per step, plain inputs, a result

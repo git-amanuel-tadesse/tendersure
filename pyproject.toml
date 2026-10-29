@@ -6,30 +6,35 @@
 [tool.tendersure]
 
 [tool.pytest.ini_options]
-testpaths = ["packages/core/tests", "apps/cli/tests"]
+testpaths = ["packages/core/tests", "apps/cli/tests", "apps/api/tests"]
 
 # Who may import whom (spec 06 M1), checked by `make test` (lint-imports).
 # apps/* are adapters; the logic lives in packages/core.
 [tool.importlinter]
-root_packages = ["tendersure", "tendersure_cli"]
+root_packages = ["tendersure", "tendersure_cli", "tendersure_api"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Core knows nothing above it: no app, no argparse, no web framework"
 type = "forbidden"
 source_modules = ["tendersure"]
-forbidden_modules = ["tendersure_cli", "argparse", "flask"]
+forbidden_modules = ["tendersure_cli", "tendersure_api", "argparse", "flask", "flask_openapi3", "pydantic"]
 
 [[tool.importlinter.contracts]]
 name = "Apps reach core only through tendersure.flows"
 type = "forbidden"
-source_modules = ["tendersure_cli"]
+source_modules = ["tendersure_cli", "tendersure_api"]
 forbidden_modules = ["tendersure.*"]
-ignore_imports = ["tendersure_cli.** -> tendersure.flows"]
+ignore_imports = ["tendersure_cli.** -> tendersure.flows", "tendersure_api.** -> tendersure.flows"]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "Only apps call the flows: no rule module imports tendersure.flows"
 type = "protected"
 protected_modules = ["tendersure.flows"]
-allowed_importers = ["tendersure_cli"]
+allowed_importers = ["tendersure_cli", "tendersure_api"]
+
+[[tool.importlinter.contracts]]
+name = "The API and the CLI are independent: neither imports the other"
+type = "independence"
+modules = ["tendersure_cli", "tendersure_api"]

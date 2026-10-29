@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tendersure-api"
+version = "0.1.0"
+description = "TenderSure local API: HTTP in, tendersure.flows out, for the web app"
+requires-python = ">=3.11"
+dependencies = ["tendersure", "flask>=3.1", "flask-openapi3>=4.3", "pydantic>=2.9"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+tendersure-api = "tendersure_api.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
