@@ -115,3 +115,18 @@ The log says how many findings came from the model's knowledge and how many
 topics go to the web, and it numbers each search ("searching the web
 (3/7)"). On PSI's 77 categories this means 4 knowledge calls and only the
 uncertain topics searched, where the first run searched all 77 one by one.
+
+After the first PSI run with this order, where 47 of 70 topics were searched
+and 42 of those searches found nothing:
+
+- **Only category-specific licences count.** The model is told that
+  documents every supplier gives (trade licence, registration, TIN, VAT, tax
+  clearance) are not licences for a category. "None needed" is a sure answer
+  and needs no search.
+- **"Nothing specific" is recorded.** A search that finds nothing for a topic
+  is kept as an empty finding (origin `web: nothing specific`), so the topic
+  is never searched again. Empty findings are not shown for review.
+- **Saved as it arrives.** The research table is saved after each knowledge
+  call and each search, and the refine proposal is kept as soon as it
+  arrives. Proposing again with the same draft, brief and target reuses it,
+  so a run stopped by a restart loses nothing it paid for.

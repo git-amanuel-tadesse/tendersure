@@ -30,7 +30,12 @@ log = logging.getLogger("tendersure")
 
 RESEARCH = "research"
 KINDS = ("names", "licences", "questions", "documents")
-BANK, WEB, KNOWLEDGE = "bank", "web", "model knowledge"
+BANK, WEB, KNOWLEDGE, NOTHING = "bank", "web", "model knowledge", "web: nothing specific"
+# What an answer with nothing in it looks like, per kind: recorded so the topic is not searched again
+EMPTY = {"names": {}, "licences": {"licences": []}, "questions": {"questions": []}, "documents": {"documents": []}}
+GENERAL_DOCUMENTS = ("Only list what is specific to the category. Documents every supplier is asked for - trade "
+                     "licence or business permit, company registration, TIN, VAT, tax clearance - do not count: "
+                     "where nothing else is needed, give an empty list and mark it sure.")
 NO_SOURCE = "model knowledge (no source)"
 KNOW_CHUNK = 25            # topics per knowledge call
 DRAFTED, CONFIRMED = "drafted", "confirmed"
@@ -69,10 +74,21 @@ class Finding:
     status: str = DRAFTED
 
 
+def is_empty(f: "Finding") -> bool:
+    """A finding that records there is nothing to suggest (so it is not asked again)."""
+    return not any(v for v in f.proposal.values())
+
+
 class Table:
     def __init__(self, findings: List[Finding]):
         self.findings = findings
         self._by = {(f.kind, f.topic_key, f.country): f for f in findings}
+        self.target = None              # where checkpoint() saves, when set
+
+    def checkpoint(self):
+        """Save now: a run stopped half way keeps what it paid for."""
+        if self.target is not None:
+            save(self, self.target)
 
     def lookup(self, kind: str, topic: str, country: str) -> Optional[Finding]:
         return self._by.get((kind, topic_key(topic), country or ""))
@@ -235,8 +251,9 @@ _ASK = {
     "names": "names: the standard technical or trade name procurement teams use for this category; what it "
              "normally includes (includes); and how such a category is usually split between kinds of "
              "specialist supplier (usually_split_as), if it usually is",
-    "licences": "licences: the licences, registrations or certifications a supplier of this in the country must "
-                "or usually holds, with the issuing body (issuer) and whether the law requires it (required)",
+    "licences": "licences: the licences, registrations or certifications specific to this category that a "
+                "supplier in the country must or usually holds, with the issuing body (issuer) and whether the law "
+                "requires it (required); none when only the documents every supplier gives apply",
     "questions": "questions: up to 8 technical questions a buyer should ask a supplier of this category, each "
                  "with an answer type (1 text, 2 single choice, 3 multiple choice, 4 yes/no, 5 document upload)",
     "documents": "documents: for each abbreviation listed, the document's official name in the country and a "
@@ -250,7 +267,7 @@ KNOW_SYSTEM = (
     "have to look it up: a regulator or licence in the country you are not certain of, an abbreviation you do "
     "not recognise, a niche document. Do not guess names of bodies or documents and mark them sure; give your "
     "best answer and mark it not sure. For a country, use that country's regulators and laws. Keep names short "
-    "and standard. An empty list marked sure means there is none."
+    "and standard. An empty list marked sure means there is none. " + GENERAL_DOCUMENTS
 )
 
 
@@ -372,19 +389,28 @@ def research(topics: List[str], country: str, kinds: List[str], table: Table, ba
             table.add(f)
             new.append(f)
         known += len(found)
+        table.checkpoint()
         for topic, ks in unsure.items():
             search.setdefault(topic, []).extend(k for k in ks if k not in search.get(topic, []))
     log.info(f"research: {known} finding(s) from the model's own knowledge for {len(todo)} topic(s); "
              f"{len(search)} topic(s) the model is not sure of go to a web search")
+    nothing = 0
     for n, (topic, ks) in enumerate(search.items(), 1):
         log.info(f"research: searching the web ({n}/{len(search)}): {topic[:60]}")
-        for f in web.research(topic, country, ks, client):
+        got = web.research(topic, country, ks, client)
+        if getattr(getattr(web, "llm", None), "account_error", None) is not None:
+            break                                       # no credit or key: the rest would fail the same way
+        for f in got:
             table.add(f)
             new.append(f)
-    unanswered = getattr(web, "unanswered", [])
-    if unanswered:
-        log.info(f"research: the web search found nothing sourced for {len(unanswered)} topic(s) - "
-                 f"worth a look by hand: " + "; ".join(t[:60] for t in unanswered))
+        for k in ks:
+            if not any(f.kind == k for f in got):       # nothing specific: recorded, never searched again
+                table.add(Finding(k, topic_key(topic), country, topic, dict(EMPTY[k]), [], NOTHING))
+                nothing += 1
+        table.checkpoint()
+    if nothing:
+        log.info(f"research: the web search found nothing specific for {nothing} question(s) - for most "
+                 f"categories that means only the documents every supplier gives; recorded, not searched again")
     return new
 
 

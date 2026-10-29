@@ -858,7 +858,7 @@ def apply_research(plan: Plan, table, country: str):
                 insert_rows(plan, "technical", rows[:RESEARCHED_QUESTIONS], NEW, "research",
                             "researched: no past sheet covers this category. Sources: " + sources_text(q))
         lic = table.lookup("licences", t, country)
-        if lic:
+        if lic and lic.proposal.get("licences"):
             plan.notes.append(f"licences usually held for this category ({country or 'no country'}), not applied: "
                               f"{describe(lic)}. Sources: {sources_text(lic)}")
     names = document_names(table, country)

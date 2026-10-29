@@ -204,6 +204,7 @@ def glossary(path: str, sheets: List[Sheet]) -> "gl.Glossary":
 def research_tools(research: str, sheets: List[Sheet], model: Model):
     """The research table, the bank's knowledge and (with a model) the web."""
     table = rs.load(research)
+    table.target = research                   # saved as findings arrive (Table.checkpoint)
     bank = rs.BankKnowledge(trust.usable(sheets, trust.grade(sheets))) if sheets else None
     use_model, why_not = model.wanted()
     web = rs.WebResearcher(model=model.name) if use_model else None

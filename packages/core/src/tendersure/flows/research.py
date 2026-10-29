@@ -58,8 +58,8 @@ def research(source_list: str, client: str, kinds: List[str], prefix: Optional[s
         log.info(f"research: research columns filled in {source_list} (its proposals unchanged)")
     r.review = out or os.path.join(current().reports, "research_review.xlsx")
     os.makedirs(os.path.dirname(os.path.abspath(r.review)), exist_ok=True)
-    r.to_review = rs.write_review([f for f in table.findings if f.topic_key in {rs.topic_key(t) for t in topics}],
-                                  r.review)
+    r.to_review = rs.write_review([f for f in table.findings if f.topic_key in {rs.topic_key(t) for t in topics}
+                                   and not rs.is_empty(f)], r.review)
     by = Counter((f.kind, f.origin) for f in new)
     log.info(f"research: {len(topics)} topics, country {country or '-'}: {len(new)} new findings ("
              + ", ".join(f"{k} from the {o} {n_}" for (k, o), n_ in sorted(by.items()))

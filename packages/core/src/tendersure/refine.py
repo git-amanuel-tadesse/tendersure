@@ -20,7 +20,10 @@ business decision: the tool reports it against a target, never forces it.
 """
 
 import csv
+import hashlib
+import json
 import logging
+import os
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -33,6 +36,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from . import brief as cb
 from .categories import Category, category_kind
 from .llm import LLMError, make_llm
+from .paths import current
 from .schema import BUSINESS_TYPES, INDIVIDUAL
 from .similarity import TfidfEmbedder, cosine
 
@@ -443,12 +447,30 @@ class ModelRefiner:
 
     def propose(self, drafts: List[Draft], client: str, past: List[str],
                 target: Optional[Tuple[int, int]], brief: str = "") -> Optional[dict]:
+        """The model's proposal, kept as soon as it arrives: proposing again with
+        the same draft, brief and target reuses it (no second call), so a run
+        stopped by a restart loses nothing it paid for."""
+        prompt = build_prompt(drafts, past, target, brief)
+        key = hashlib.sha1(f"{getattr(self.llm, 'model', '')}|{SYSTEM}|{prompt}".encode()).hexdigest()[:16]
+        path = os.path.join(current().cache, f"refine_{re.sub(r'[^A-Za-z0-9]+', '_', client)}.json")
+        cache = {}
+        if os.path.exists(path):
+            with open(path) as fh:
+                cache = json.load(fh)
+        if key in cache:
+            log.info("refine: the model's proposal for this draft is reused from an earlier run (no new call)")
+            return cache[key]
         try:
-            return self.llm.complete_json(SYSTEM, build_prompt(drafts, past, target, brief), SCHEMA,
-                                          "category_refinement", client=client, max_tokens=32000)
+            raw = self.llm.complete_json(SYSTEM, prompt, SCHEMA, "category_refinement", client=client,
+                                         max_tokens=32000)
         except LLMError as e:
             log.info(f"refine: no model proposal ({e}); proposing by rules")
             return None
+        cache[key] = raw
+        os.makedirs(current().cache, exist_ok=True)
+        with open(path, "w") as fh:
+            json.dump(cache, fh)
+        return raw
 
     def interpret(self, comments: List[Tuple[Line, str]], client: str) -> List[str]:
         """A change proposed for each free-text client comment (never applied)."""

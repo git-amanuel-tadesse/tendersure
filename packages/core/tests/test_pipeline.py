@@ -2240,14 +2240,63 @@ def test_web_licences_drop_what_every_supplier_holds_and_links_resolve():
     assert only_generic.research("Supply of Stationery", "ET", ["licences"]) == []
 
 
-def test_topics_the_web_found_nothing_on_are_reported(caplog):
+def test_what_the_web_found_nothing_specific_on_is_recorded_and_not_searched_again(caplog):
     import logging
     from tendersure import research as rs
     web = rs.WebResearcher(llm=_grounded({"names": {"technical_name": "X"}}, []))      # no grounding: no source
+    calls = []
+    ask = web.llm.complete_json
+    web.llm.complete_json = lambda *a, **k: calls.append(k.get("search")) or ask(*a, **k)
+    table = rs.Table([])
     with caplog.at_level(logging.INFO, logger="tendersure"):
-        rs.research(["Provision of Obscure Services"], "ET", ["names"], rs.Table([]), None, web)
-    assert web.unanswered == ["Provision of Obscure Services"]
-    assert "found nothing sourced for 1 topic(s)" in caplog.text and "Provision of Obscure Services" in caplog.text
+        assert rs.research(["Provision of Obscure Services"], "ET", ["names"], table, None, web) == []
+    assert calls == [None, True]                         # the model's knowledge, then one search
+    f = table.lookup("names", "Provision of Obscure Services", "ET")
+    assert (f.origin, rs.is_empty(f)) == (rs.NOTHING, True)
+    assert "found nothing specific for 1 question(s)" in caplog.text
+    rs.research(["Provision of Obscure Services"], "ET", ["names"], table, None, web)
+    assert len(calls) == 2                               # recorded: not asked again
+
+
+def test_research_is_saved_as_it_arrives(tmp_path):
+    """A run stopped half way keeps every search it paid for."""
+    from tendersure import research as rs
+    table = rs.Table([])
+    table.target = str(tmp_path / "research.csv")
+    done = []
+
+    class Web:
+        llm = None
+
+        def know(self, topics, country, kinds, client=None):
+            return [], {t: list(kinds) for t in topics}
+
+        def research(self, topic, country, kinds, client=None):
+            if done:
+                raise KeyboardInterrupt                  # the app stopped during the second search
+            done.append(topic)
+            return [rs.Finding("names", rs.topic_key(topic), country, topic, {"technical_name": "A"}, ["p | u"], rs.WEB)]
+    with pytest.raises(KeyboardInterrupt):
+        rs.research(["Supply of A", "Supply of B"], "ET", ["names"], table, None, Web())
+    assert [f.topic for f in rs.load(str(tmp_path / "research.csv")).findings] == ["Supply of A"]
+
+
+def test_the_refine_proposal_is_kept_and_reused(tmp_path):
+    from tendersure import refine as rf
+    calls = []
+
+    class Model:
+        model = "fake"
+
+        def complete_json(self, system, prompt, schema, name, client=None, **kw):
+            calls.append(prompt)
+            return {"lines": [], "additional": []}
+    drafts = [rf.Draft("1", "Supply of Office Stationery")]
+    first = rf.ModelRefiner(llm=Model()).propose(drafts, "AAA", [], None, "brief one")
+    again = rf.ModelRefiner(llm=Model()).propose(drafts, "AAA", [], None, "brief one")
+    assert first == again and len(calls) == 1          # proposing again: no second call
+    rf.ModelRefiner(llm=Model()).propose(drafts, "AAA", [], None, "brief two")
+    assert len(calls) == 2                              # a changed brief is a new proposal
 
 
 def test_tied_bank_licences_come_out_in_the_same_order_every_run():
