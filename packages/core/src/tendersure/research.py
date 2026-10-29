@@ -332,3 +332,51 @@ def country_of(prefix: Optional[str]) -> str:
     """'ERCS-ET-2026-' -> 'ET'; a prefix without a country code -> ''."""
     m = re.search(r"[-_]([A-Z]{2})[-_]", prefix or "")
     return m.group(1) if m else ""
+
+
+def document_names(table: Table, country: str) -> Dict[str, Tuple[str, str]]:
+    """Abbreviation -> (official name, first source), from every documents finding for the country."""
+    out: Dict[str, Tuple[str, str]] = {}
+    for f in table.findings:
+        if f.kind == "documents" and f.country == country:
+            for d in f.proposal.get("documents", []):
+                if d.get("abbreviation") and d.get("official_name"):
+                    out.setdefault(d["abbreviation"].strip().upper(), (d["official_name"], f.sources[0] if f.sources else ""))
+    return out
+
+
+def research_documents(abbreviations: List[str], country: str, table: Table, web: Optional[WebResearcher],
+                       client: Optional[str] = None) -> List[Finding]:
+    """Official names for abbreviations the table does not know yet, in one search."""
+    todo = [a for a in abbreviations if a not in document_names(table, country)]
+    if not todo or web is None:
+        return []
+    found = web.research("Documents suppliers are asked for, abbreviated as: " + ", ".join(todo), country,
+                         ["documents"], client)
+    for f in found:
+        table.add(f)
+    return found
+
+
+def batch_research(plans, country: str, table: Table, bank: Optional[BankKnowledge], web: Optional[WebResearcher],
+                   client: Optional[str], known: set) -> List[Finding]:
+    """What generate needs researched for a batch: questions and licences for
+    categories no past sheet covers, and unknown document abbreviations."""
+    from .generate import unknown_abbreviations
+    weak = [p.target.description for p in plans if p.weak_match]
+    new = research(weak, country, ["questions", "licences"], table, bank, web, client)
+    return new + research_documents(unknown_abbreviations(plans, known), country, table, web, client)
+
+
+def read_target(path: str) -> Optional[Tuple[int, int]]:
+    """The target a revised list was proposed against, from its Summary tab."""
+    import openpyxl
+    try:
+        ws = openpyxl.load_workbook(path, read_only=True)["Summary"]
+    except (KeyError, FileNotFoundError):
+        return None
+    for row in ws.iter_rows(values_only=True):
+        if row and row[0] == "Target" and row[1]:
+            a, _, b = str(row[1]).partition("-")
+            return (int(a), int(b)) if a.isdigit() and b.isdigit() else None
+    return None

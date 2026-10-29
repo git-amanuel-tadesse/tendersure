@@ -158,6 +158,9 @@ class Line:
     decision: str = ""
     comment: str = ""
     suggested_eligibility: List[str] = field(default_factory=list)   # the model's: shown, not applied
+    technical_name: str = ""                                          # research (spec 05): suggested
+    usual_split: List[str] = field(default_factory=list)              # research: how it is usually split
+    research_sources: List[str] = field(default_factory=list)
 
     @property
     def gate_question(self) -> bool:
@@ -464,6 +467,7 @@ def traceability(lines: List[Line], drafts: List[Draft]) -> List[str]:
 
 REVISED_HEADERS = ["#", "Category Code", "Category Description", "Status", "From draft #", "Reason",
                    "Question for client", "Sub-categories", "Eligibility", "Suggested eligibility (not applied)",
+                   "Technical name (suggested)", "Usually split as", "Research sources",
                    "Gate Question", "Applies To", "Decision", "Client comment", "Group"]
 HEAD = PatternFill("solid", fgColor="FFC5D9F1")
 GROUP = PatternFill("solid", fgColor="FFDCE6F1")
@@ -514,13 +518,14 @@ def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str
     _write_lines(ws, lines, REVISED_HEADERS, lambda n, ln: [
         n, ln.code, ln.description, ln.status, ", ".join(ln.from_draft), ln.reason, ln.question,
         " | ".join(ln.sub_categories), " | ".join(ln.eligibility), " | ".join(ln.suggested_eligibility),
+        ln.technical_name, " | ".join(ln.usual_split), "\n".join(ln.research_sources),
         "TRUE" if ln.gate_question else "", ", ".join(ln.applies_to), ln.decision, ln.comment, ln.group or ""],
-        [5, 13, 60, 20, 10, 40, 40, 36, 28, 34, 9, 34, 11, 30, 4])
+        [5, 13, 60, 20, 10, 40, 40, 36, 28, 34, 40, 40, 50, 9, 34, 11, 30, 4])
     decision, comment = REVISED_HEADERS.index("Decision") + 1, REVISED_HEADERS.index("Client comment") + 1
     for row in ws.iter_rows(min_row=2):
         if row[3].value:                                   # a line, not a group row
             row[decision - 1].fill = row[comment - 1].fill = ANSWER
-    ws.column_dimensions["O"].hidden = True
+    ws.column_dimensions[openpyxl.utils.get_column_letter(len(REVISED_HEADERS))].hidden = True     # Group
 
     ws = wb.create_sheet("Summary")
     kept = [ln for ln in lines if ln.status != REPEATED]
@@ -539,7 +544,10 @@ def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str
                   "edited directly."],
              ["Eligibility", "Only what the draft states is applied: every document there becomes a mandatory "
                              "pass/fail upload in the category's sheet. 'Suggested eligibility' lists documents "
-                             "proposed beyond the draft; copy any the client wants into Eligibility."]]
+                             "proposed beyond the draft; copy any the client wants into Eligibility."],
+             ["Research", "Technical name, Usually split as and Research sources come from past exercises "
+                          "first, then a web search, with their sources. They are suggestions: to use a name, "
+                          "answer edit and type it in Client comment; to split, edit the line or add one."]]
     for r in rows:
         ws.append(r)
     ws.column_dimensions["A"].width, ws.column_dimensions["B"].width = 34, 60
@@ -568,9 +576,34 @@ def read_revised(path: str) -> Tuple[List[Draft], List[Line]]:
                           [b for b in _split(g("Applies To"), ",") if b in BUSINESS_TYPES],
                           str(g("Category Code") or "").strip(), str(g("Decision") or "").strip().lower(),
                           str(g("Client comment") or "").strip(),
-                          _split(g("Suggested eligibility (not applied)"), "|")
-                          if "Suggested eligibility (not applied)" in col else []))
+                          _split(g("Suggested eligibility (not applied)"), "|"),
+                          str(g("Technical name (suggested)") or "").strip(), _split(g("Usually split as"), "|"),
+                          _split(g("Research sources"), "\n")))
     return drafts, lines
+
+
+def attach_research(lines: List[Line], table, country: str):
+    """Research findings (spec 05) on each proposed category: a technical
+    name and its usual split, and licences added to Suggested eligibility -
+    each with its sources; none is applied."""
+    from .research import describe
+    for ln in lines:
+        if ln.status == REPEATED:
+            continue
+        name, lic = table.lookup("names", ln.description, country), table.lookup("licences", ln.description, country)
+        sources = []
+        if name:
+            proposed = name.proposal.get("technical_name", "")
+            if proposed and _words(proposed) != _words(ln.description):
+                ln.technical_name = proposed
+            ln.usual_split = list(name.proposal.get("usually_split_as") or [])
+            sources += [f"name: {x}" for x in name.sources]
+        if lic:
+            have = {e.lower() for e in ln.eligibility + ln.suggested_eligibility}
+            ln.suggested_eligibility += [x["name"] for x in lic.proposal.get("licences", [])
+                                         if x.get("name") and x["name"].lower() not in have]
+            sources += [f"licences ({describe(lic)[:80]}): {x}" for x in lic.sources]
+        ln.research_sources = list(dict.fromkeys(sources))
 
 
 # --- step B: apply the review ---------------------------------------------------

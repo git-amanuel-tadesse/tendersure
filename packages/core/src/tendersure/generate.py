@@ -784,3 +784,55 @@ def drop_row(plan: Plan, index: int, reason: str):
             nxt.section_label = p.section_label
     del plan.rows[index]
     plan.dropped.append((p, reason))
+
+
+# --- research (spec 05): only where the bank has nothing ---------------------------
+
+_ABBREVIATION = re.compile(r"\b[A-Z][A-Z0-9]{1,5}\b")
+# Abbreviations every team knows; research is for the ones nobody on it does.
+KNOWN_ABBREVIATIONS = {"ISO", "TIN", "VAT", "PIN", "ID", "CV", "PO", "LPO", "NGO", "NGOS", "ICT", "IT", "HR", "UN",
+                       "EU", "PDF", "SLA", "WASH", "CCTV", "UPS", "LTD", "PLC", "NB", "OEM", "HSE", "SHE", "PPE",
+                       "TV", "TVS", "AC", "MEP", "GPS", "USB", "IATA", "ESG", "QA", "KG", "SMS", "SDLC"}
+RESEARCHED_QUESTIONS = 5     # at most, per sheet
+
+
+def unknown_abbreviations(plans: List[Plan], known: set) -> List[str]:
+    """Abbreviations in document questions that neither the team's usual list
+    nor the glossary explains (spec 05 K4)."""
+    found = Counter()
+    for plan in plans:
+        for p in plan.questions:
+            if p.row.answer_type == 5:
+                found.update(a for a in _ABBREVIATION.findall(p.row.criteria)
+                             if a not in KNOWN_ABBREVIATIONS and a not in known and not a.isdigit())
+    return sorted(found)
+
+
+def apply_research(plan: Plan, table, country: str):
+    """Research findings on one sheet. For a category no past sheet covers
+    (weak match), researched technical questions are added as NEW, 0 marks,
+    with their sources; licences are listed in the notes. Document
+    abbreviations get their official names noted. Nothing is made mandatory."""
+    from .research import describe, document_names
+    t = plan.target.description
+    if plan.weak_match:
+        q = table.lookup("questions", t, country)
+        if q:
+            asked = {normalise(p.row.criteria) for p in plan.questions}
+            rows = [Row(source_file="", sheet="", excel_row=0, criteria=x["question"].strip(),
+                        answer_type=int(x.get("answer_type") or 1), marks=0.0,
+                        attachment=int(x.get("answer_type") or 1) == 5)
+                    for x in q.proposal.get("questions", []) if normalise(x["question"]) not in asked]
+            if rows:
+                insert_rows(plan, "technical", rows[:RESEARCHED_QUESTIONS], NEW, "research",
+                            "researched: no past sheet covers this category. Sources: " + "; ".join(q.sources[:3]))
+        lic = table.lookup("licences", t, country)
+        if lic:
+            plan.notes.append(f"licences usually held for this category ({country or 'no country'}), not applied: "
+                              f"{describe(lic)}. Sources: {'; '.join(lic.sources[:3])}")
+    names = document_names(table, country)
+    for p in plan.questions:
+        for a in _ABBREVIATION.findall(p.row.criteria):
+            if a in names and not any(a in n for n in p.notes):
+                official, source = names[a]
+                p.note(f"{a}: {official} (source: {source})", adapted=False)

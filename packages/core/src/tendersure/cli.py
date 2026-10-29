@@ -28,7 +28,8 @@ from .bank import Bank
 from .evaluate import evaluate, summarise
 from .llm import LLMError
 from .privacy import PrivacyError
-from .generate import Generator, MarksError, Target, apply_section_marks, check_total, finalise, to_sheet
+from .generate import (Generator, MarksError, Target, apply_section_marks, check_total, finalise, to_sheet,
+                       apply_research as generate_research)
 from .parser import Sheet, parse_workbook
 from .reports import load_decisions, write_bank, write_qa_report, write_validation_report
 from .similarity import Retriever
@@ -329,6 +330,11 @@ def cmd_refine(a):
     raw = rf.ModelRefiner(model=a.model or None).propose(drafts, a.client, _past_categories(a.bank), target) \
         if use_model else None
     lines = rf.check(raw, drafts, rf.groups_of(drafts))
+    table, bank, web = _research_tools(a, load_source(a)[0] if os.path.exists(a.bank) else [])
+    rs.research([ln.description for ln in lines if ln.status != rf.REPEATED], a.country or "",
+                ["names", "licences"], table, bank, web, a.client)
+    rf.attach_research(lines, table, a.country or "")
+    rs.save(table, a.research)
     out = a.out or os.path.join("reports", os.path.splitext(os.path.basename(a.draft))[0] + " - Revised.xlsx")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     rf.write_revised(out, drafts, lines, a.client, target)
@@ -448,7 +454,13 @@ def cmd_research(a):
     if not a.source_list:
         sys.exit("give a draft list or categories table, or --review <answered research review>")
     from . import refine as rf
-    topics = [c.description for c in cat.load(a.source_list)] if a.source_list.endswith(".csv") \
+    revised = None
+    if a.source_list.endswith(".xlsx"):
+        import openpyxl
+        if {"Draft", "Revised"} <= set(openpyxl.load_workbook(a.source_list, read_only=True).sheetnames):
+            revised = rf.read_revised(a.source_list)
+    topics = [ln.description for ln in revised[1] if ln.status != rf.REPEATED] if revised else \
+        [c.description for c in cat.load(a.source_list)] if a.source_list.endswith(".csv") \
         else [d.description for d in rf.read_draft(a.source_list, a.sheet)]
     country = a.country or rs.country_of(a.prefix)
     sheets = load_source(a)[0] if os.path.exists(a.bank) else []
@@ -456,6 +468,10 @@ def cmd_research(a):
     kinds = [k.strip() for k in a.kinds.split(",") if k.strip()]
     new = rs.research(topics, country, kinds, table, bank, web, a.client)
     rs.save(table, a.research)
+    if revised:
+        rf.attach_research(revised[1], table, country)
+        rf.write_revised(a.source_list, revised[0], revised[1], a.client, rs.read_target(a.source_list))
+        print(f"research: research columns filled in {a.source_list} (its proposals unchanged)")
     out = a.out or os.path.join("reports", "research_review.xlsx")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     n = rs.write_review([f for f in table.findings if f.topic_key in {rs.topic_key(t) for t in topics}], out)
@@ -611,6 +627,15 @@ def cmd_generate(a):
         for line in problems:
             print(f"REVIEW PROBLEM: {line}")
 
+    country = a.country or rs.country_of(a.prefix)
+    r_table, r_bank, r_web = _research_tools(a, sheets) if use_model or os.path.exists(a.research) \
+        else (rs.Table([]), None, None)
+    known = {e.acronym for e in gl.load(a.glossary)} if os.path.exists(a.glossary) else set()
+    rs.batch_research(plans, country, r_table, r_bank, r_web, a.client, known)
+    for p in plans:
+        generate_research(p, r_table, country)
+    if r_table.findings:
+        rs.save(r_table, a.research)
     audience = _audience(a.audience, sheets)
     donor_rows = gating.donors(trust.usable(sheets, grades), audience)
     for p in plans:
@@ -833,6 +858,8 @@ def main(argv=None):
     p.add_argument("--bank", default="data/bank.sqlite", help="past exercises, for suggested additions")
     p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true", help="propose by rules only")
+    p.add_argument("--country", help="ISO country code for researched licences, e.g. ET, KE")
+    p.add_argument("--research", default="data/research.csv", help="the research table (default data/)")
     p.set_defaults(fn=cmd_refine)
 
     p = sub.add_parser("refine-evaluate", help="compare a refinement with the list a team settled on")
@@ -915,6 +942,8 @@ def main(argv=None):
                    help="model id to use (default: TENDERSURE_MODEL). The AI runs automatically whenever "
                         "a model is configured in .env")
     p.add_argument("--no-model", action="store_true", help="build without any AI step")
+    p.add_argument("--country", help="ISO country code for research (default: from --prefix, e.g. ERCS-ET-...)")
+    p.add_argument("--research", default="data/research.csv", help="the research table (default data/)")
     p.add_argument("--audience", default="data/audience.csv",
                    help="which business types answer each question (default data/audience.csv)")
     p.add_argument("--yes-no", default="data/yesno_polarity.csv",

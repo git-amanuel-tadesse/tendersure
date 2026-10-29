@@ -2051,3 +2051,75 @@ def test_research_review_confirms_and_corrects(tmp_path):
     back = rs.load(str(tmp_path / "research.csv"))
     assert [f.status for f in back.findings] == [rs.CONFIRMED, rs.CONFIRMED]
     assert [x["name"] for x in back.lookup("licences", "Supply of x", "ET").proposal["licences"]] == ["Licence B", "Standard C"]
+
+
+def _findings(*items):
+    from tendersure import research as rs
+    return rs.Table([rs.Finding(kind, rs.topic_key(topic), "ET", topic, proposal, [src], rs.WEB)
+                     for kind, topic, proposal, src in items])
+
+
+def test_refine_shows_research_with_sources_and_keeps_proposals(tmp_path, capsys):
+    from tendersure import refine as rf, research as rs
+    from tendersure.cli import main
+    draft = _draft_book(tmp_path / "rc.xlsx", RC)
+    revised = tmp_path / "revised.xlsx"
+    main(["refine", draft, "--client", "AAA", "--no-model", "--out", str(revised), "--bank", str(tmp_path / "none"),
+          "--research", str(tmp_path / "r.csv")])
+    _, before = rf.read_revised(str(revised))
+    wb = openpyxl.load_workbook(revised)                    # the team has started answering
+    ws = wb["Revised"]
+    col = {c.value: c.column for c in ws[1]}
+    first = next(r for r in range(2, ws.max_row + 1) if ws.cell(r, col["Status"]).value)
+    ws.cell(first, col["Decision"], "edit")
+    ws.cell(first, col["Client comment"], "Supply of Stationery")
+    wb.save(revised)
+    office = "Supply of Office Stationery"
+    rs.save(_findings(("names", office, {"technical_name": "Supply of Office Stationery and Consumables",
+                                         "usually_split_as": ["Paper and stationery", "Toners and cartridges"]},
+                       "Stationery | https://example.org/s"),
+                      ("licences", office, {"licences": [{"name": "Trade Licence for Wholesale"}]},
+                       "Licences | https://example.org/l")), str(tmp_path / "r.csv"))
+    main(["research", str(revised), "--client", "AAA", "--country", "ET", "--no-model",
+          "--research", str(tmp_path / "r.csv"), "--bank", str(tmp_path / "none"), "--out", str(tmp_path / "rv.xlsx")])
+    _, after = rf.read_revised(str(revised))
+    line = next(ln for ln in after if ln.description == office)
+    assert line.technical_name == "Supply of Office Stationery and Consumables"
+    assert line.usual_split == ["Paper and stationery", "Toners and cartridges"]
+    assert "Trade Licence for Wholesale" in line.suggested_eligibility and not line.eligibility
+    assert any("https://example.org/s" in x for x in line.research_sources)
+    assert [(l.description, l.status, l.decision, l.comment) for l in after] == \
+           [(l.description, l.status, d, c) for l, (d, c) in zip(before, [("edit", "Supply of Stationery")] +
+                                                                   [("", "")] * (len(before) - 1))]
+
+
+def test_generate_researches_only_categories_the_bank_has_no_source_for(corpus):
+    from tendersure.generate import apply_research, unknown_abbreviations
+    from tendersure.parser import Row
+    from tendersure import research as rs
+    sheets, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-009", "Provision of Drone Survey Services", "AAA"))
+    covered = g.plan(Target("AAA-ET-2026-001", "Supply of Office Stationery and Toners", "AAA"))
+    assert p.weak_match and not covered.weak_match
+    topic = "Provision of Drone Survey Services"
+    table = _findings(("questions", topic, {"questions": [
+                           {"question": "Attach your civil aviation drone operator certificate", "answer_type": 5},
+                           {"question": "How many drones do you operate?", "answer_type": 1}]},
+                       "Drones | https://example.org/d"),
+                      ("licences", topic, {"licences": [{"name": "Remote Pilot Licence", "issuer": "the aviation authority"}]},
+                       "Aviation | https://example.org/a"),
+                      ("documents", "docs", {"documents": [{"abbreviation": "RPAS", "official_name":
+                                                            "Remotely Piloted Aircraft System permit"}]},
+                       "Permits | https://example.org/p"))
+    p.questions[0].row.criteria, p.questions[0].row.answer_type = "Attach your RPAS permit", 5
+    assert unknown_abbreviations([p], set()) == ["RPAS"]
+    apply_research(p, table, "ET")
+    apply_research(covered, table, "ET")
+    added = [q for q in p.questions if q.origin == "newly drafted"]
+    assert [q.row.criteria for q in added] == ["Attach your civil aviation drone operator certificate",
+                                               "How many drones do you operate?"]
+    assert all(q.row.marks == 0 for q in added) and added[0].row.attachment
+    assert "https://example.org/d" in added[0].notes[0]
+    assert any("Remote Pilot Licence" in n and "not applied" in n for n in p.notes)
+    assert any("Remotely Piloted Aircraft System permit" in n for n in p.questions[0].notes)
+    assert not any(q.origin == "newly drafted" and "drone" in q.row.criteria for q in covered.questions)
