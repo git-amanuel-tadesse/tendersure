@@ -118,3 +118,32 @@ On PSI, run by the team:
     wording (spec 03 C17).
   - Other clients' full names ("Norwegian Refugee Council") are swapped for
     the target's, as their codes already were.
+
+## Amended 2026-10-30: compare, not build
+
+The client sends sample criteria for the team to **compare** the draft with,
+and not every exercise has them. B3 is replaced: sheets are always built
+from the bank (the client's own history first, then any client's), and the
+benchmark is a reference.
+
+- **Comparison.** Each sheet whose group maps to a usable tab is set against
+  it in the QA report:
+  - *Benchmark - marks*: the sheet's marks per section beside the tab's,
+    with the difference;
+  - *Benchmark - questions*: questions only the client's tab asks, and
+    questions only our sheet asks. Wordings at least 85% alike count as the
+    same question.
+- **The client's split as a decision.** Where a sheet's split differs from its
+  tab's, an `M-BENCH-<code>` line in the Decisions tab shows the
+  differences.
+  - Blank keeps ours.
+  - `client` takes the tab's split, including 0 for sections the tab does
+    not score.
+  - Any split typed in is taken as given.
+- **Marks into an unscored section.** When the team sets a split itself (any
+  M answer), a section whose rows carry no marks shares them equally over
+  its rows that can be scored (uploads, Yes/No, selections). Automatic steps
+  still never give marks to rows the client left at 0.
+- **Unchanged.** The tabs are still checked (a tab not totalling 100 is not
+  used) and the group-to-tab map is still proposed and kept as corrected.
+  "Build from it" is gone.

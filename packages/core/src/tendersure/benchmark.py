@@ -1,6 +1,8 @@
 """The client's benchmark criteria (spec 08): sample sheets a client sends
-with its categories, one tab per kind of category, as the template and the
-marks to build from.
+with its categories, one tab per kind of category, to compare the draft
+with. Sheets are built from the bank as always; each is then set against
+its group's tab - marks per section and the questions either side asks -
+and the client's split is proposed as a marks decision.
 
 A benchmark is the client's instruction for this run, not history: it is
 never added to the bank. Each tab belongs to the exercise's client whatever
@@ -22,7 +24,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from .parser import Sheet, normalise, parse_workbook
+from difflib import SequenceMatcher
+
+from .parser import Sheet, normalise, parse_workbook, section_key
 from .similarity import TfidfEmbedder, cosine
 from .check import check_standard_blocks
 from .validate import validate_sheet
@@ -215,20 +219,47 @@ def save_map(lines: List[MapLine], path: str):
             w.writerow([m.group, m.kind, m.tab, m.source])
 
 
-def skeletons(categories, tabs: List[Tab], lines: List[MapLine]) -> Tuple[Dict[int, Sheet], Dict[int, str]]:
-    """By category number: the tab to build from, and for the others why the
-    bank is used instead."""
+def targets(categories, tabs: List[Tab], lines: List[MapLine]) -> Tuple[Dict[int, Tab], Dict[int, str]]:
+    """By category number: the tab its sheet is compared with, and for the
+    others why there is no comparison."""
     by_name = {t.name: t for t in tabs}
     use, why = {}, {}
     for c in categories:
         m = tab_for(c, lines)
         t = by_name.get(m.tab) if m else None
         if m is None:
-            why[c.number] = f"group '{c.group or '-'}' is not mapped to a benchmark tab: built from the bank"
+            why[c.number] = f"group '{c.group or '-'}' is not mapped to a benchmark tab: not compared"
         elif t is None:
-            why[c.number] = f"benchmark tab '{m.tab}' is not in the workbook: built from the bank"
+            why[c.number] = f"benchmark tab '{m.tab}' is not in the workbook: not compared"
         elif not t.usable:
-            why[c.number] = f"benchmark tab '{t.name}' not used ({'; '.join(t.refused)}): built from the bank"
+            why[c.number] = f"benchmark tab '{t.name}' not used ({'; '.join(t.refused)}): not compared"
         else:
-            use[c.number] = t.sheet
+            use[c.number] = t
     return use, why
+
+
+def split_of(sheet: Sheet) -> Dict[str, float]:
+    """A sheet's marks per section key, in its order."""
+    out: Dict[str, float] = {}
+    for r in sheet.rows:
+        k = section_key(r.section)
+        out[k] = out.get(k, 0.0) + (r.marks or 0)
+    return out
+
+
+def reference(tab: Tab) -> dict:
+    """What a plan keeps of its tab to be compared with (spec 08 B3)."""
+    return {"tab": tab.name, "split": split_of(tab.sheet),
+            "rows": [(section_key(r.section), r.criteria, r.marks or 0) for r in tab.sheet.rows if r.criteria]}
+
+
+def _alike(a: str, b: str) -> bool:
+    na, nb = normalise(a), normalise(b)
+    return na == nb or SequenceMatcher(None, na, nb).ratio() >= 0.85
+
+
+def differences(ours: List[Tuple[str, str, float]], theirs: List[Tuple[str, str, float]]):
+    """(questions the client's tab asks that the sheet does not, and the reverse)."""
+    missing = [t for t in theirs if not any(_alike(t[1], o[1]) for o in ours)]
+    extra = [o for o in ours if not any(_alike(o[1], t[1]) for t in theirs)]
+    return missing, extra

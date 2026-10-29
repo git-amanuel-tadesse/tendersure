@@ -236,6 +236,25 @@ def decision_items(plans: List[Plan]) -> List[Item]:
             codes=[p.target.code for p in ps], proposed=text,
             why=("Similar categories used " + options) if options else "Close matches agree."))
 
+    # M-BENCH: a sheet whose split differs from the client's benchmark tab (spec 08)
+    for p in plans:
+        if not p.benchmark:
+            continue
+        ours = {k: v[0] for k, v in p.section_marks().items()}
+        theirs = p.benchmark["split"]
+        if all(abs(ours.get(k, 0) - theirs.get(k, 0)) < 1e-9 for k in set(ours) | set(theirs)):
+            continue
+        adopt = ", ".join(f"{k} {theirs.get(k, 0):g}" for k in dict.fromkeys([*theirs, *ours]))
+        diff = "; ".join(f"{k} {ours.get(k, 0):g} vs {theirs.get(k, 0):g}" for k in dict.fromkeys([*ours, *theirs])
+                         if abs(ours.get(k, 0) - theirs.get(k, 0)) > 1e-9)
+        items.append(Item(
+            id=f"M-BENCH-{p.target.code}", type=MARKS,
+            decide=f"Marks for {number_of(p.target.code)} against the client's benchmark tab '{p.benchmark['tab']}'",
+            codes=[p.target.code], proposed=_marks_text(ours),
+            why=f"ours vs the client's: {diff}. Blank keeps ours; 'client' takes the tab's split "
+                f"({_marks_text(theirs)}); or give your own.",
+            keys=[adopt]))
+
     # T / CHECK: remaining findings, grouped by rule.
     by_rule: Dict[str, dict] = {}
     for p in plans:
@@ -525,7 +544,9 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
 
     # 2. Marks.
     for it in [i for i in items if i.type == MARKS and not accepted(i)]:
-        split = {k.lower(): float(v) for k, v in _PAIR.findall(it.answer)}
+        given = it.keys[0] if it.id.startswith("M-BENCH-") and it.keys and \
+            it.answer.strip().lower() in ("client", "benchmark") else it.answer
+        split = {k.lower(): float(v) for k, v in _PAIR.findall(given)}
         if not split:
             it.status = "NOT APPLIED: write e.g. 'technical 10, trade_reference 35'"
             problems.append(f"{it.id}: '{it.answer}' - {it.status[13:]}")
@@ -535,7 +556,7 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
             p = by_code[code]
             prev = {k: v[0] for k, v in p.section_marks().items()}
             try:
-                apply_section_marks(p, split, f"review {it.id}")
+                apply_section_marks(p, split, f"review {it.id}", share_unscored=True)
                 check_total(p)
             except MarksError as e:
                 failed.append(code)

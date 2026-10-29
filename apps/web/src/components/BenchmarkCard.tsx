@@ -1,4 +1,4 @@
-/** The client's sample criteria (spec 08): which workbook, its tabs as checked, and the group -> tab map. */
+/** The client's sample criteria (spec 08): sheets are built from the bank and compared with these tabs. */
 import { useState } from "react";
 import { type MapLine, useBenchmark, useBenchmarkActions, useExercise } from "../lib/api";
 import { Badge, Button, Card, cx, ErrorNotice, Notice, Select } from "./ui";
@@ -16,11 +16,11 @@ export function BenchmarkCard({ exerciseId }: { exerciseId: string }) {
   return (
     <Card
       title={<span className="flex items-center gap-2">Client's benchmark {b.file && <Badge>{b.file.replace("uploads/", "")}</Badge>}</span>}
-      actions={b.file && <Button variant="ghost" onClick={() => confirm("Build from the bank again?") && stop.mutate()}>Stop using it</Button>}
+      actions={b.file && <Button variant="ghost" onClick={() => confirm("Stop comparing with this workbook?") && stop.mutate()}>Stop using it</Button>}
     >
       {!b.file ? (
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          <span className="text-zinc-500">Sample criteria from the client (one tab per kind of category): each category starts from its group's tab, questions and marks.</span>
+          <span className="text-zinc-500">Optional. Sample criteria from the client (one tab per kind of category): each sheet is compared with its group's tab - marks per section and the questions either side asks - in the QA report, and the client's split is offered on an M-BENCH- line.</span>
           <Select value={file} onChange={(e) => setFile(e.target.value)}>
             <option value="">an uploaded workbook…</option>
             {files.map((f) => <option key={f.path} value={f.path}>{f.path.replace("uploads/", "")}</option>)}
@@ -44,7 +44,7 @@ export function BenchmarkCard({ exerciseId }: { exerciseId: string }) {
             </ul>
           </div>
           <div>
-            <h3 className="mb-2 text-sm font-medium">Which tab each group starts from</h3>
+            <h3 className="mb-2 text-sm font-medium">Which tab each group is compared with</h3>
             {b.map.length === 0 ? (
               <Notice tone="warn">No categories table yet: the map is proposed from its groups.</Notice>
             ) : (

@@ -121,6 +121,7 @@ class Plan:
     same_category: bool = False     # built from the client's own sheet for this category
     weak_match: bool = False        # the source shares little with this category (kind/client only)
     proposal: Optional[dict] = None  # model proposal (selectors.py), applied only through review
+    benchmark: Optional[dict] = None  # the client's tab it is compared with (benchmark.reference)
 
     @property
     def questions(self) -> List[PlannedRow]:
@@ -262,18 +263,25 @@ def _rescale_scores(r: Row, new_marks: float, original: Optional[str] = None):
     r.option_scores = ",".join(f"{round(v * k):g}" for v in vals)
 
 
-def apply_section_marks(plan: Plan, split: Dict[str, float], source: str = "reviewer"):
+def apply_section_marks(plan: Plan, split: Dict[str, float], source: str = "reviewer", share_unscored: bool = False):
     """Set a section's total marks, spreading them over its scored rows.
 
     Rows keep their System/Compliance placement; option scores are rescaled so
     the best option still equals the row's marks. A section with no scored
-    rows cannot take marks - that needs a question added, which is a human call.
+    rows cannot take marks - that needs a question added, which is a human
+    call - unless the team sets the split itself (`share_unscored`): then the
+    section's rows that can be scored (uploads, Yes/No, selections) share the
+    marks equally.
     """
     for key, target_marks in split.items():
         rows = [p for p in plan.questions if section_key(p.row.section) == key]
         scored = [p for p in rows if (p.row.marks or 0) > 0 or p.weight_hint > 0]
         if not rows:
             raise MarksError(f"section '{key}' is not in this sheet")
+        if target_marks and not scored and share_unscored:
+            scored = [p for p in rows if p.row.answer_type in (2, 3, 4, 5)]
+            for p in scored:
+                p.weight_hint = 1.0                       # equal shares
         if target_marks and not scored:
             raise MarksError(f"section '{key}' has no scored rows to carry {target_marks:g} marks")
         weights = [(p.row.marks or 0) or p.weight_hint for p in scored]
@@ -605,18 +613,13 @@ class Generator:
                 p.note(f"{fld} {cur} -> {target}: {why}")
 
     def plan(self, target: Target, exclude: Optional[set] = None,
-             marks: Optional[Dict[str, float]] = None, k: int = 5, start: Optional[Sheet] = None) -> Plan:
-        """`start`: the sheet to build from instead of the best past match - the
-        client's benchmark tab for this category's group (spec 08)."""
+             marks: Optional[Dict[str, float]] = None, k: int = 5) -> Plan:
         ranked = self.retriever.rank(target.description, target.client, target.group,
                                      exclude=exclude, k=max(k, 12))
         matches = [m for m in ranked if self._usable(m)]
-        if start is not None:
-            matches = [Match(start, 1.0, 1.0, ["the client's benchmark tab"])] + matches
         if not matches:
             raise ValueError("no usable past sheets to build from")
-        skeleton = matches[0] if start is not None else \
-            next((m for m in matches if m.sheet.client == target.client), matches[0])
+        skeleton = next((m for m in matches if m.sheet.client == target.client), matches[0])
         skipped = []
         for m in ranked:
             if m is skeleton:
@@ -663,8 +666,6 @@ class Generator:
         plan = Plan(target=target, skeleton=skeleton, matches=matches[:k], rows=rows,
                     n_columns=len(LAYOUT))
         plan.notes += skipped
-        if start is not None:
-            plan.notes.append(f"built from the client's benchmark tab '{start.name}': its questions and marks")
         plan.same_category = same_category
         # Weak: neither the topic (text) nor the client's own grouping links
         # the source to this category - it was chosen by client and kind only.

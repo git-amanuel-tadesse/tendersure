@@ -3,8 +3,8 @@
     benchmark.json        which uploaded workbook is the benchmark
     benchmark_map.csv     group | kind | tab: proposed for groups without a line, kept as the team sets it
 
-Generation runs read both: a category whose group is mapped to a usable tab
-starts from it.
+Generation runs read both: every sheet is built from the bank, then compared
+with its group's usable tab (marks per section, questions either side asks).
 """
 
 import json

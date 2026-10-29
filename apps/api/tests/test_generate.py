@@ -159,7 +159,7 @@ def test_a_benchmark_is_chosen_mapped_corrected_and_used(client, ex):
         {"group": "SERVICES", "tab": "AAA General"}]}, headers=W)             # the team's correction
     assert {m["group"]: (m["tab"], m["source"]) for m in r.json["map"]}["SERVICES"] == ("AAA General", "team")
     job = _run(client, client.post(f"/api/exercises/{ex}/generate", json={"use_model": False}, headers=W))
-    assert any("3 categories start from a benchmark tab" in x for x in job.lines)
+    assert any("3 categories compared with a benchmark tab" in x for x in job.lines)
     run = client.get(f"/api/exercises/{ex}/generate/runs/{job.result['run']}").json
     assert run["settings"]["benchmark"] == "uploads/bench.xlsx" and run["written"] == 3
     assert client.delete(f"/api/exercises/{ex}/benchmark", headers=W).json["file"] is None

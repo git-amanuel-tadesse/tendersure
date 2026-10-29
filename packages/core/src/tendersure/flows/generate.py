@@ -109,7 +109,7 @@ def generate(s: Settings) -> Result:
     rulings, ruled = trust.load_rulings(s.rulings)
     gen = Generator(sheets, Retriever(sheets, groups), decisions, grades, rulings)
 
-    starts = benchmark_starts(s, cats)
+    refs = benchmark_refs(s, cats)
     plans, failed = [], []
     for c in list(cats):
         problem = gate_problem(c)                   # the same rule the categories page shows per row
@@ -123,9 +123,10 @@ def generate(s: Settings) -> Result:
                         c.requirements or stated_requirements(c), c.eligibility, c.gate_question,
                         business_types(c.applies_to), c.licence, c.hr, c.technical, s.brief)
         try:
-            plan = gen.plan(target, exclude=exclude, marks=marks.get(code), start=starts[0].get(c.number))
-            if c.number in starts[1]:
-                plan.notes.append(starts[1][c.number])
+            plan = gen.plan(target, exclude=exclude, marks=marks.get(code))
+            plan.benchmark = refs[0].get(c.number)
+            if c.number in refs[1]:
+                plan.notes.append(refs[1][c.number])
             check_total(plan)
         except MarksError as e:
             failed.append((code, str(e)))
@@ -313,10 +314,10 @@ def generate(s: Settings) -> Result:
     return r
 
 
-def benchmark_starts(s: Settings, cats) -> Tuple[Dict[int, object], Dict[int, str]]:
-    """The benchmark tab each category starts from (spec 08), and why the
-    others are built from the bank. The map is proposed where it has no line
-    for a group, and saved so the team can correct it."""
+def benchmark_refs(s: Settings, cats) -> Tuple[Dict[int, dict], Dict[int, str]]:
+    """What each category's sheet is compared with (spec 08): its group's
+    tab, and why the others are not compared. The map is proposed where it
+    has no line for a group, and saved so the team can correct it."""
     if not s.benchmark:
         return {}, {}
     from .. import benchmark as bm
@@ -332,9 +333,9 @@ def benchmark_starts(s: Settings, cats) -> Tuple[Dict[int, object], Dict[int, st
         bm.save_map(lines, path)
         log.info(f"benchmark map: {len(lines) - len(known)} group line(s) proposed -> {path} "
                  f"(correct a line there and run again; your lines are kept)")
-    use, why = bm.skeletons(cats, tabs, lines)
-    log.info(f"benchmark: {len(use)} categories start from a benchmark tab, {len(why)} from the bank")
-    return use, why
+    use, why = bm.targets(cats, tabs, lines)
+    log.info(f"benchmark: {len(use)} categories compared with a benchmark tab, {len(why)} not compared")
+    return {n: bm.reference(t) for n, t in use.items()}, why
 
 
 def read_review(qa: str) -> Tuple[Dict[str, dict], Dict[str, str]]:

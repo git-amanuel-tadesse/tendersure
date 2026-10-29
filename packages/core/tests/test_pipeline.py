@@ -2640,36 +2640,37 @@ def test_the_map_matches_by_name_by_content_and_splits_a_mixed_group(tmp_path):
         [(m.group, m.kind, m.tab) for m in lines]
 
 
-def test_a_mapped_category_is_built_from_its_tab_and_its_marks(corpus, tmp_path):
+def test_a_mapped_category_is_compared_with_its_tab_and_can_take_the_client_s_marks(corpus, tmp_path):
+    """Spec 08: sheets come from the bank; the client's tab is what they are compared with."""
     from tendersure import benchmark as bm, categories as cat, flows
-    from tendersure.parser import section_key
     bench = _benchmark_book(tmp_path / "bench.xlsx")
     cat.save([cat.Category(1, "Provision of Minor Construction Works", "ENGINEERING WORKS", client="CCC",
-                           hr=["Project Manager", "Site engineer", "Foreman"]),
+                           hr=["Project Manager", "Site engineer"]),
               cat.Category(2, "Supply of Office Equipment with Manufacturer Warranty and Authorisation",
                            "OFFICE EQUIPMENT", client="CCC")], str(tmp_path / "cats.csv"))
-    r = flows.generate(flows.GenerateSettings(
+    settings = lambda **kw: flows.GenerateSettings(
         str(tmp_path / "cats.csv"), "CCC", "CCC-ET-2026-", str(tmp_path / "gen.xlsx"), source=str(corpus),
         audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
-        model=flows.Model(off=True), benchmark=bench))
-    assert r.failed == [] and sorted(r.written) == ["CCC-ET-2026-001", "CCC-ET-2026-002"]
+        model=flows.Model(off=True), benchmark=bench, **kw)
+    r = flows.generate(settings())
     works, goods = sorted(r.plans, key=lambda p: p.target.code)
+    assert works.skeleton.sheet.client != "CCC"                        # built from the bank, not the tab
+    assert works.benchmark["tab"] == "CCC Works" and goods.benchmark is None
+    assert any("'CCC Goods' not used (marks total 98" in n for n in goods.notes)
+    item = next(i for i in r.items if i.id == "M-BENCH-CCC-ET-2026-001")
+    assert "ours vs the client's" in item.why
+    qa = openpyxl.load_workbook(r.qa)
+    rows = list(qa["Benchmark - marks"].iter_rows(min_row=2, values_only=True))
+    assert ("CCC-ET-2026-001", "Provision of Minor Construction Works", "CCC Works", "hr", 0, 10, -10) in rows
+    asked = {(row[2], row[4]) for row in qa["Benchmark - questions"].iter_rows(min_row=2, values_only=True) if row[0]}
+    assert ("only in the client's tab", "Do you hold a valid service licence? Yes/No") in asked
+    assert ("only in our sheet", "Are you a manufacturer or distributor? Attach authorisation") in asked
+    again = flows.generate(settings(proposals={}, answers={item.id: "client"}))      # the team takes the client's split
+    assert next(i for i in again.items if i.id == item.id).status == "applied"
+    works = next(p for p in again.plans if p.target.code == "CCC-ET-2026-001")
     tab = next(t for t in bm.load(bench, "CCC") if t.name == "CCC Works")
-    want = {}
-    for row in tab.sheet.rows:
-        want[section_key(row.section)] = want.get(section_key(row.section), 0) + (row.marks or 0)
-    assert {k: v[0] for k, v in works.section_marks().items() if v[0]} == {k: v for k, v in want.items() if v}
-    assert [(q.row.criteria.split(" for ")[-1], q.row.marks) for q in works.questions
-            if section_key(q.row.section) == "hr"] == [("Project Manager", 5), ("Site engineer", 5), ("Foreman", 0)]
-    assert any("benchmark tab 'CCC Works'" in n for n in works.notes)
-    assert any("'CCC Goods' not used (marks total 98" in n for n in goods.notes)        # from the bank instead
-    assert (tmp_path / "gen_benchmark_map.csv").exists()
-    checked = flows.check(str(tmp_path / "gen.xlsx"), "CCC", str(tmp_path / "cats.csv"), None,
-                          str(tmp_path / "yn.csv"), str(tmp_path / "report.xlsx"), flows.Model(off=True))
-    assert checked.errors == 0
-
-
-# --- split and merge in the review (spec 09) ----------------------------------------------
+    assert {k: v[0] for k, v in works.section_marks().items() if v[0]} == \
+        {k: v for k, v in bm.split_of(tab.sheet).items() if v}
 
 def _review_lines():
     from tendersure import refine as rf

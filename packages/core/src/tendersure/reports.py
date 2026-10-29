@@ -222,6 +222,36 @@ def load_decisions(path: str) -> Dict[tuple, str]:
 
 # --- generation QA -----------------------------------------------------------
 
+def _benchmark_tabs(wb, plans: List[Plan]):
+    """Spec 08: each sheet against its group's tab in the client's sample
+    criteria - marks per section, and the questions only one side asks."""
+    from .benchmark import differences
+    compared = [p for p in plans if p.benchmark]
+    if not compared:
+        return
+    marks, questions = [], []
+    for p in compared:
+        ours = {k: v[0] for k, v in p.section_marks().items()}
+        theirs = p.benchmark["split"]
+        for k in dict.fromkeys([*ours, *theirs]):
+            o, t = ours.get(k, 0), theirs.get(k, 0)
+            if o or t:
+                marks.append([p.target.code, p.target.description, p.benchmark["tab"], k, o, t, o - t])
+        mine = [(section_key(q.row.section), q.row.criteria, q.row.marks or 0) for q in p.questions if q.row.criteria]
+        missing, extra = differences(mine, p.benchmark["rows"])
+        questions += [[p.target.code, p.benchmark["tab"], "only in the client's tab", k, text, m] for k, text, m in missing]
+        questions += [[p.target.code, p.benchmark["tab"], "only in our sheet", k, text, m] for k, text, m in extra]
+    _table(wb.create_sheet("Benchmark - marks"),
+           ["Code", "Category", "Client's tab", "Section", "Ours", "Client's", "Difference"], marks,
+           {"Code": 18, "Category": 50, "Client's tab": 22, "Section": 16})
+    wb["Benchmark - marks"].append([])
+    wb["Benchmark - marks"].append(["To take the client's split for a sheet, answer 'client' on its M-BENCH- line "
+                                    "in the Decisions tab."])
+    _table(wb.create_sheet("Benchmark - questions"),
+           ["Code", "Client's tab", "Asked", "Section", "Question", "Marks"], questions,
+           {"Code": 18, "Client's tab": 22, "Asked": 22, "Question": 70})
+
+
 def write_qa_report(plans: List[Plan], path: str, items=None, brief_note: Optional[str] = None):
     """`items`: decisions with answers attached (from review.apply_answers);
     computed fresh from the plans when absent. `brief_note`: what became of
@@ -331,5 +361,6 @@ def write_qa_report(plans: List[Plan], path: str, items=None, brief_note: Option
            [[p.target.code, f.excel_row, f.rule, f.kind, f.severity, f.message]
             for p in plans for f in p.findings],
            {"Code": 18, "Rule": 22, "Problem": 70})
+    _benchmark_tabs(wb, plans)
     wb.save(path)
     return path
