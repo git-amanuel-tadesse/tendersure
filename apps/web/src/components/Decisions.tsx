@@ -40,6 +40,11 @@ export function Decisions({ exerciseId, run, onApplied }: { exerciseId: string; 
   const changed = (id: string) => draft[id] !== undefined && draft[id] !== saved[id];
   const dirty = Object.keys(draft).filter(changed);
   const set = (id: string, v: string) => setDraft((d) => ({ ...d, [id]: v }));
+  // a typed split that is not 100 is refused when applied: say so before
+  const offTotal = items.filter((i) => {
+    const v = value(i.id).trim();
+    return kindOf(i) === "marks" && v && v.toLowerCase() !== "client" && Math.abs(total(parseMarks(v)) - 100) > 1e-9;
+  }).map((i) => i.id);
 
   const counts = useMemo(() => Object.fromEntries(TABS.map((t) => [t, items.filter((i) => inTab(t, i, value(i.id), changed(i.id))).length])),
     [items, draft, saved]) as Record<Tab, number>;
@@ -97,6 +102,11 @@ export function Decisions({ exerciseId, run, onApplied }: { exerciseId: string; 
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2">
+            {offTotal.length > 0 && (
+              <span className="text-xs text-red-600" title={offTotal.join(", ")}>
+                {offTotal.length} marks answer{offTotal.length === 1 ? "" : "s"} not at 100: {offTotal.length === 1 ? "it" : "they"} will not apply
+              </span>
+            )}
             {dirty.length > 0 && <Button variant="ghost" onClick={() => setDraft({})}>Undo {dirty.length}</Button>}
             <Button variant="secondary" disabled={!dirty.length} busy={answer.isPending} onClick={save}>
               Save {dirty.length || ""} answer{dirty.length === 1 ? "" : "s"}
@@ -390,8 +400,19 @@ function MControl({ item, value, onChange }: { item: Item; value: string; onChan
           </label>
         ))}
       </div>
-      <div className={cx("text-xs font-medium", sum === 100 ? "text-emerald-700" : "text-red-600")}>
-        total {+sum.toFixed(2)}{sum !== 100 && " - every sheet must total 100"}
+      <div className={cx("flex flex-wrap items-center gap-2 text-xs font-medium", sum === 100 ? "text-emerald-700" : "text-red-600")}>
+        <span>
+          total {+sum.toFixed(2)}
+          {sum !== 100 && ` - ${Math.abs(+(100 - sum).toFixed(2))} mark${Math.abs(100 - sum) === 1 ? "" : "s"} ${sum < 100 ? "left to place" : "too many"}`}
+        </span>
+        {sum !== 100 && marks.length > 0 && (() => {
+          const big = marks.reduce((b, m, i) => (m[1] > marks[b][1] ? i : b), 0);
+          return (
+            <Button variant="secondary" className="px-2 py-0.5 text-xs" onClick={() => set(big, +(marks[big][1] + 100 - sum).toFixed(2))}>
+              {sum < 100 ? "put it on" : "take it from"} {marks[big][0]}
+            </Button>
+          );
+        })()}
       </div>
     </div>
   );
