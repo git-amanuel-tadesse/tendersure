@@ -300,8 +300,13 @@ replaces is kept in `history/`. Export to CSV.
    free-text field for anything else. The Status column after applying is
    shown per row.
 4. **Apply answers**: a new run with the saved proposals and the answers
-   (the `--review` path: no new model call for proposals). Each run is kept,
-   so the team can compare and download any earlier one.
+   (the `--review` path: no new model call for proposals). Answers the run
+   already carried are kept, as they are in its QA file. Each run is kept in
+   `runs/<n>/` (settings, result, proposals, answers, workbooks), so the team
+   can compare and download any earlier one.
+5. An answer that cannot be applied says why in its Status, e.g. "NOT
+   APPLIED on 4: section 'technical' is not in this sheet". Before this
+   change the QA workbook showed the sheet's total instead of the reason.
 
 ## Out of scope for this version
 

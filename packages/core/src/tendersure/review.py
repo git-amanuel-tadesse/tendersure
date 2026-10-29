@@ -530,7 +530,7 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
             it.status = "NOT APPLIED: write e.g. 'technical 10, trade_reference 35'"
             problems.append(f"{it.id}: '{it.answer}' - {it.status[13:]}")
             continue
-        failed, totals = [], set()
+        failed, why = [], []
         for code in it.codes:
             p = by_code[code]
             prev = {k: v[0] for k, v in p.section_marks().items()}
@@ -538,14 +538,13 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
                 apply_section_marks(p, split, f"review {it.id}")
                 check_total(p)
             except MarksError as e:
-                totals.add(p.total())
                 failed.append(code)
+                why.append(str(e))          # the reason itself: a total that is off, a section not there...
                 problems.append(f"{it.id} on {code}: {e} - kept the previous marks")
                 # A rejected answer leaves the sheet as it was, not unwritten.
                 apply_section_marks(p, {k: v for k, v in prev.items() if v}, "undo rejected review answer")
-        it.status = (f"NOT APPLIED on {', '.join(number_of(c) for c in failed)}: these marks total "
-                     f"{', '.join(f'{t:g}' for t in sorted(totals))}, not 100; proposed marks kept") \
-            if failed else "applied"
+        it.status = (f"NOT APPLIED on {', '.join(number_of(c) for c in failed)}: "
+                     f"{'; '.join(dict.fromkeys(why))}; proposed marks kept") if failed else "applied"
         log.append(f"{it.id}: marks set on {len(it.codes)} categor{'y' if len(it.codes) == 1 else 'ies'}")
 
     # 3. Rulings on contested fields: applied now, saved for every future batch.
