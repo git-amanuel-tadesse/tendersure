@@ -132,6 +132,15 @@ def parse_json(text: str):
 Transport = Callable[[str, dict, dict], dict]
 
 
+def _provider_message(detail: str) -> str:
+    """The provider's own words from an error reply ({"error": {"message": ...}}), if any."""
+    try:
+        err = json.loads(detail).get("error", {})
+        return " ".join(str(err.get("message", "")).split()) if isinstance(err, dict) else ""
+    except (ValueError, AttributeError):
+        return ""
+
+
 def _http(url: str, headers: dict, body: dict, timeout: float = 600) -> dict:
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
     try:
@@ -140,8 +149,10 @@ def _http(url: str, headers: dict, body: dict, timeout: float = 600) -> dict:
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")[:500]
         if e.code == 402:
-            raise AccountError("the model account is out of credit (HTTP 402). Each request reserves credit "
-                               "for its longest possible answer; add credit and retry") from None
+            raise AccountError("the model account is out of credit (HTTP 402"
+                               + (f": {_provider_message(detail)}" if _provider_message(detail) else "")
+                               + "). Each request reserves credit for its longest possible answer; "
+                                 "add credit and retry") from None
         if e.code in (401, 403):
             raise AccountError(f"the provider rejected the key (HTTP {e.code}); check the key in .env") from None
         raise LLMError(f"HTTP {e.code}: {detail}") from None
