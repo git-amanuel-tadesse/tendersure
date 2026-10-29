@@ -111,7 +111,8 @@ def cmd_generate(a):
     flows.generate(flows.GenerateSettings(
         a.categories, a.client, a.prefix, a.out, a.source, a.bank, a.client_name, _only(a), a.decisions, a.marks,
         a.rulings, a.research, a.audience, a.yes_no, a.glossary, a.country, a.rebuild_existing, a.formulas,
-        a.split_files, not a.no_ai_review, _model(a), proposals, answers, flows.load_brief(a.brief)))
+        a.split_files, not a.no_ai_review, _model(a), proposals, answers, flows.load_brief(a.brief),
+        benchmark=a.benchmark, benchmark_map=a.benchmark_map))
 
 
 def cmd_check(a):
@@ -283,6 +284,10 @@ def main(argv=None):
     p.add_argument("--glossary", default=P.learned("glossary"),
                    help="short names and acronyms (default data/glossary.csv; seeded from the bank if absent)")
     p.add_argument("--out", required=True)
+    p.add_argument("--benchmark", help="the client's sample criteria (.xlsx, one tab per kind of category): each "
+                                       "category starts from its group's tab, questions and marks")
+    p.add_argument("--benchmark-map", help="group,kind,tab CSV (default <out>_benchmark_map.csv): proposed where "
+                                           "a group has no line, then yours to correct")
     p.add_argument("--brief", help="what the client is looking for, as text or a .txt file: read first by the model "
                                    "(above past sheets; the template rules still apply)")
     p.set_defaults(fn=cmd_generate)

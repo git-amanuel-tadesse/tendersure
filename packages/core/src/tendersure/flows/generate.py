@@ -59,6 +59,8 @@ class Settings:
     proposals: Optional[Dict[str, dict]] = None   # by sheet code: replayed when applying a review
     answers: Optional[Dict[str, str]] = None      # by Decisions item ID; None: a first build
     brief: str = ""                         # the client's brief (spec 07 B), read first by the model steps
+    benchmark: Optional[str] = None         # the client's sample criteria workbook (spec 08)
+    benchmark_map: Optional[str] = None     # group | kind | tab; proposed (and written) when absent
 
     def __post_init__(self):
         p = current()
@@ -107,6 +109,7 @@ def generate(s: Settings) -> Result:
     rulings, ruled = trust.load_rulings(s.rulings)
     gen = Generator(sheets, Retriever(sheets, groups), decisions, grades, rulings)
 
+    starts = benchmark_starts(s, cats)
     plans, failed = [], []
     for c in list(cats):
         problem = gate_problem(c)                   # the same rule the categories page shows per row
@@ -120,7 +123,9 @@ def generate(s: Settings) -> Result:
                         c.requirements or stated_requirements(c), c.eligibility, c.gate_question,
                         business_types(c.applies_to), c.licence, c.hr, c.technical, s.brief)
         try:
-            plan = gen.plan(target, exclude=exclude, marks=marks.get(code))
+            plan = gen.plan(target, exclude=exclude, marks=marks.get(code), start=starts[0].get(c.number))
+            if c.number in starts[1]:
+                plan.notes.append(starts[1][c.number])
             check_total(plan)
         except MarksError as e:
             failed.append((code, str(e)))
@@ -306,6 +311,30 @@ def generate(s: Settings) -> Result:
     for code, msg in failed:
         log.info(f"NOT WRITTEN {code}: {msg}")
     return r
+
+
+def benchmark_starts(s: Settings, cats) -> Tuple[Dict[int, object], Dict[int, str]]:
+    """The benchmark tab each category starts from (spec 08), and why the
+    others are built from the bank. The map is proposed where it has no line
+    for a group, and saved so the team can correct it."""
+    if not s.benchmark:
+        return {}, {}
+    from .. import benchmark as bm
+    if not os.path.exists(s.benchmark):
+        raise FlowError(f"no benchmark workbook at {s.benchmark}")
+    tabs = bm.load(s.benchmark, s.client)
+    for line in bm.report(tabs):
+        log.info(line)
+    path = s.benchmark_map or os.path.splitext(s.out)[0] + "_benchmark_map.csv"
+    known = bm.load_map(path)
+    lines = bm.propose_map(cats, tabs, s.client, known)
+    if len(lines) > len(known):
+        bm.save_map(lines, path)
+        log.info(f"benchmark map: {len(lines) - len(known)} group line(s) proposed -> {path} "
+                 f"(correct a line there and run again; your lines are kept)")
+    use, why = bm.skeletons(cats, tabs, lines)
+    log.info(f"benchmark: {len(use)} categories start from a benchmark tab, {len(why)} from the bank")
+    return use, why
 
 
 def read_review(qa: str) -> Tuple[Dict[str, dict], Dict[str, str]]:

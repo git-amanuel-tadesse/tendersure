@@ -142,9 +142,15 @@ class Plan:
 # --- text adaptation ----------------------------------------------------------
 
 def swap_client(text: str, target_name: str) -> str:
-    for name in CLIENT_NAMES:
-        if name != target_name:
-            text = re.sub(rf"\b{re.escape(name)}\b", target_name, text)
+    """Every other client's names - codes and full names, longest first -
+    become the target's ("Norwegian Refugee Council" as well as "NRC")."""
+    from .privacy import CLIENT_ALIASES
+    own = target_name.lower()
+    names = {n for c, aliases in CLIENT_ALIASES.items()
+             if own not in {c.lower()} | {a.lower() for a in aliases} for n in aliases}
+    names |= {n for n in CLIENT_NAMES if n.lower() != own}
+    for name in sorted(names, key=len, reverse=True):
+        text = re.sub(rf"\b{re.escape(name)}\b", target_name, text)
     return text
 
 
@@ -181,6 +187,15 @@ def _apply_corrections(p: PlannedRow, decisions: Dict[Tuple[str, str], str]):
             r.attachment, r.compliance_attach = new
 
     low = r.criteria.lower()
+    if r.answer_type is None and not r.option_list():
+        guess = 4 if re.search(r"\byes\s*/\s*no\b", low) else 5 if re.search(r"\b(attach|upload)\b", low) else None
+        if guess:
+            p.note(f"answer type {guess} from the wording: the sheet gave none")
+            p.needs_reading = True
+            r.answer_type = guess
+            if guess == 5 and not (r.attachment or r.compliance_attach):
+                r.compliance_attach = bool(r.compliance) or r.compliance == 0
+                r.attachment = not r.compliance_attach
     asks_upload = low.startswith(("attach", "upload", "please attach", "please upload"))
     if asks_upload and r.answer_type != 5 and not r.option_list():
         p.note(f"answer type {r.answer_type} -> 5: the question asks for a document")
@@ -590,13 +605,18 @@ class Generator:
                 p.note(f"{fld} {cur} -> {target}: {why}")
 
     def plan(self, target: Target, exclude: Optional[set] = None,
-             marks: Optional[Dict[str, float]] = None, k: int = 5) -> Plan:
+             marks: Optional[Dict[str, float]] = None, k: int = 5, start: Optional[Sheet] = None) -> Plan:
+        """`start`: the sheet to build from instead of the best past match - the
+        client's benchmark tab for this category's group (spec 08)."""
         ranked = self.retriever.rank(target.description, target.client, target.group,
                                      exclude=exclude, k=max(k, 12))
         matches = [m for m in ranked if self._usable(m)]
+        if start is not None:
+            matches = [Match(start, 1.0, 1.0, ["the client's benchmark tab"])] + matches
         if not matches:
             raise ValueError("no usable past sheets to build from")
-        skeleton = next((m for m in matches if m.sheet.client == target.client), matches[0])
+        skeleton = matches[0] if start is not None else \
+            next((m for m in matches if m.sheet.client == target.client), matches[0])
         skipped = []
         for m in ranked:
             if m is skeleton:
@@ -643,6 +663,8 @@ class Generator:
         plan = Plan(target=target, skeleton=skeleton, matches=matches[:k], rows=rows,
                     n_columns=len(LAYOUT))
         plan.notes += skipped
+        if start is not None:
+            plan.notes.append(f"built from the client's benchmark tab '{start.name}': its questions and marks")
         plan.same_category = same_category
         # Weak: neither the topic (text) nor the client's own grouping links
         # the source to this category - it was chosen by client and kind only.

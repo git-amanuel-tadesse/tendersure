@@ -2528,3 +2528,90 @@ def test_after_an_account_error_no_further_request_is_sent(caplog):
     assert sum("web search stopped" in r.message for r in caplog.records) == 1
     with pytest.raises(AccountError):
         llm.complete_json("s", "p", SCHEMA, "x")
+
+
+# --- the client's benchmark (spec 08) ----------------------------------------------------
+
+def _benchmark_book(path):
+    """Three tabs a client might send: works (usable, two CV rows of 5),
+    goods (totals 98: refused) and services (carrying another client's code)."""
+    from tendersure.testing import GENERIC, TAIL, tech, write_sheet
+    cv = lambda role: ("Human Resource- HRM" if role == "an Architect" else None, "N/A",
+                       f"Attach evidence (CV, contract and education experience) for {role}", 5, None, 5,
+                       None, None, 5, None, None, True, None, None)
+    tail = lambda exp, ref: [(*TAIL[0][:3], exp, exp, *TAIL[0][5:13], f"0,{exp}")] + list(TAIL[1:4]) + \
+        [(*TAIL[4][:3], ref, None, ref, *TAIL[4][6:])] + list(TAIL[5:])
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for name, rows in [("CCC Works", GENERIC + [cv("an Architect"), cv("a Structural Engineer"), ("SUB",)]
+                        + tech("service") + tail(10, 50)),
+                       ("CCC Goods", GENERIC + tech("goods") + tail(20, 48)),
+                       ("CCC Services", GENERIC + tech("service") + tail(20, 50))]:
+        ws = wb.create_sheet(name)
+        write_sheet(ws, "BBB-ET-2026-009" if name == "CCC Services" else "X", "Other client's sheet", rows, "CCC")
+        if name != "CCC Services":
+            ws.cell(2, 2, None)                                   # templates carry no code
+    wb.save(path)
+    return str(path)
+
+
+def test_a_benchmark_is_the_client_s_and_a_tab_off_100_is_refused(tmp_path):
+    from tendersure import benchmark as bm
+    tabs = {t.name: t for t in bm.load(_benchmark_book(tmp_path / "bench.xlsx"), "CCC")}
+    assert tabs["CCC Works"].usable and tabs["CCC Works"].total == 100
+    assert tabs["CCC Goods"].refused == ["marks total 98, not 100"]
+    services = tabs["CCC Services"]
+    assert services.usable and (services.sheet.client, services.sheet.code) == ("CCC", None)
+    assert any("NOT USED - marks total 98" in line for line in bm.report(list(tabs.values())))
+
+
+def test_the_map_matches_by_name_by_content_and_splits_a_mixed_group(tmp_path):
+    from copy import deepcopy
+    from tendersure import benchmark as bm
+    tabs = {t.name: t for t in bm.load(_benchmark_book(tmp_path / "bench.xlsx"), "CCC")}
+    cats = [Category(1, "Provision of Minor Construction Works", "ENGINEERING WORKS"),
+            Category(2, "Supply of Office Equipment with Manufacturer Warranty and Authorisation", "OFFICE EQUIPMENT")]
+    got = {(m.group, m.kind): m.tab for m in bm.propose_map(cats, list(tabs.values()), "CCC")}
+    assert got == {("ENGINEERING WORKS", ""): "CCC Works",           # a shared word
+                   ("OFFICE EQUIPMENT", ""): "CCC Goods"}             # what it buys; refused tabs are mapped too
+    general_goods, general = deepcopy(tabs["CCC Goods"]), deepcopy(tabs["CCC Services"])
+    general_goods.name, general.name = "CCC General Goods", "CCC General"
+    mixed = [Category(3, "Supply of Office Stationery", "GENERAL"),
+             Category(4, "Provision of Cleaning Services", "GENERAL")]
+    lines = bm.propose_map(mixed, [general_goods, general], "CCC")
+    assert {(m.kind, m.tab) for m in lines} == {("goods", "CCC General Goods"), ("service", "CCC General")}
+    assert bm.tab_for(mixed[1], lines).tab == "CCC General"
+    kept = [bm.MapLine("GENERAL", "", "CCC General", bm.TEAM)]          # the team's line stays
+    assert bm.propose_map(mixed, [general_goods, general], "CCC", kept) == kept
+    bm.save_map(lines, str(tmp_path / "map.csv"))
+    assert [(m.group, m.kind, m.tab) for m in bm.load_map(str(tmp_path / "map.csv"))] == \
+        [(m.group, m.kind, m.tab) for m in lines]
+
+
+def test_a_mapped_category_is_built_from_its_tab_and_its_marks(corpus, tmp_path):
+    from tendersure import benchmark as bm, categories as cat, flows
+    from tendersure.parser import section_key
+    bench = _benchmark_book(tmp_path / "bench.xlsx")
+    cat.save([cat.Category(1, "Provision of Minor Construction Works", "ENGINEERING WORKS", client="CCC",
+                           hr=["Project Manager", "Site engineer", "Foreman"]),
+              cat.Category(2, "Supply of Office Equipment with Manufacturer Warranty and Authorisation",
+                           "OFFICE EQUIPMENT", client="CCC")], str(tmp_path / "cats.csv"))
+    r = flows.generate(flows.GenerateSettings(
+        str(tmp_path / "cats.csv"), "CCC", "CCC-ET-2026-", str(tmp_path / "gen.xlsx"), source=str(corpus),
+        audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
+        model=flows.Model(off=True), benchmark=bench))
+    assert r.failed == [] and sorted(r.written) == ["CCC-ET-2026-001", "CCC-ET-2026-002"]
+    works, goods = sorted(r.plans, key=lambda p: p.target.code)
+    tab = next(t for t in bm.load(bench, "CCC") if t.name == "CCC Works")
+    want = {}
+    for row in tab.sheet.rows:
+        want[section_key(row.section)] = want.get(section_key(row.section), 0) + (row.marks or 0)
+    assert {k: v[0] for k, v in works.section_marks().items() if v[0]} == {k: v for k, v in want.items() if v}
+    assert [(q.row.criteria.split(" for ")[-1], q.row.marks) for q in works.questions
+            if section_key(q.row.section) == "hr"] == [("Project Manager", 5), ("Site engineer", 5), ("Foreman", 0)]
+    assert any("benchmark tab 'CCC Works'" in n for n in works.notes)
+    assert any("'CCC Goods' not used (marks total 98" in n for n in goods.notes)        # from the bank instead
+    assert (tmp_path / "gen_benchmark_map.csv").exists()
+    checked = flows.check(str(tmp_path / "gen.xlsx"), "CCC", str(tmp_path / "cats.csv"), None,
+                          str(tmp_path / "yn.csv"), str(tmp_path / "report.xlsx"), flows.Model(off=True))
+    assert checked.errors == 0

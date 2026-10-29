@@ -96,3 +96,25 @@ On synthetic data:
 On PSI, run by the team:
 - each group starts from its PSI tab;
 - PSI Marketing and PSI Eng con (2) are refused until their totals are fixed.
+
+## As built (2026-10-29)
+
+- **What refuses a tab.** Only marks that do not add up: a total other than
+  100, or subtotals and the total row disagreeing with the rows. A row with
+  no answer type no longer refuses a whole tab, as PSI General and PSI ICT
+  would otherwise have been. Other findings are listed as warnings at load.
+  - Generation now sets a missing answer type from the wording, with a note
+    and the row flagged for review: "Yes/No" gives type 4, "attach" or
+    "upload" gives type 5.
+  - What remains is caught by the pre-write check, and the sheet is listed
+    as NOT WRITTEN with the reason. On PSI, the Consultancy tab's reference
+    blocks and its all-zero option scores do this.
+- **The proposed map on PSI.** It matches the agreed mapping on 11 of 12
+  lines. COMMUNICATION AND PRINTING SERVICES goes to PSI General, because
+  PSI Marketing's questions say nothing about communication. Correct that
+  line in the map.
+- **Fixes found on the way.**
+  - Trade reference blocks are compared by what their uploads are, not their
+    wording (spec 03 C17).
+  - Other clients' full names ("Norwegian Refugee Council") are swapped for
+    the target's, as their codes already were.

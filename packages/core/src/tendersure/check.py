@@ -25,7 +25,7 @@ from .parser import Row, Sheet, header_columns, normalise, parse_sheet, section_
 from .privacy import CLIENT_ALIASES
 from .schema import LAYOUT, business_types
 from .trust import context_key
-from .validate import (PLATFORM, SILENT, SUB_CATEGORY, Finding, check_gate, check_sub_category_question,
+from .validate import (PLATFORM, SILENT, SUB_CATEGORY, Finding, asks_for_document, check_gate, check_sub_category_question,
                        check_template, check_yes_no, validate_sheet)
 
 KENYA_ONLY = ["evaluation", "eval_options", "eval_option_scores", "verify_against"]
@@ -107,9 +107,15 @@ def check_blocks(ws, sheet: Sheet) -> List[Finding]:
 
 # --- the sheet's content (C17, C18) ------------------------------------------------
 
+EVIDENCE = "an evidence upload"
+
+
 def check_standard_blocks(sheet: Sheet) -> List[Finding]:
     """C17: Declaration and Submission present; every Trade Reference and
-    shareholder block asks what its first block asks."""
+    shareholder block asks what its first block asks. Uploads count by what
+    they are, not their wording: a client may word each block's evidence
+    differently ("Attach evidence of project completion..." / "Attach
+    evidence e.g. PO...")."""
     out = []
     keys = {section_key(r.section) for r in sheet.rows}
     for need in ("declaration", "submission"):
@@ -121,7 +127,8 @@ def check_standard_blocks(sheet: Sheet) -> List[Finding]:
         first_row: Dict[str, int] = {}
         for r in sheet.rows:
             if section_key(r.section) == section and r.sub_section:
-                blocks[r.sub_section].append(re.sub(r"\s*\d+", "#", normalise(r.criteria)))
+                blocks[r.sub_section].append(EVIDENCE if asks_for_document(r) else
+                                             re.sub(r"\s*\d+", "#", normalise(r.criteria)))
                 first_row.setdefault(r.sub_section, r.excel_row)
         names = list(blocks)
         for name in names[1:]:
