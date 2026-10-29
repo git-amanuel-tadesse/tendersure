@@ -56,6 +56,7 @@ def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = N
     from .exercises import MAX_UPLOAD, bp as exercises
     from .jobs import Runner
     from .jobs_api import bp as jobs
+    from .refine_api import bp as refine
     from .workspaces import Workspaces
     app = OpenAPI(__name__, info=Info(title="TenderSure", version=VERSION), doc_ui=False, static_folder=None,
                   validation_error_callback=_invalid)
@@ -105,6 +106,7 @@ def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = N
     app.register_api(exercises)
     app.register_api(jobs)
     app.register_api(bank)
+    app.register_api(refine)
 
     # Plain Flask routes, outside the OpenAPI document: the document itself,
     # and the built web app (apps/web/dist) - its files, and index.html for

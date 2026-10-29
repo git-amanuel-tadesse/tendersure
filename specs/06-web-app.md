@@ -255,10 +255,10 @@ content is still skipped by its hash.
    Merged, Separated, Repeated, Additional), description, from-draft numbers,
    reason, question for the client, sub-categories, eligibility, applies to,
    the model's suggested eligibility (shown, not applied). Editable:
-   Decision (accept / reject / remove / edit), Client comment, and the
-   wording when the decision is edit. Filter by status, by group, and by
-   "has a question for the client". The target count against the current
-   count is shown at the top.
+   Decision (accept / reject / remove / edit), Client comment (with edit:
+   the new wording, as in the workbook) and the team's Category Code.
+   Filter by status, by group, and by "has a question for the client".
+   The target count against the current count is shown at the top.
 4. Download the revised list as Excel (to send to the client); upload an
    answered one back: its decisions and comments replace the browser's
    after a confirmation listing what changes.

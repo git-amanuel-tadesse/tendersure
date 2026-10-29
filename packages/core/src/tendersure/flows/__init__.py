@@ -20,7 +20,8 @@ from .evaluate import ModelEvaluation, PrivacyCheck, evaluate, evaluate_model, p
 from .generate import Result as GenerateResult, Settings as GenerateSettings, generate, read_review
 from .ingest import BankStatus, IngestResult, bank_status, ingest
 from .learn import GlossaryResult, LearnResult, apply_review as apply_learned_review, learn, seed_glossary
-from .refine import ApplyResult, ProposeResult, apply, apply_file, propose, propose_file
+from .refine import (ApplyResult, ProposeResult, apply, apply_file, draft_tabs, export_final, export_revised,
+                     import_revised, load_categories, propose, propose_file, read_draft, save_categories)
 from .refine import evaluate as evaluate_refinement
 from .research import ResearchResult, apply_review as apply_research_review, research
 
@@ -31,6 +32,8 @@ __all__ = [
     "ingest", "IngestResult", "bank_status", "BankStatus", "model_status", "ModelStatus",
     "extract_categories", "CategoriesResult", "ENGINES",
     "propose", "propose_file", "apply", "apply_file", "evaluate_refinement", "ProposeResult", "ApplyResult",
+    "draft_tabs", "read_draft", "export_revised", "import_revised", "export_final",
+    "save_categories", "load_categories",
     "research", "apply_research_review", "ResearchResult",
     "learn", "apply_learned_review", "seed_glossary", "LearnResult", "GlossaryResult",
     "generate", "read_review", "GenerateSettings", "GenerateResult",

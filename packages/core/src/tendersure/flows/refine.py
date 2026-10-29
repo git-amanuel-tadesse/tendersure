@@ -15,7 +15,7 @@ from .. import refine as rf
 from .. import research as rs
 from ..paths import current
 from ..privacy import register_clients
-from .common import Model, load_source, log, past_categories, research_tools
+from .common import FlowError, Model, load_source, log, past_categories, research_tools
 
 Target = Optional[Tuple[int, int]]
 
@@ -143,3 +143,56 @@ def evaluate(workbook: str, draft_tab: str, final_tab: str, client: str, out: Op
         else:
             log.info(f"  {k}: {v}")
     return report
+
+
+# --- the workbooks, for an app that holds the review itself ----------------------
+
+def draft_tabs(path: str) -> List[str]:
+    """The tabs of a draft workbook (none for a CSV), so a person can pick the one with the list."""
+    if path.lower().endswith(".csv"):
+        return []
+    import openpyxl
+    try:
+        return openpyxl.load_workbook(path, read_only=True).sheetnames
+    except Exception as e:
+        raise FlowError(f"{os.path.basename(path)} is not a readable workbook ({e})")
+
+
+def read_draft(path: str, sheet: Optional[str] = None) -> List[rf.Draft]:
+    try:
+        drafts = rf.read_draft(path, sheet)
+    except KeyError:
+        raise FlowError(f"{os.path.basename(path)} has no tab '{sheet}'")
+    except ValueError as e:
+        raise FlowError(f"{os.path.basename(path)}{' / ' + sheet if sheet else ''}: {e}")
+    if not drafts:
+        raise FlowError(f"no categories found in {os.path.basename(path)}{' / ' + sheet if sheet else ''}")
+    return drafts
+
+
+def export_revised(path: str, drafts: List[rf.Draft], lines: List[rf.Line], client: str, target: Target = None):
+    """The revised list as the workbook the team sends to the client (Draft, Revised, Summary tabs)."""
+    try:
+        rf.write_revised(path, drafts, lines, client, target)
+    except ValueError as e:                         # a draft row in no line: never sent
+        raise FlowError(str(e))
+
+
+def import_revised(path: str) -> Tuple[List[rf.Draft], List[rf.Line]]:
+    """A revised list back from the client, with its Decision and Client comment columns answered."""
+    try:
+        return rf.read_revised(path)
+    except KeyError as e:
+        raise FlowError(f"{os.path.basename(path)} is not a revised list (no {e} tab or column)")
+
+
+def export_final(path: str, result: ApplyResult):
+    rf.write_final(path, result.final, result.notes)
+
+
+def save_categories(categories: List[cat.Category], path: str):
+    cat.save(categories, path)
+
+
+def load_categories(path: str) -> List[cat.Category]:
+    return cat.load(path)
