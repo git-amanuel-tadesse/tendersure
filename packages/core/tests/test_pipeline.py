@@ -2868,3 +2868,28 @@ def test_a_choice_with_no_options_becomes_answerable(text, at, new):
     assert fix_missing_options(r).startswith(f"answer type {at} -> {new}") and r.answer_type == new
     r = Row("", "", 0, criteria=text, answer_type=2, marks=0.0, options="A, B", option_scores="0,0")
     assert fix_missing_options(r) is None                         # options listed: left alone
+
+
+def test_a_reference_block_missing_a_field_gets_it_from_the_first(corpus):
+    from tendersure.generate import PlannedRow, complete_blocks, finalise, to_sheet
+    from tendersure.check import check_standard_blocks
+    from tendersure.parser import Row
+    sheets, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-003", "Provision of Security and Guarding Services", "AAA"))
+    ref = [q for q in p.questions if section_key(q.row.section) == "trade_reference"]
+    up = next(q for q in ref if "Attach" in q.row.criteria)
+    at = p.rows.index(up) + 1
+    for text in ("Client Name", "Attach evidence e.g. PO or award letter"):     # Ref 2 without what Ref 1 asks
+        p.rows.insert(at, PlannedRow(kind="question", row=Row("", "", 0, section=up.row.section, sub_section="Ref 2",
+                                                              criteria=text, answer_type=5 if "Attach" in text else 1,
+                                                              marks=0.0, compliance_attach="Attach" in text)))
+        at += 1
+    p.rows.insert(at - 1, PlannedRow(kind="question", row=Row("", "", 0, section=up.row.section, sub_section="Ref 2",
+                                                               criteria="Contact person", answer_type=1, marks=0.0)))
+    first = [q.row.criteria for q in ref]
+    complete_blocks(p)
+    ref2 = [q.row.criteria for q in p.questions if q.row.sub_section == "Ref 2"]
+    assert [c for c in first if "Attach" not in c and c not in ref2] == []          # every field Ref 1 asks
+    assert ref2[-1].startswith("Attach")                                          # before the evidence upload
+    finalise(p)
+    assert check_standard_blocks(to_sheet(p)) == []

@@ -261,7 +261,9 @@ def ai_review(gen: Generator, plans: List[Plan], reviewer: ModelReviewer, progre
         if it.id in answers:
             it.answer = answers[it.id]
             it.status = f"AI: {it.status}" + (f" | {'; '.join(notes[it.id])}" if notes.get(it.id) else "")
-        elif it.type == "marks" and not it.id.startswith(("M-FREED-", "M-BENCH-")):   # the client's split: the team's call
+        elif it.id.startswith("M-BENCH-"):
+            continue                                    # the client's benchmark split: the team's call, left open
+        elif it.type == "marks" and not it.id.startswith("M-FREED-"):
             it.status = "AI: kept the client's marks (marks are the client's decision)"
         elif it.type == "marks":
             it.status = "AI: accepted the proportional spread of the emptied section's marks"
@@ -272,9 +274,10 @@ def ai_review(gen: Generator, plans: List[Plan], reviewer: ModelReviewer, progre
         elif not it.status:
             it.status = "AI: kept as proposed"
     rebalanced = []
+    done = {line.split(": ", 1)[0]: line.split(": ", 1)[1] for line in log if ": marks rebalanced to" in line}
     for p in plans:
         try:
-            note = rebalance_to_100(p, "AI removals")
+            note = rebalance_to_100(p, "AI removals") or done.get(p.target.code)
         except MarksError as e:
             problems.append(str(e))
             continue
@@ -282,7 +285,7 @@ def ai_review(gen: Generator, plans: List[Plan], reviewer: ModelReviewer, progre
             rebalanced.append(p.target.code)
             progress(f"{p.target.code}: {note}")
             for it in out:
-                if it.type == "marks" and p.target.code in it.codes:
+                if it.type == "marks" and p.target.code in it.codes and not it.id.startswith("M-BENCH-"):
                     it.status = f"AI: {note}"
     disagreements = sum(len(v) for v in notes.values())
     return out, {"answered": len(answers), "disagreements": disagreements, "problems": problems,

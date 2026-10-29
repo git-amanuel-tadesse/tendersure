@@ -555,6 +555,7 @@ def finalise(plan: Plan):
     and technical items come first (spec 07 R4)."""
     from .requirements import place_requirements
     place_requirements(plan)
+    complete_blocks(plan)
     place_sub_category_question(plan)
     place_eligibility(plan)
     _relabel_sections(plan)
@@ -588,6 +589,36 @@ def fix_missing_options(r: Row) -> Optional[str]:
     old = r.answer_type
     r.answer_type, r.options, r.option_scores = (4 if _YES_NO_WORDING.search(r.criteria.strip()) else 1), None, None
     return f"answer type {old} -> {r.answer_type}: a choice with no options listed; add options to keep it a choice"
+
+
+def complete_blocks(plan: Plan):
+    """Spec 03 C17: every Trade Reference and shareholder block asks what its
+    first block asks. A typed field a later block lacks ("Period of the
+    contract" in Ref 2) is copied in from the first, with 0 marks, before the
+    block's evidence upload."""
+    for section in ("trade_reference", "shareholder"):
+        blocks: Dict[str, List[PlannedRow]] = {}
+        for p in plan.questions:
+            if section_key(p.row.section) == section and p.row.sub_section:
+                blocks.setdefault(p.row.sub_section, []).append(p)
+        names = list(blocks)
+        if len(names) < 2:
+            continue
+        first = [p for p in blocks[names[0]] if not asks_for_document(p.row)]
+        for name in names[1:]:
+            have = {re.sub(r"\s*\d+", "#", normalise(p.row.criteria)) for p in blocks[name]}
+            missing = [p for p in first if re.sub(r"\s*\d+", "#", normalise(p.row.criteria)) not in have]
+            if not missing:
+                continue
+            block = blocks[name]
+            upload = next((p for p in block if asks_for_document(p.row)), None)
+            at = plan.rows.index(upload) if upload else plan.rows.index(block[-1]) + 1
+            for m in missing:
+                row = deepcopy(m.row)
+                row.sub_section, row.marks, row.system, row.compliance = name, 0.0, None, None
+                plan.rows.insert(at, PlannedRow(kind="question", row=row, origin=ADAPTED, source=m.source,
+                                                notes=[f"copied from '{names[0]}': '{name}' did not ask it"]))
+                at += 1
 
 
 def check_total(plan: Plan):

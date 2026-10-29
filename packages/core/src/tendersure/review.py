@@ -30,7 +30,7 @@ from typing import Dict, List, Optional, Tuple
 import openpyxl
 
 from .generate import (MarksError, Plan, apply_section_marks, check_total, drop_empty_sections, drop_row,
-                       keep_section_totals, set_field, spread_marks, to_sheet)
+                       keep_section_totals, rebalance_to_100, set_field, spread_marks, to_sheet)
 from .parser import normalise, section_key
 from .trust import parse_value
 from .validate import validate_sheet
@@ -622,6 +622,17 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
         # except decisions this run created (freed marks), which nobody has seen.
         if not it.status and it.type != CHECK and (it.answer or not it.id.startswith("M-FREED-")):
             it.status = "accepted" if it.answer else "accepted as proposed"
+    # A removal can leave marks with nowhere to go in their section (its other
+    # questions carry none): spread them over the sheet, as the AI review does,
+    # so applying the same answers again gives the same sheets.
+    for p in plans:
+        try:
+            note = rebalance_to_100(p, "removals in the review")
+        except MarksError as e:
+            problems.append(str(e))
+            continue
+        if note:
+            log.append(f"{p.target.code}: {note}")
     for p in plans:
         p.findings = validate_sheet(to_sheet(p))
     return items, log, problems
