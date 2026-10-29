@@ -158,12 +158,17 @@ class _Base:
         self.transport = transport or _http
         self.last_model: Optional[str] = None     # which model actually answered
         self.retried = 0                          # schema requests retried in prompt mode
+        self.searching = False                    # this request may search the web
+        self.last_sources: List[dict] = []        # pages a web search used: {"title", "uri"}
 
     def complete_json(self, system: str, prompt: str, schema: dict, name: str,
                       client: Optional[str] = None, pdf: Optional[bytes] = None,
-                      max_tokens: int = 32000, **_):
+                      max_tokens: int = 32000, search: bool = False, **_):
         """Ask one question; `client` is the client being worked on, so its
-        name becomes [CLIENT] and every other client's a different placeholder."""
+        name becomes [CLIENT] and every other client's a different placeholder.
+        With `search`, the model may search the web; the pages it used are in
+        `last_sources` afterwards (spec 05). The JSON is then asked for in the
+        prompt, since search and a response schema do not combine."""
         if pdf is not None:
             raise PrivacyError("refused to send a raw PDF: it cannot be anonymised reliably; "
                                "send extracted, anonymised text instead")
@@ -171,6 +176,9 @@ class _Base:
         system_a, prompt_a = anon.anonymise(system), anon.anonymise(prompt)
         anon.guard(system_a, prompt_a)
         _log_outbox(self.provider, self.model, name, system_a, prompt_a)
+        self.searching, self.last_sources = search, []
+        if search:
+            return anon.restore(self._ask("prompt", system_a, prompt_a, schema, name, max_tokens))
         if self.json_mode == "prompt":
             data = self._ask("prompt", system_a, prompt_a, schema, name, max_tokens)
         else:
@@ -244,6 +252,9 @@ class OpenRouterLLM(_Base):
             raise LLMError("set OPENROUTER_API_KEY (in the environment or in .env) to use a model step")
 
     def _send(self, mode, system, prompt, schema, name, max_tokens) -> str:
+        if self.searching:
+            raise LLMError("web search needs the gemini backend (Google Search grounding); "
+                           "set TENDERSURE_PROVIDER=gemini")
         body = {
             "model": self.model,
             "messages": [{"role": "system", "content": system},
@@ -309,6 +320,8 @@ class GeminiLLM(_Base):
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": cfg,
         }
+        if self.searching:
+            body["tools"] = [{"google_search": {}}]
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["x-goog-api-key"] = self.api_key
@@ -325,6 +338,9 @@ class GeminiLLM(_Base):
             raise LLMError(f"{self.last_model}: answer cut off at max_tokens")
         if reason in ("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"):
             raise LLMError(f"{self.last_model}: answer withheld by Gemini ({reason})")
+        chunks = (cand.get("groundingMetadata") or {}).get("groundingChunks") or []
+        self.last_sources = [{"title": c["web"].get("title", ""), "uri": c["web"].get("uri", "")}
+                             for c in chunks if c.get("web", {}).get("uri")]
         parts = (cand.get("content") or {}).get("parts") or []
         return "".join(p.get("text", "") for p in parts if not p.get("thought"))
 

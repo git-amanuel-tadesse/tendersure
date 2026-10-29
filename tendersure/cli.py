@@ -21,6 +21,7 @@ from . import categories as cat
 from . import glossary as gl
 from . import gating
 from . import naming
+from . import research as rs
 from . import yesno
 from . import category_llm as cl
 from .bank import Bank
@@ -421,6 +422,48 @@ def cmd_check(a):
         sys.exit(1)
 
 
+def _research_tools(a, sheets: List[Sheet]):
+    """The research table, the bank's knowledge and (with a model) the web."""
+    table = rs.load(a.research)
+    bank = rs.BankKnowledge(trust.usable(sheets, trust.grade(sheets))) if sheets else None
+    use_model, why_not = _model_wanted(a)
+    web = rs.WebResearcher(model=a.model or None) if use_model else None
+    if web is None:
+        print(f"research: our own data only ({why_not})")
+    return table, bank, web
+
+
+def cmd_research(a):
+    """Spec 05: technical names, licences, questions, document names - bank first, then the web."""
+    from .privacy import register_clients
+    register_clients([a.client])
+    table = rs.load(a.research)
+    if a.review:
+        applied, problems = rs.apply_review(a.review, table)
+        rs.save(table, a.research)
+        print(f"research: applied {applied} answered lines from {a.review}")
+        for p in problems:
+            print(f"REVIEW PROBLEM: {p}")
+        return
+    if not a.source_list:
+        sys.exit("give a draft list or categories table, or --review <answered research review>")
+    from . import refine as rf
+    topics = [c.description for c in cat.load(a.source_list)] if a.source_list.endswith(".csv") \
+        else [d.description for d in rf.read_draft(a.source_list, a.sheet)]
+    country = a.country or rs.country_of(a.prefix)
+    sheets = load_source(a)[0] if os.path.exists(a.bank) else []
+    table, bank, web = _research_tools(a, sheets)
+    kinds = [k.strip() for k in a.kinds.split(",") if k.strip()]
+    new = rs.research(topics, country, kinds, table, bank, web, a.client)
+    rs.save(table, a.research)
+    out = a.out or os.path.join("reports", "research_review.xlsx")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    n = rs.write_review([f for f in table.findings if f.topic_key in {rs.topic_key(t) for t in topics}], out)
+    by = Counter((f.kind, f.origin) for f in new)
+    print(f"research: {len(topics)} topics, country {country or '-'}: {len(new)} new findings ("
+          + ", ".join(f"{k} from the {o} {n_}" for (k, o), n_ in sorted(by.items())) + f"); {n} to review -> {out}")
+
+
 def cmd_glossary(a):
     """Seed data/glossary.csv from the bank, keeping the team's confirmed and drafted rows."""
     sheets, _ = load_source(a)
@@ -813,6 +856,21 @@ def main(argv=None):
     p.add_argument("--model", nargs="?", const="", help="model id for the AI read (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true", help="skip the AI read")
     p.set_defaults(fn=cmd_check)
+
+    p = sub.add_parser("research", help="research technical names, licences, questions: bank first, then the web")
+    p.add_argument("source_list", nargs="?", help="a draft list (.xlsx) or a categories table (.csv)")
+    p.add_argument("--client", required=True)
+    p.add_argument("--sheet", help="the draft list's tab")
+    p.add_argument("--country", help="ISO country code, e.g. ET, KE (default: from --prefix)")
+    p.add_argument("--prefix", help="sheet code prefix, e.g. ERCS-ET-2026- (gives the country)")
+    p.add_argument("--kinds", default="names,licences", help="names, licences, questions, documents")
+    p.add_argument("--research", default="data/research.csv", help="the research table (default data/)")
+    p.add_argument("--review", help="an answered research review to apply")
+    p.add_argument("--out", help="the review workbook (default reports/research_review.xlsx)")
+    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
+    p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
+    p.add_argument("--no-model", action="store_true", help="our own data only, no web search")
+    p.set_defaults(fn=cmd_research, source=None)
 
     p = sub.add_parser("learn", help="learn names and Yes/No verdicts for the whole bank; write the review")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")

@@ -6,7 +6,7 @@ with no dependency between them can be built in any order.
 
 Size: **S** under half a day, **M** about a day, **L** two days or more.
 
-**Status (2026-10-29): T01-T41 are done; T42-T48 (research) are specified, not built.** The regenerated ERCS
+**Status (2026-10-29): T01-T41 are done; T42-T45 and T48 (research) are built; T46-T47 (research in refine and generate) are next.** The regenerated ERCS
 batch meets the spec 02 acceptance list and `check` finds 0 errors on it;
 see SPEC.md section 7 for the numbers. T09 needed no fix: the notice's five
 sub-category lists were already read correctly.
@@ -103,35 +103,53 @@ the same `find` functions, so a rule cannot drift between the two flows.
 | T34 | Regenerate the ERCS 2026 batch end to end and run the check on it. | 02, 03 | Phases 0–2 | S | Batch written in the new template; check passes; numbers from the spec 02 acceptance list reported. |
 | T35 | Update README and SPEC.md for the new template, the three flows and the learned files. | all | T34 | S | README commands match the CLI. |
 
-## Phase 5: web app (spec 05)
+## Phase 6: web app (spec 06)
 
 Agreed 2026-10-29: local first, review in the browser, two flows + bank and
-categories pages. The service layer lands first, so the CLI and the server
-share every step.
+categories pages, a monorepo with each party in its own package. The move
+and the service layer land first, so the CLI and the API share every step.
+
+### 6a. Monorepo and core
 
 | ID | Task | Spec | Depends | Size | Done when |
 |---|---|---|---|---|---|
-| T42 | `tendersure/flows/`: move refine (propose, apply), ingest and generate orchestration out of `cli.py`; progress callback, result dataclasses, errors instead of `sys.exit`; CLI calls them. | 05 W1 | | L | All tests pass; CLI output unchanged; an ERCS generate and a Red Cross refine give identical workbooks before and after. |
-| T43 | Generation takes `proposals` and `answers` in memory; `--review <file>` reads the file into them. | 05 W1 | T42 | S | Applying answers from a dict and from the QA file give the same workbook. |
-| T44 | JSON for Draft, Line, Category, Item and run results (to and from), with tests. | 05 W3 | T42 | S | Round-trip of every type is lossless. |
-| T45 | Flask app and `serve` command: `/api` blueprints, serves `web/dist`, 127.0.0.1 only, Host check, `X-TenderSure` header on writes, JSON errors. | 05 W2 | | S | Test client: POST without the header gets 403; a foreign Host gets 403. |
-| T46 | Workspaces: exercises (create, list, read), file upload / download with sanitised names, `workspaces/` git-ignored. | 05 W3 | T45 | S | Upload then download returns the same bytes; `../x.xlsx` is refused. |
-| T47 | Job runner: one worker thread, queue, progress lines, persisted status, `interrupted` after restart. | 05 W4 | T45 | M | A test job's progress is readable while it runs and after a simulated restart. |
-| T48 | Settings and bank endpoints: model status (no key), bank status, ingest job, report downloads. | 05 S1, S2 | T42, T47 | S | Ingesting the synthetic corpus via the API gives the same bank as the CLI. |
-| T49 | Refinement endpoints: upload and parse draft, propose job, read and patch revised lines, Excel export / import, apply. | 05 S3 | T44, T46, T47 | M | API test runs a synthetic draft through propose → decisions → apply and gets the same final list as the CLI. |
-| T50 | Categories endpoints: read, patch rows with the T19 check per row, import from final list or CSV, export CSV. | 05 S4 | T44, T46 | S | A mismatched gate row is returned with its problem; the exported CSV loads in `generate`. |
-| T51 | Generation endpoints: run job with settings, runs list, decisions read / patch, apply-answers job, downloads. | 05 S5 | T43, T44, T47 | M | API test: generate, answer one Q and one M item, apply; the second run's QA shows them applied. |
-| T52 | `web/`: Vite + React + TypeScript, TanStack Router (file routes) + Query + Table, Tailwind, API client sending the header, dev proxy to :5000, `pnpm build` into `web/dist`. | 05 | T45 | S | `pnpm dev` shows the home page reading `/api/settings`; `serve` serves the build. |
-| T53 | App shell and Home: exercises list and create, bank and model status, job progress component. | 05 S1 | T48, T52 | S | Create an exercise from the browser; a running job shows its lines. |
-| T54 | Bank page: add workbooks, ingest summary, report downloads. | 05 S2 | T53 | S | Ingest from the browser matches the CLI summary. |
-| T55 | Refinement page: upload draft, preview, run, review table (filters, decision, comment, edit wording), Excel round-trip, apply and final list. | 05 S3 | T49, T53 | L | The Red Cross draft goes from upload to categories table in the browser. |
-| T56 | Categories page: editable table, inline gate check, import / export. | 05 S4 | T50, T53 | M | A gate mismatch is shown on its row and cleared by the edit that fixes it. |
-| T57 | Generation page: settings, run with progress, results and downloads, Decisions table with per-kind controls that write the spec 02 answer grammar, apply, earlier runs. | 05 S5 | T51, T53 | L | The ERCS batch is generated, reviewed and re-applied from the browser. |
-| T58 | Tests for the answer-grammar builders (Vitest); one end-to-end API test of both flows on synthetic data. | 05 | T55, T57 | S | Both run in CI-free local `pytest` / `pnpm test`. |
-| T59 | README: install (Python + pnpm), `serve`, dev mode; SPEC.md pointer to spec 05. | 05 | T57 | S | A fresh clone reaches the home page by following the README. |
+| T49 | Move to the monorepo layout with `git mv`: `tendersure/` → `packages/core/src/tendersure/`, `tests/` → `packages/core/tests/`; core `pyproject.toml`; root dev `pyproject.toml`, `Makefile`, `.gitignore`; `requirements.txt` and `run_ingest.py` go. `cli.py` stays in core for now. | 06 M4 | | S | `pip install -e packages/core` then `pytest packages/core` passes the 104 tests; `git log --follow` shows history on moved files. |
+| T50 | `Paths` in core (data, cache, outbox) replacing the cwd-relative literals; no `.env` read at import time. | 06 M3 | T49 | S | Tests run with `Paths` pointing at a temp folder and write nothing under the repo. |
+| T51 | `tendersure.flows`: ingest, refine (propose, apply) and generate orchestration out of `cli.py`; progress callback (incl. the 5 fallback prints), result dataclasses, errors instead of `sys.exit`. | 06 W1 | T50 | L | An ERCS generate and a Red Cross refine give identical workbooks before and after. |
+| T52 | Generation takes `proposals` and `answers` in memory; reading a QA file fills the same dicts. | 06 W1 | T51 | S | Answers from a dict and from the QA file give the same workbook. |
+| T53 | `apps/cli` (`tendersure_cli`, console script `tendersure`): argparse and printing only, over `flows`; `cli.py` leaves core. | 06 W1, M1 | T51 | M | Every README command runs as `tendersure …` with the same output; core has no argparse import. |
+| T54 | Import contracts (import-linter): core imports no Flask/argparse and no app; apps import only `tendersure.flows`; api and cli never import each other. Wired into `make test`. | 06 M1 | T53 | S | A deliberate forbidden import fails `make test`. |
 
-Suggested slice: T42 → T44 → T45 → T49 → T52 → T55 (refinement end to end
-in the browser first; it is the smaller flow), then T43 → T51 → T57.
+### 6b. API
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T55 | `apps/api` (`tendersure_api`): flask-openapi3 app, `tendersure-api` entry, serves `apps/web/dist`, 127.0.0.1 only, Host check, `X-TenderSure` header on writes, JSON errors; its own tests. | 06 W2 | T54 | S | Test client: POST without the header → 403; foreign Host → 403. |
+| T56 | Pydantic schemas for Draft, Line, Category, Item, job and run results, mapped from core's dataclasses. | 06 M2 | T55 | S | Mapping round-trip of every type is lossless. |
+| T57 | Workspaces: exercises (create, list, read), upload / download with sanitised names, `workspaces/` git-ignored. | 06 W3 | T55 | S | Upload then download gives the same bytes; `../x.xlsx` is refused. |
+| T58 | Job runner: one worker thread, queue, progress lines, persisted status, `interrupted` after restart. | 06 W4 | T55 | M | A test job's progress is readable while it runs and after a simulated restart. |
+| T59 | Settings and bank endpoints: model status (no key), bank status, ingest job, report downloads. | 06 S1, S2 | T56–T58 | S | Ingesting the synthetic corpus via the API gives the same bank as the CLI. |
+| T60 | Refinement endpoints: upload and parse draft, propose job, read / patch revised lines, Excel export / import, apply. | 06 S3 | T56–T58 | M | API test: synthetic draft → propose → decisions → apply gives the CLI's final list. |
+| T61 | Categories endpoints: read, patch rows with the T19 check per row, import from final list or CSV, export CSV. | 06 S4 | T56, T57 | S | A mismatched gate row comes back with its problem; the exported CSV loads in `generate`. |
+| T62 | Generation endpoints: run job, runs list, decisions read / patch, apply-answers job, downloads. | 06 S5 | T52, T56–T58 | M | API test: generate, answer one Q and one M item, apply; the second run's QA shows them applied. |
+
+### 6c. Contract and web
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T63 | `packages/api-client`: `make contract` exports openapi.json and generates TS types (openapi-typescript) + a typed fetch client that sends the header; freshness check in `make test`. | 06 M2 | T59–T62 | S | Changing a schema without `make contract` fails `make test`. |
+| T64 | `apps/web`: Vite + React + TS, TanStack Router (file routes) + Query + Table, Tailwind, ESLint rule that `/api` is reached only via api-client; pnpm workspace; `make dev` runs both servers. | 06 M1, M4 | T63 | S | `make dev` shows the home page reading settings; `make build` + `tendersure-api` serves the build. |
+| T65 | App shell and Home: exercises list and create, bank and model status, job progress component. | 06 S1 | T64 | S | Create an exercise from the browser; a running job shows its lines. |
+| T66 | Bank page: add workbooks, ingest summary, report downloads. | 06 S2 | T65 | S | Ingest from the browser matches the CLI summary. |
+| T67 | Refinement page: upload draft, preview, run, review table (filters, decision, comment, edit wording), Excel round-trip, apply and final list. | 06 S3 | T60, T65 | L | The Red Cross draft goes from upload to categories table in the browser. |
+| T68 | Categories page: editable table, inline gate check, import / export. | 06 S4 | T61, T65 | M | A gate mismatch shows on its row and clears with the edit that fixes it. |
+| T69 | Generation page: settings, run with progress, results and downloads, Decisions table with per-kind controls that write the spec 02 answer grammar, apply, earlier runs. | 06 S5 | T62, T65 | L | The ERCS batch is generated, reviewed and re-applied from the browser. |
+| T70 | Vitest for the answer-grammar builders; one end-to-end API test of both flows on synthetic data. | 06 | T67, T69 | S | `make test` runs pytest (3 packages), import contracts, contract check and Vitest; all pass. |
+| T71 | README (install, `make dev`, `tendersure …`, `tendersure-api`), SPEC.md pointer to spec 05, a README per package saying what it owns and may import. | 06 | T69 | S | A fresh clone reaches the home page by following the README. |
+
+Suggested slice: T49 → T54 (the monorepo, with the CLI working as before),
+then T55–T60 → T63 → T64 → T67 (refinement end to end in the browser; it is
+the smaller flow), then T61, T62, T68, T69.
 
 ## Suggested first slice
 

@@ -1966,3 +1966,88 @@ def test_underscore_sheet_codes_and_names_inside_them_are_hidden():
     with pytest.raises(PrivacyError):
         anon.guard("Built from NRC_2027_28_020")           # the final scan refuses a raw code
     assert "ERCS" not in Anonymiser("ERCS").anonymise("ERCS-ET-2026-002 and SNV-ET-2026_006")
+
+
+# --- research: our data first, then the web ---------------------------------------------
+
+def _past(code, desc, rows):
+    from tendersure.parser import Row, Sheet
+    s = Sheet("f.xlsx", code, f"{code}: {desc}", code, desc, code.split("-")[0].split("_")[0], 4, 21)
+    s.rows = [Row("f.xlsx", code, 5 + i, section=sec, criteria=c, answer_type=5, compliance_attach=True)
+              for i, (sec, c) in enumerate(rows)]
+    return s
+
+
+def test_research_answers_from_the_bank_first_and_licences_stay_national():
+    from tendersure import research as rs
+    tech = "Technical Specifications-TECH"
+    bank = rs.BankKnowledge([
+        _past("AAA-ET-2026-019", "Supply of Assorted Pharmaceuticals",
+              [(tech, "Please attach a valid licence from the Ethiopian Food and Drug Authority"),
+               ("Human Resource- HRM", "Attach resumes/certificates of the pharmacists"),
+               ("Registration and Statutory Requirements", "Attach TIN certificate")]),
+        _past("BBB_2027_28_017", "Supply of Pharmaceutical Products",
+              [(tech, "Attach a Pharmacy and Poisons Board licence (Kenya)")])])
+    assert rs.sheet_country(bank.sheets[1]) == "KE"                 # no code country: the questions say Kenya
+    table, calls = rs.Table([]), []
+
+    class Web:                                                       # stands in for the web: records the asks
+        def research(self, topic, country, kinds, client=None):
+            calls.append((topic, country, tuple(kinds)))
+            return []
+    new = rs.research(["Supply of assorted pharmaceuticals"], "ET", ["names", "licences"], table, bank, Web())
+    lic = next(f for f in new if f.kind == "licences")
+    assert [x["name"] for x in lic.proposal["licences"]] == \
+        ["Please attach a valid licence from the Ethiopian Food and Drug Authority"]   # no CV, TIN or Kenyan licence
+    assert next(f for f in new if f.kind == "names").origin == rs.BANK and calls == []  # the bank answered: no web
+    rs.research(["Supply of assorted pharmaceuticals"], "ET", ["names", "licences"], table, bank, Web())
+    assert calls == [] and len(table.findings) == 2                 # researched once
+    rs.research(["Provision of drone survey services"], "ET", ["names"], table, bank, Web())
+    assert calls == [("Provision of drone survey services", "ET", ("names",))]   # nothing known: the web
+
+
+def test_web_findings_carry_the_pages_the_search_used():
+    from tendersure import research as rs
+    from tendersure.llm import GeminiLLM
+
+    def transport(url, headers, body):
+        assert body["tools"] == [{"google_search": {}}] and "responseJsonSchema" not in body["generationConfig"]
+        text = json.dumps({"names": {"technical_name": "Water Treatment Chemicals",
+                                     "includes": ["chlorine tablets", "aluminium sulphate"]}})
+        grounding = {"groundingChunks": [{"web": {"uri": "https://example.org/wtc", "title": "Water treatment"}}]}
+        return {"candidates": [{"content": {"parts": [{"text": text}]}, "finishReason": "STOP",
+                                "groundingMetadata": grounding if transport.ground else {}}]}
+    transport.ground = True
+    web = rs.WebResearcher(llm=GeminiLLM(model="m", transport=transport, paid_tier=True))
+    got = web.research("Supply of Aqua Water Purification Chemicals", "ET", ["names"])
+    assert got[0].proposal["technical_name"] == "Water Treatment Chemicals"
+    assert got[0].sources == ["Water treatment | https://example.org/wtc"] and got[0].origin == rs.WEB
+    transport.ground = False
+    assert web.research("Supply of Aqua Water Purification Chemicals", "ET", ["names"]) == []   # no source: dropped
+
+
+def test_research_prompts_name_no_client_and_differ_only_by_country():
+    from tendersure import research as rs
+    from tendersure.privacy import CLIENT_ALIASES
+    et = rs.build_prompt("Supply of Generators", "ET", list(rs.KINDS))
+    ke = rs.build_prompt("Supply of Generators", "KE", list(rs.KINDS))
+    names = [a for aliases in CLIENT_ALIASES.values() for a in aliases]
+    for text in (et, ke, rs.SYSTEM):
+        assert not any(re.search(rf"\b{re.escape(n)}\b", text) for n in names)
+    assert et.replace("Country: ET", "Country: KE") == ke
+
+
+def test_research_review_confirms_and_corrects(tmp_path):
+    from tendersure import research as rs
+    k = rs.topic_key("Supply of x")
+    t = rs.Table([rs.Finding("names", k, "ET", "Supply of x", {"technical_name": "X"}, ["s"], rs.WEB),
+                  rs.Finding("licences", k, "ET", "Supply of x", {"licences": [{"name": "A"}]}, ["s"], rs.WEB)])
+    assert rs.write_review(t.findings, str(tmp_path / "r.xlsx")) == 2
+    wb = openpyxl.load_workbook(tmp_path / "r.xlsx")
+    wb["Research"]["H2"], wb["Research"]["H3"] = "ok", "Licence B; Standard C"
+    wb.save(tmp_path / "r.xlsx")
+    assert rs.apply_review(str(tmp_path / "r.xlsx"), t) == (2, [])
+    rs.save(t, str(tmp_path / "research.csv"))
+    back = rs.load(str(tmp_path / "research.csv"))
+    assert [f.status for f in back.findings] == [rs.CONFIRMED, rs.CONFIRMED]
+    assert [x["name"] for x in back.lookup("licences", "Supply of x", "ET").proposal["licences"]] == ["Licence B", "Standard C"]
