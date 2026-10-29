@@ -1,12 +1,14 @@
 /** The client's sample criteria (spec 08): sheets are built from the bank and compared with these tabs. */
 import { useState } from "react";
-import { type MapLine, useBenchmark, useBenchmarkActions, useExercise } from "../lib/api";
+import { type MapLine, useBenchmark, useBenchmarkActions, useExercise, useRefine } from "../lib/api";
 import { Badge, Button, Card, cx, ErrorNotice, Notice, Select } from "./ui";
 import { UploadButton } from "./UploadButton";
 
 export function BenchmarkCard({ exerciseId }: { exerciseId: string }) {
   const b = useBenchmark(exerciseId).data;
-  const files = (useExercise(exerciseId).data?.files ?? []).filter((f) => f.path.startsWith("uploads/") && f.path.endsWith(".xlsx"));
+  const draft = useRefine(exerciseId).data?.draft?.file;             // the category list is not a benchmark
+  const files = (useExercise(exerciseId).data?.files ?? [])
+    .filter((f) => f.path.startsWith("uploads/") && f.path.endsWith(".xlsx") && f.path !== draft);
   const { choose, setMap, stop } = useBenchmarkActions(exerciseId);
   const [file, setFile] = useState("");
   if (!b) return null;

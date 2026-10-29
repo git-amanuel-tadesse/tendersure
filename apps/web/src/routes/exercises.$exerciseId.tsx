@@ -24,7 +24,7 @@ function ExerciseLayout() {
         <Link to="/" className="text-xs text-zinc-500 hover:underline">← Exercises</Link>
         <h1 className="mt-1 text-xl font-semibold tracking-tight">{ex.data.name}</h1>
         <p className="text-sm text-zinc-500">
-          {ex.data.client} · sheet codes {ex.data.prefix}001…{ex.data.client_name && ` · “${ex.data.client_name}” in questions`}
+          {ex.data.client} · sheet codes {ex.data.prefix}{/[A-Za-z0-9]$/.test(ex.data.prefix) ? "-" : ""}001…{ex.data.client_name && ` · “${ex.data.client_name}” in questions`}
         </p>
       </div>
       <nav className="mb-6 flex gap-6 border-b border-zinc-200 dark:border-zinc-800">
