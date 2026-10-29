@@ -2507,3 +2507,24 @@ def test_near_identical_tabs_with_spaces_and_brackets_in_their_names_are_graded(
     grades = trust.grade([a, b])                          # the other tab's name is read whole
     assert [g.tier for g in grades.values()].count(trust.SUPERSEDED) == 1
     assert any(r.startswith("earlier copy of PSI ") for g in grades.values() for r in g.reasons)
+
+
+def test_after_an_account_error_no_further_request_is_sent(caplog):
+    import logging
+    from tendersure.llm import AccountError
+    from tendersure.research import WebResearcher
+    calls = []
+
+    def broke(url, headers, body):
+        calls.append(url)
+        raise AccountError("the model account is out of credit (HTTP 402)")
+    from tendersure.llm import GeminiLLM
+    llm = GeminiLLM(model="m", transport=broke, paid_tier=True)
+    web = WebResearcher(llm=llm)
+    with caplog.at_level(logging.INFO, logger="tendersure"):
+        for topic in ("Supply of Stationery", "Supply of Toners", "Provision of Cleaning"):
+            assert web.research(topic, "ET", ["names"]) == []
+    assert len(calls) == 1                                      # one request, not one per topic
+    assert sum("web search stopped" in r.message for r in caplog.records) == 1
+    with pytest.raises(AccountError):
+        llm.complete_json("s", "p", SCHEMA, "x")

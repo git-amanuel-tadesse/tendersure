@@ -57,6 +57,11 @@ class SchemaError(LLMError):
     pass
 
 
+class AccountError(LLMError):
+    """The account cannot be used (no credit, a rejected key): every later
+    request would fail the same way, so a client stops asking after one."""
+
+
 def load_dotenv(path: Optional[str] = None):
     """KEY=VALUE lines from .env into the environment, never overriding
     variables already set. No dependency; quotes and comments are handled."""
@@ -135,10 +140,10 @@ def _http(url: str, headers: dict, body: dict, timeout: float = 600) -> dict:
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace")[:500]
         if e.code == 402:
-            raise LLMError("the model account is out of credit (HTTP 402). Each request reserves credit "
-                           "for its longest possible answer; add credit and retry") from None
+            raise AccountError("the model account is out of credit (HTTP 402). Each request reserves credit "
+                               "for its longest possible answer; add credit and retry") from None
         if e.code in (401, 403):
-            raise LLMError(f"the provider rejected the key (HTTP {e.code}); check the key in .env") from None
+            raise AccountError(f"the provider rejected the key (HTTP {e.code}); check the key in .env") from None
         raise LLMError(f"HTTP {e.code}: {detail}") from None
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         # No connection, a DNS failure, a timeout: a model error like any
@@ -160,6 +165,7 @@ class _Base:
         self.retried = 0                          # schema requests retried in prompt mode
         self.searching = False                    # this request may search the web
         self.last_sources: List[dict] = []        # pages a web search used: {"title", "uri"}
+        self.account_error: Optional[AccountError] = None   # once seen, no further request is sent
 
     def complete_json(self, system: str, prompt: str, schema: dict, name: str,
                       client: Optional[str] = None, pdf: Optional[bytes] = None,
@@ -172,6 +178,15 @@ class _Base:
         if pdf is not None:
             raise PrivacyError("refused to send a raw PDF: it cannot be anonymised reliably; "
                                "send extracted, anonymised text instead")
+        if self.account_error is not None:
+            raise self.account_error
+        try:
+            return self._complete(system, prompt, schema, name, client, max_tokens, search)
+        except AccountError as e:
+            self.account_error = e
+            raise
+
+    def _complete(self, system, prompt, schema, name, client, max_tokens, search):
         anon = Anonymiser(client)
         system_a, prompt_a = anon.anonymise(system), anon.anonymise(prompt)
         anon.guard(system_a, prompt_a)

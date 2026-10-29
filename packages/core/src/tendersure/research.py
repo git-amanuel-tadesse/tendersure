@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from .learned_store import resolve
-from .llm import LLMError, make_llm
+from .llm import AccountError, LLMError, make_llm
 from .parser import Sheet, normalise, section_key
 from .similarity import TfidfEmbedder, cosine
 from .validate import needs_names
@@ -261,6 +261,11 @@ class WebResearcher:
         try:
             raw = self.llm.complete_json(SYSTEM, build_prompt(topic, country, kinds), schema, "research",
                                          client=client, max_tokens=6000, search=True)
+        except AccountError as e:
+            if self.llm.account_error is e and not getattr(self, "_stopped", False):
+                self._stopped = True
+                log.info(f"research: web search stopped ({e}); the rest is not researched on the web")
+            return []
         except LLMError as e:
             log.info(f"research: '{topic[:50]}' not researched on the web ({e})")
             return []
