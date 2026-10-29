@@ -96,11 +96,15 @@ apps/web ──▶ packages/api-client ──HTTP──▶ apps/api ──▶ te
 
 ### M3. Configuration and runtime data
 
-- Core takes a `Paths` value (data folder, cache folder, outbox) instead of
-  the literal `"data/..."` and `".cache/..."` strings it uses today
-  (`store.py`, `learned_store.py`, `privacy.py`, `llm.py`, `check_ai.py`).
-- Each app builds `Paths` from `TENDERSURE_HOME` (default: the repo root), so
-  the CLI and the API read and write the same bank and learned files.
+- Every location core uses (data folder, bank, learned files, cache,
+  outbox, reports, privacy terms, `.env`) comes from one `Paths` value,
+  `tendersure.paths.current()`, read when it is needed and never at import.
+  There are no `"data/..."` or `".cache/..."` literals elsewhere.
+- The default home is `$TENDERSURE_HOME`, else the repo root (marked by
+  `[tool.tendersure]` in the root `pyproject.toml`), so the CLI and the API
+  read and write the same bank and learned files from any working directory.
+  An app that wants another home calls `paths.use(Paths(...))` once at start.
+  The tests point it at a temporary folder.
 - `.env` stays at the root and is read by the apps, not by core's modules
   at import time.
 

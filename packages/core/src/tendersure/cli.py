@@ -27,6 +27,7 @@ from . import category_llm as cl
 from .bank import Bank
 from .evaluate import evaluate, summarise
 from .llm import LLMError
+from .paths import current
 from .privacy import PrivacyError
 from .generate import (Generator, MarksError, Target, apply_section_marks, check_total, finalise, to_sheet,
                        apply_research as generate_research)
@@ -39,7 +40,6 @@ from . import trust
 from .writer import Writer
 
 
-CACHE_DIR = ".cache"
 
 
 def load_corpus(folder: str, cache: bool = None) -> List[Sheet]:
@@ -93,7 +93,7 @@ def _parse_cached(path: str) -> List[Sheet]:
     import pickle
     st = os.stat(path)
     key = hashlib.sha1(f"{os.path.abspath(path)}|{st.st_mtime_ns}|{st.st_size}".encode()).hexdigest()
-    cached = os.path.join(CACHE_DIR, key + ".pkl")
+    cached = os.path.join(current().cache, key + ".pkl")
     if os.path.exists(cached):
         try:
             with open(cached, "rb") as fh:
@@ -101,7 +101,7 @@ def _parse_cached(path: str) -> List[Sheet]:
         except Exception:
             pass
     sheets = parse_workbook(path)
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    os.makedirs(current().cache, exist_ok=True)
     with open(cached, "wb") as fh:
         pickle.dump(sheets, fh)
     return sheets
@@ -335,7 +335,7 @@ def cmd_refine(a):
                 ["names", "licences"], table, bank, web, a.client)
     rf.attach_research(lines, table, a.country or "")
     rs.save(table, a.research)
-    out = a.out or os.path.join("reports", os.path.splitext(os.path.basename(a.draft))[0] + " - Revised.xlsx")
+    out = a.out or os.path.join(current().reports, os.path.splitext(os.path.basename(a.draft))[0] + " - Revised.xlsx")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     rf.write_revised(out, drafts, lines, a.client, target)
     kept = sum(ln.status != rf.REPEATED for ln in lines)
@@ -411,7 +411,7 @@ def cmd_check(a):
     if not a.no_model and _model_wanted(a)[0]:
         from . import check_ai
         findings += check_ai.read(a.workbook, a.model or None, client=a.client)
-    out = a.out or os.path.join("reports", os.path.splitext(os.path.basename(a.workbook))[0] + "_check.xlsx")
+    out = a.out or os.path.join(current().reports, os.path.splitext(os.path.basename(a.workbook))[0] + "_check.xlsx")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     _write_check_report(findings, out)
     sev = Counter(f.severity for f in findings)
@@ -472,7 +472,7 @@ def cmd_research(a):
         rf.attach_research(revised[1], table, country)
         rf.write_revised(a.source_list, revised[0], revised[1], a.client, rs.read_target(a.source_list))
         print(f"research: research columns filled in {a.source_list} (its proposals unchanged)")
-    out = a.out or os.path.join("reports", "research_review.xlsx")
+    out = a.out or os.path.join(current().reports, "research_review.xlsx")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     n = rs.write_review([f for f in table.findings if f.topic_key in {rs.topic_key(t) for t in topics}], out)
     by = Counter((f.kind, f.origin) for f in new)
@@ -563,14 +563,14 @@ def cmd_generate(a):
         selector = ModelSelector(model=a.model or None)
         # Every AI answer is saved the moment it arrives: a rerun after a crash
         # (or with unchanged inputs) reuses it instead of paying again.
-        cache_path = os.path.join(".cache", f"build_{a.client}_{selector.llm.model.replace('/', '_')}"
+        cache_path = os.path.join(current().cache, f"build_{a.client}_{selector.llm.model.replace('/', '_')}"
                                             f"_v{PROMPT_VERSION}.json")
         if os.path.exists(cache_path):
             with open(cache_path) as fh:
                 ai_cache = json.load(fh)
 
         def save_ai_cache():
-            os.makedirs(".cache", exist_ok=True)
+            os.makedirs(current().cache, exist_ok=True)
             with open(cache_path, "w") as fh:
                 json.dump(ai_cache, fh)
 
@@ -730,7 +730,7 @@ def cmd_privacy_check(a):
         wanted = {int(x) for x in a.only.split(",")}
         cats = [c for c in cats if c.number in wanted]
     gen = Generator(sheets, Retriever(sheets, _groups_for(sheets, cats, a.client)), grades=trust.grade(sheets))
-    out = os.path.join(".cache", "llm_outbox", "preview")
+    out = os.path.join(current().outbox, "preview")
     os.makedirs(out, exist_ok=True)
     checked, leaking, replaced = 0, [], Counter()
     for c in cats:
@@ -782,7 +782,7 @@ def cmd_evaluate_model(a):
     from .llm import make_llm
     llm = make_llm(model=a.model)          # fails here, before any cost, if the key or tier is missing
     from .selectors import PROMPT_VERSION
-    cache = a.cache or os.path.join(".cache", f"model_eval_{llm.model.replace('/', '_')}_v{PROMPT_VERSION}.json")
+    cache = a.cache or os.path.join(current().cache, f"model_eval_{llm.model.replace('/', '_')}_v{PROMPT_VERSION}.json")
     import json
     cached = 0
     if os.path.exists(cache):
@@ -822,14 +822,15 @@ def cmd_evaluate(a):
 
 
 def main(argv=None):
+    P = current()
     ap = argparse.ArgumentParser(prog="tendersure", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("ingest", help="validate a corpus and build the bank")
     p.add_argument("corpus", help="folder of criteria workbooks (subfolders included)")
-    p.add_argument("--bank", default="data/bank.sqlite", help="the bank to add them to")
-    p.add_argument("--out", default="reports")
+    p.add_argument("--bank", default=P.bank, help="the bank to add them to")
+    p.add_argument("--out", default=P.reports)
     p.set_defaults(fn=cmd_ingest)
 
     p = sub.add_parser("categories", help="extract categories from a notice PDF")
@@ -855,11 +856,11 @@ def main(argv=None):
     p.add_argument("--categories-out", help="with --apply: write the categories table for generate here")
     p.add_argument("--version", help="with --apply: label for this version of the list")
     p.add_argument("--out", help="the workbook to write")
-    p.add_argument("--bank", default="data/bank.sqlite", help="past exercises, for suggested additions")
+    p.add_argument("--bank", default=P.bank, help="past exercises, for suggested additions")
     p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true", help="propose by rules only")
     p.add_argument("--country", help="ISO country code for researched licences, e.g. ET, KE")
-    p.add_argument("--research", default="data/research.csv", help="the research table (default data/)")
+    p.add_argument("--research", default=P.learned("research"), help="the research table (default data/)")
     p.set_defaults(fn=cmd_refine)
 
     p = sub.add_parser("refine-evaluate", help="compare a refinement with the list a team settled on")
@@ -868,7 +869,7 @@ def main(argv=None):
     p.add_argument("--final-tab", required=True)
     p.add_argument("--client", required=True)
     p.add_argument("--out", help="also write the proposal as a revised list")
-    p.add_argument("--bank", default="data/bank.sqlite")
+    p.add_argument("--bank", default=P.bank)
     p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true")
     p.set_defaults(fn=cmd_refine_evaluate)
@@ -878,7 +879,7 @@ def main(argv=None):
     p.add_argument("--client", help="client code, e.g. ERCS: codes must carry it, other clients' names are flagged")
     p.add_argument("--categories", help="the categories table: each sheet is checked against its category")
     p.add_argument("--against", help="the generated workbook: what changed since is listed")
-    p.add_argument("--yes-no", default="data/yesno_polarity.csv", help="Yes/No verdicts (default data/)")
+    p.add_argument("--yes-no", default=P.learned("yesno_polarity"), help="Yes/No verdicts (default data/)")
     p.add_argument("--out", help="the report workbook (default reports/<name>_check.xlsx)")
     p.add_argument("--model", nargs="?", const="", help="model id for the AI read (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true", help="skip the AI read")
@@ -891,19 +892,19 @@ def main(argv=None):
     p.add_argument("--country", help="ISO country code, e.g. ET, KE (default: from --prefix)")
     p.add_argument("--prefix", help="sheet code prefix, e.g. ERCS-ET-2026- (gives the country)")
     p.add_argument("--kinds", default="names,licences", help="names, licences, questions, documents")
-    p.add_argument("--research", default="data/research.csv", help="the research table (default data/)")
+    p.add_argument("--research", default=P.learned("research"), help="the research table (default data/)")
     p.add_argument("--review", help="an answered research review to apply")
     p.add_argument("--out", help="the review workbook (default reports/research_review.xlsx)")
-    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
+    p.add_argument("--bank", default=P.bank, help=argparse.SUPPRESS)
     p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true", help="our own data only, no web search")
     p.set_defaults(fn=cmd_research, source=None)
 
     p = sub.add_parser("learn", help="learn names and Yes/No verdicts for the whole bank; write the review")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")
-    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
-    p.add_argument("--store", default="data", help="folder of the learned files (default data/)")
-    p.add_argument("--out", default="reports/learned_review.xlsx", help="the review workbook")
+    p.add_argument("--bank", default=P.bank, help=argparse.SUPPRESS)
+    p.add_argument("--store", default=P.data, help="folder of the learned files (default data/)")
+    p.add_argument("--out", default=os.path.join(P.reports, "learned_review.xlsx"), help="the review workbook")
     p.add_argument("--review", help="an answered review workbook to apply")
     p.add_argument("--model", nargs="?", const="", help="model id (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true", help="draft by rules, without a model")
@@ -911,8 +912,8 @@ def main(argv=None):
 
     p = sub.add_parser("glossary", help="seed the short name / acronym glossary from the bank")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")
-    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
-    p.add_argument("--out", default="data/glossary.csv")
+    p.add_argument("--bank", default=P.bank, help=argparse.SUPPRESS)
+    p.add_argument("--out", default=P.learned("glossary"))
     p.add_argument("--fill", action="store_true",
                    help="give every entry both names: drafts' acronyms by the letter rule, empty ones reused or built")
     p.add_argument("--model", nargs="?", const="", help="model id for --fill (default: TENDERSURE_MODEL)")
@@ -921,7 +922,7 @@ def main(argv=None):
 
     p = sub.add_parser("generate", help="build criteria sheets for categories")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")
-    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
+    p.add_argument("--bank", default=P.bank, help=argparse.SUPPRESS)
     p.add_argument("--categories", required=True, help="output of the categories command")
     p.add_argument("--client", required=True, help="client code, e.g. ERCS")
     p.add_argument("--client-name", help="name used inside question text, if not the code")
@@ -930,7 +931,7 @@ def main(argv=None):
     p.add_argument("--decisions", help="bank.xlsx with the Decision column filled in")
     p.add_argument("--marks", help="CSV of code,section,marks to override the suggested split")
     p.add_argument("--review", help="QA report whose Decisions tab has been filled in; answers are applied")
-    p.add_argument("--rulings", default="data/rulings.csv",
+    p.add_argument("--rulings", default=P.learned("rulings"),
                    help="standing rulings: read every run, extended by C- answers (default data/rulings.csv)")
     p.add_argument("--rebuild-existing", action="store_true",
                    help="ignore an existing sheet with the same code instead of reusing it")
@@ -943,19 +944,19 @@ def main(argv=None):
                         "a model is configured in .env")
     p.add_argument("--no-model", action="store_true", help="build without any AI step")
     p.add_argument("--country", help="ISO country code for research (default: from --prefix, e.g. ERCS-ET-...)")
-    p.add_argument("--research", default="data/research.csv", help="the research table (default data/)")
-    p.add_argument("--audience", default="data/audience.csv",
+    p.add_argument("--research", default=P.learned("research"), help="the research table (default data/)")
+    p.add_argument("--audience", default=P.learned("audience"),
                    help="which business types answer each question (default data/audience.csv)")
-    p.add_argument("--yes-no", default="data/yesno_polarity.csv",
+    p.add_argument("--yes-no", default=P.learned("yesno_polarity"),
                    help="whether Yes is the good answer, per Yes/No question (default data/yesno_polarity.csv)")
-    p.add_argument("--glossary", default="data/glossary.csv",
+    p.add_argument("--glossary", default=P.learned("glossary"),
                    help="short names and acronyms (default data/glossary.csv; seeded from the bank if absent)")
     p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_generate)
 
     p = sub.add_parser("privacy-check", help="show what model calls would send (anonymised); sends nothing")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")
-    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
+    p.add_argument("--bank", default=P.bank, help=argparse.SUPPRESS)
     p.add_argument("--categories", required=True)
     p.add_argument("--client", required=True)
     p.add_argument("--client-name")
@@ -967,7 +968,7 @@ def main(argv=None):
     p = sub.add_parser("evaluate-model",
                        help="score the model's judgement against sheets the team built (costs model calls)")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")
-    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
+    p.add_argument("--bank", default=P.bank, help=argparse.SUPPRESS)
     p.add_argument("--client", help="only this client's sheets")
     p.add_argument("--categories", help="categories file, to use the notice grouping")
     p.add_argument("--model", help="model id (default: TENDERSURE_MODEL)")
@@ -980,7 +981,7 @@ def main(argv=None):
 
     p = sub.add_parser("evaluate", help="leave-one-out against existing sheets")
     p.add_argument("source", nargs="?", help="the bank (default data/bank.sqlite); a folder of workbooks also works")
-    p.add_argument("--bank", default="data/bank.sqlite", help=argparse.SUPPRESS)
+    p.add_argument("--bank", default=P.bank, help=argparse.SUPPRESS)
     p.add_argument("--client")
     p.add_argument("--categories", help="categories file for --client, to use the advert grouping")
     p.set_defaults(fn=cmd_evaluate)

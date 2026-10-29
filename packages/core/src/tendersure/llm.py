@@ -40,14 +40,13 @@ import urllib.error
 import urllib.request
 from typing import Callable, List, Optional, Sequence
 
-from .paths import home
+from .paths import current
 from .privacy import Anonymiser, PrivacyError
 
 URL = "https://openrouter.ai/api/v1/chat/completions"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 DEFAULT_MODEL = "google/gemini-4-argon"
 DEFAULT_GEMINI_MODEL = "gemini-4-argon"
-OUTBOX = os.path.join(".cache", "llm_outbox")
 
 
 class LLMError(RuntimeError):
@@ -61,7 +60,7 @@ class SchemaError(LLMError):
 def load_dotenv(path: Optional[str] = None):
     """KEY=VALUE lines from .env into the environment, never overriding
     variables already set. No dependency; quotes and comments are handled."""
-    path = path or os.path.join(home(), ".env")
+    path = path or current().env
     if not os.path.exists(path):
         return
     with open(path) as fh:
@@ -215,7 +214,7 @@ class _Base:
 
 def _log_outbox(provider, model, name, system, prompt):
     """Exactly what left this machine, for anyone auditing privacy."""
-    outbox = os.environ.get("TENDERSURE_OUTBOX") or OUTBOX
+    outbox = current().outbox
     os.makedirs(outbox, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     path = os.path.join(outbox, f"{stamp}-{name}-{abs(hash(prompt)) % 10**6:06d}.txt")

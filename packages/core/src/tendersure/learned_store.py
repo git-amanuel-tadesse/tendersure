@@ -13,15 +13,17 @@ learns the facts or uses them.
 
 import csv
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
+
+from .paths import current
 
 GLOSSARY = "glossary"
 YES_NO = "yesno_polarity"
 
 
 class CsvStore:
-    def __init__(self, folder: str = "data"):
-        self.folder = folder
+    def __init__(self, folder: Optional[str] = None):
+        self.folder = folder or current().data
 
     def path(self, name: str) -> str:
         return os.path.join(self.folder, f"{name}.csv")

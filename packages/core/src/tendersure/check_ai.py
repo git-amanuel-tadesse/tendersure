@@ -20,10 +20,10 @@ import openpyxl
 
 from .llm import LLMError, make_llm
 from .parser import parse_sheet
+from .paths import current
 from .validate import Finding
 
 CHUNK = 60
-CACHE = os.path.join(".cache", "check_ai.json")
 KINDS = ["answer type", "yes/no scoring", "category fit", "wording"]
 SYSTEM = (
     "You review questions in a supplier prequalification questionnaire after a team edited it by hand. "
@@ -60,9 +60,9 @@ def read(path: str, model: Optional[str] = None, llm=None, client: Optional[str]
         client = client or s.client
         for r in s.rows:
             seen[_signature(r)].append((s.name, r.excel_row, s.description or ""))
-    cache = {}
-    if os.path.exists(CACHE):
-        with open(CACHE) as fh:
+    cache, cache_path = {}, os.path.join(current().cache, "check_ai.json")
+    if os.path.exists(cache_path):
+        with open(cache_path) as fh:
             cache = json.load(fh)
     key = lambda sig: hashlib.sha1(_describe(sig, sorted({c for _, _, c in seen[sig]})).encode()).hexdigest()[:16]
     todo = [sig for sig in seen if key(sig) not in cache]
@@ -81,8 +81,8 @@ def read(path: str, model: Optional[str] = None, llm=None, client: Optional[str]
         for i, sig in enumerate(part):
             cache[key(sig)] = found.get(i, [])
     if todo:
-        os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-        with open(CACHE, "w") as fh:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, "w") as fh:
             json.dump(cache, fh)
     out = []
     for sig, where in seen.items():

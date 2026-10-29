@@ -1866,7 +1866,8 @@ def test_incomplete_reference_blocks_and_missing_sections_are_found():
 def test_the_ai_read_asks_once_per_distinct_question_and_only_warns(corpus, tmp_path, monkeypatch):
     from tendersure import check_ai
     gen, _ = _generated(corpus, tmp_path)
-    monkeypatch.setattr(check_ai, "CACHE", str(tmp_path / "ai.json"))
+    from tendersure import paths
+    monkeypatch.setattr(paths, "_current", paths.Paths(str(tmp_path)))
     t = FakeTransport({"problems": [{"id": 0, "kind": "wording", "reason": "unclear"}]})
     found = check_ai.read(str(gen), llm=OpenRouterLLM(model="m", transport=t))
     assert len(t.calls) == 1 and found and all(f.severity == "warning" and f.kind == "model" for f in found)

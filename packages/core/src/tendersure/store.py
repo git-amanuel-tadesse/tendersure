@@ -33,8 +33,7 @@ from typing import Dict, List, Optional
 import openpyxl
 
 from .parser import Row, Sheet, StructuralRow, parse_workbook
-
-DEFAULT_BANK = os.path.join("data", "bank.sqlite")
+from .paths import current
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (
@@ -55,8 +54,8 @@ CREATE INDEX IF NOT EXISTS sheets_client ON sheets(client);
 
 
 class BankStore:
-    def __init__(self, path: str = DEFAULT_BANK):
-        self.path = path
+    def __init__(self, path: Optional[str] = None):
+        self.path = path = path or current().bank
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.executescript(SCHEMA)

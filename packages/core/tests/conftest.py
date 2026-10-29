@@ -7,10 +7,12 @@ import openpyxl
 import tempfile
 
 os.environ["TENDERSURE_NO_CACHE"] = "1"      # throwaway test workbooks must not fill .cache/
-os.environ["TENDERSURE_OUTBOX"] = tempfile.mkdtemp(prefix="outbox-")   # nor the real audit log
 import pytest
 
-from tendersure.paths import home
+from tendersure import paths
+
+# Tests never read or write the real data/, .cache/, outbox or .env: their home is a temp folder.
+paths.use(paths.Paths(tempfile.mkdtemp(prefix="tendersure-home-")))
 
 HEADERS = ["Section", "Sub Section", "Criteria", "Marks", "System", "Compliance",
            "Archive Short Name", "Acronym", "Answer Type", "Mandatory", "Attachment",
@@ -111,7 +113,7 @@ def corpus(tmp_path):
 @pytest.fixture
 def real_corpus():
     """Client workbooks: $TENDERSURE_CORPUS, else the project's 'sample file' folder."""
-    here = os.environ.get("TENDERSURE_CORPUS") or os.path.join(home(), "sample file")
+    here = os.environ.get("TENDERSURE_CORPUS") or os.path.join(paths.repo_root() or os.getcwd(), "sample file")
     if not os.path.isdir(here) or not any(f.endswith(".xlsx") for f in os.listdir(here)):
         pytest.skip("client sample workbooks not present")
     return here
