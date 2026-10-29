@@ -55,6 +55,7 @@ def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = N
     from .bank import bp as bank
     from .categories_api import bp as categories
     from .exercises import MAX_UPLOAD, bp as exercises
+    from .benchmark_api import bp as benchmark
     from .generate_api import bp as generate
     from .jobs import Runner
     from .jobs_api import bp as jobs
@@ -111,6 +112,7 @@ def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = N
     app.register_api(refine)
     app.register_api(categories)
     app.register_api(generate)
+    app.register_api(benchmark)
 
     # Plain Flask routes, outside the OpenAPI document: the document itself,
     # and the built web app (apps/web/dist) - its files, and index.html for

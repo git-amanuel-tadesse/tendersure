@@ -89,6 +89,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/exercises/{exercise_id}/benchmark": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["benchmark_get_benchmark_get"];
+        put?: never;
+        /** Use an uploaded workbook as the benchmark: its tabs are checked and the map proposed. */
+        post: operations["benchmark_choose_benchmark_post"];
+        /** Build from the bank again; the uploaded workbook stays in uploads/. */
+        delete: operations["benchmark_stop_benchmark_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exercises/{exercise_id}/benchmark/map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** The whole map as the team set it; a group left out is proposed again. */
+        put: operations["benchmark_set_map_map_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/exercises/{exercise_id}/brief": {
         parameters: {
             query?: never;
@@ -540,6 +575,46 @@ export interface components {
             /** Workbooks */
             workbooks: number;
         };
+        /** Benchmark */
+        Benchmark: {
+            /**
+             * File
+             * @description the uploaded workbook; none when no benchmark is used
+             * @default null
+             */
+            file?: string | null;
+            /**
+             * Map
+             * @default []
+             */
+            map?: components["schemas"]["MapLine"][];
+            /**
+             * Tabs
+             * @default []
+             */
+            tabs?: components["schemas"]["BenchmarkTab"][];
+        };
+        /** BenchmarkTab */
+        BenchmarkTab: {
+            /** Name */
+            name: string;
+            /**
+             * Refused
+             * @description why the tab is not used; fix it in the client's file
+             * @default []
+             */
+            refused?: string[];
+            /** Total */
+            total: number;
+            /** Usable */
+            usable: boolean;
+            /**
+             * Warnings
+             * @description left to generation's corrections and its pre-write check
+             * @default []
+             */
+            warnings?: string[];
+        };
         /**
          * Brief
          * @description What the client says it is looking for: read first by every model step (above past
@@ -637,6 +712,14 @@ export interface components {
             field: string;
             /** Index */
             index: number;
+        };
+        /** ChooseBenchmark */
+        ChooseBenchmark: {
+            /**
+             * File
+             * @description an uploaded workbook, e.g. uploads/PSI Criteria Draft.xlsx
+             */
+            file: string;
         };
         /** ChooseDraft */
         ChooseDraft: {
@@ -1097,6 +1180,30 @@ export interface components {
             /** Changes */
             changes: components["schemas"]["LineChange"][];
         };
+        /** MapLine */
+        MapLine: {
+            /** Group */
+            group: string;
+            /**
+             * Kind
+             * @description '' for the whole group; else goods, service, works or consultancy
+             * @default
+             */
+            kind?: string;
+            /**
+             * Source
+             * @description proposed (by the system) or team
+             * @default team
+             */
+            source?: string;
+            /** Tab */
+            tab: string;
+        };
+        /** MapLines */
+        MapLines: {
+            /** Lines */
+            lines: components["schemas"]["MapLine"][];
+        };
         /** ModelStatus */
         ModelStatus: {
             /** Model */
@@ -1384,6 +1491,12 @@ export interface components {
              * @default true
              */
             ai_review?: boolean;
+            /**
+             * Benchmark
+             * @description the benchmark workbook the run started from (spec 08)
+             * @default null
+             */
+            benchmark?: string | null;
             /**
              * Brief
              * @description the exercise's brief when the run started (spec 07 B)
@@ -1724,6 +1837,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExerciseDetail"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    benchmark_get_benchmark_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Benchmark"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    benchmark_choose_benchmark_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChooseBenchmark"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Benchmark"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    benchmark_stop_benchmark_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Benchmark"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    benchmark_set_map_map_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapLines"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Benchmark"];
                 };
             };
             /** @description Unprocessable Content */

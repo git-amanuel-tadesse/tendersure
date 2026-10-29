@@ -14,6 +14,7 @@ from ..paths import Paths, current, use
 from ..privacy import PrivacyError
 from ..refine import Draft, Line
 from ..review import Item
+from .benchmark import BenchmarkState, MapLine, Tab, benchmark_state, save_benchmark_map
 from .categories import (CategoriesResult, ENGINES, RowProblem, check_table, extract as extract_categories,
                          gate_problem, normalise as normalise_category)
 from .check import CheckResult, check
@@ -40,6 +41,7 @@ __all__ = [
     "research", "apply_research_review", "ResearchResult",
     "learn", "apply_learned_review", "seed_glossary", "LearnResult", "GlossaryResult",
     "generate", "read_review", "GenerateSettings", "GenerateResult",
+    "benchmark_state", "save_benchmark_map", "BenchmarkState", "Tab", "MapLine",
     "check", "CheckResult",
     "evaluate", "evaluate_model", "privacy_check", "ModelEvaluation", "PrivacyCheck",
 ]

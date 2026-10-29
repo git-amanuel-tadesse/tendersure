@@ -126,3 +126,40 @@ def test_a_run_keeps_the_brief_it_read(client, ex):
     run = client.get(f"/api/exercises/{ex}/generate/runs/{job.result['run']}").json
     assert run["settings"]["brief"] == "Ask for site engineers."
     assert any("client's brief not applied: no model" in x for x in job.lines)
+
+
+def _benchmark():
+    from tendersure.testing import GENERIC, TAIL, tech, write_sheet
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for name, kind in (("AAA General", "goods"), ("AAA Services", "service")):
+        ws = wb.create_sheet(name)
+        write_sheet(ws, "X", "x", GENERIC + tech(kind) + TAIL, "AAA")
+        ws.cell(2, 2, None)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_a_benchmark_is_chosen_mapped_corrected_and_used(client, ex):
+    assert client.get(f"/api/exercises/{ex}/benchmark").json == {"file": None, "tabs": [], "map": []}
+    client.post(f"/api/exercises/{ex}/files", data={"file": (io.BytesIO(_benchmark()), "bench.xlsx")},
+                content_type="multipart/form-data", headers=W)
+    r = client.post(f"/api/exercises/{ex}/benchmark", json={"file": "uploads/bench.xlsx"}, headers=W)
+    assert r.status_code == 200, r.json
+    assert [(t["name"], t["usable"]) for t in r.json["tabs"]] == [("AAA General", True), ("AAA Services", True)]
+    lines = {m["group"]: m for m in r.json["map"]}
+    assert lines["GENERAL"]["tab"] == "AAA General" and lines["GENERAL"]["source"] == "proposed"
+    assert lines["SERVICES"]["tab"] == "AAA Services"
+    bad = client.put(f"/api/exercises/{ex}/benchmark/map",
+                     json={"lines": [{"group": "SERVICES", "tab": "Nope"}]}, headers=W)
+    assert bad.status_code == 422 and "no tab 'Nope'" in bad.json["detail"]
+    r = client.put(f"/api/exercises/{ex}/benchmark/map", json={"lines": [
+        {"group": "GENERAL", "tab": "AAA General", "source": "proposed"},
+        {"group": "SERVICES", "tab": "AAA General"}]}, headers=W)             # the team's correction
+    assert {m["group"]: (m["tab"], m["source"]) for m in r.json["map"]}["SERVICES"] == ("AAA General", "team")
+    job = _run(client, client.post(f"/api/exercises/{ex}/generate", json={"use_model": False}, headers=W))
+    assert any("3 categories start from a benchmark tab" in x for x in job.lines)
+    run = client.get(f"/api/exercises/{ex}/generate/runs/{job.result['run']}").json
+    assert run["settings"]["benchmark"] == "uploads/bench.xlsx" and run["written"] == 3
+    assert client.delete(f"/api/exercises/{ex}/benchmark", headers=W).json["file"] is None

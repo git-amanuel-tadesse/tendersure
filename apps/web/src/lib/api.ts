@@ -22,6 +22,7 @@ export const keys = {
   exercises: ["exercises"] as const,
   exercise: (id: string) => ["exercise", id] as const,
   brief: (id: string) => ["brief", id] as const,
+  benchmark: (id: string) => ["benchmark", id] as const,
   refine: (id: string) => ["refine", id] as const,
   categories: (id: string) => ["categories", id] as const,
   runs: (id: string) => ["runs", id] as const,
@@ -199,6 +200,33 @@ export const useRun = (id: string, n: number | undefined) =>
     queryFn: () =>
       unwrap(api.GET("/api/exercises/{exercise_id}/generate/runs/{number}", { params: { path: { exercise_id: id, number: n! } } })),
   });
+
+/** The client's sample criteria (spec 08): tabs as checked, the group -> tab map. */
+export type Benchmark = Schemas["Benchmark"];
+export type MapLine = Schemas["MapLine"];
+
+export const useBenchmark = (id: string) =>
+  useQuery({ queryKey: keys.benchmark(id), queryFn: () => unwrap(api.GET("/api/exercises/{exercise_id}/benchmark", path(id))) });
+
+export function useBenchmarkActions(id: string) {
+  const qc = useQueryClient();
+  const set = (data: Benchmark) => qc.setQueryData(keys.benchmark(id), data);
+  return {
+    choose: useMutation({
+      mutationFn: (file: string) => unwrap(api.POST("/api/exercises/{exercise_id}/benchmark", { ...path(id), body: { file } })),
+      onSuccess: set,
+    }),
+    setMap: useMutation({
+      mutationFn: (lines: MapLine[]) =>
+        unwrap(api.PUT("/api/exercises/{exercise_id}/benchmark/map", { ...path(id), body: { lines } })),
+      onSuccess: set,
+    }),
+    stop: useMutation({
+      mutationFn: () => unwrap(api.DELETE("/api/exercises/{exercise_id}/benchmark", path(id))),
+      onSuccess: set,
+    }),
+  };
+}
 
 export function useGenerateActions(id: string) {
   const qc = useQueryClient();

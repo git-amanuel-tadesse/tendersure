@@ -143,6 +143,82 @@
         "title": "BankStatus",
         "type": "object"
       },
+      "Benchmark": {
+        "properties": {
+          "file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "the uploaded workbook; none when no benchmark is used",
+            "title": "File"
+          },
+          "map": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MapLine"
+            },
+            "title": "Map",
+            "type": "array"
+          },
+          "tabs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkTab"
+            },
+            "title": "Tabs",
+            "type": "array"
+          }
+        },
+        "title": "Benchmark",
+        "type": "object"
+      },
+      "BenchmarkTab": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "refused": {
+            "default": [],
+            "description": "why the tab is not used; fix it in the client's file",
+            "items": {
+              "type": "string"
+            },
+            "title": "Refused",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          },
+          "usable": {
+            "title": "Usable",
+            "type": "boolean"
+          },
+          "warnings": {
+            "default": [],
+            "description": "left to generation's corrections and its pre-write check",
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "total",
+          "usable"
+        ],
+        "title": "BenchmarkTab",
+        "type": "object"
+      },
       "Brief": {
         "description": "What the client says it is looking for: read first by every model step (above past\nquestionnaires; the template rules still apply). Empty when there is none.",
         "properties": {
@@ -311,6 +387,20 @@
           "after"
         ],
         "title": "Change",
+        "type": "object"
+      },
+      "ChooseBenchmark": {
+        "properties": {
+          "file": {
+            "description": "an uploaded workbook, e.g. uploads/PSI Criteria Draft.xlsx",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "ChooseBenchmark",
         "type": "object"
       },
       "ChooseDraft": {
@@ -1172,6 +1262,52 @@
         "title": "LineChanges",
         "type": "object"
       },
+      "MapLine": {
+        "properties": {
+          "group": {
+            "title": "Group",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "description": "'' for the whole group; else goods, service, works or consultancy",
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "default": "team",
+            "description": "proposed (by the system) or team",
+            "title": "Source",
+            "type": "string"
+          },
+          "tab": {
+            "title": "Tab",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group",
+          "tab"
+        ],
+        "title": "MapLine",
+        "type": "object"
+      },
+      "MapLines": {
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/MapLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lines"
+        ],
+        "title": "MapLines",
+        "type": "object"
+      },
       "ModelStatus": {
         "properties": {
           "model": {
@@ -1774,6 +1910,19 @@
             "title": "Ai Review",
             "type": "boolean"
           },
+          "benchmark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "the benchmark workbook the run started from (spec 08)",
+            "title": "Benchmark"
+          },
           "brief": {
             "default": "",
             "description": "the exercise's brief when the run started (spec 07 B)",
@@ -2326,6 +2475,201 @@
         },
         "tags": [
           "exercises"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/benchmark": {
+      "delete": {
+        "operationId": "benchmark_stop_benchmark_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Benchmark"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Build from the bank again; the uploaded workbook stays in uploads/.",
+        "tags": [
+          "benchmark"
+        ]
+      },
+      "get": {
+        "operationId": "benchmark_get_benchmark_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Benchmark"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "benchmark"
+        ]
+      },
+      "post": {
+        "operationId": "benchmark_choose_benchmark_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChooseBenchmark"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Benchmark"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Use an uploaded workbook as the benchmark: its tabs are checked and the map proposed.",
+        "tags": [
+          "benchmark"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/benchmark/map": {
+      "put": {
+        "operationId": "benchmark_set_map_map_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MapLines"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Benchmark"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "The whole map as the team set it; a group left out is proposed again.",
+        "tags": [
+          "benchmark"
         ]
       }
     },
@@ -3627,6 +3971,9 @@
     },
     {
       "name": "generate"
+    },
+    {
+      "name": "benchmark"
     }
   ]
 }

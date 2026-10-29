@@ -2,6 +2,7 @@
 import { fileUrl } from "@tendersure/api-client";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { BenchmarkCard } from "../components/BenchmarkCard";
 import { BriefBox } from "../components/BriefBox";
 import { JobPanel } from "../components/JobPanel";
 import {
@@ -35,6 +36,7 @@ function GeneratePage() {
   const select = (n: number) => navigate({ search: { run: n } });
   return (
     <div className="space-y-6">
+      <BenchmarkCard exerciseId={exerciseId} />
       <BuildCard exerciseId={exerciseId} onStarted={() => navigate({ search: {} })} />
       {runs.length > 0 && (
         <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
@@ -160,6 +162,9 @@ function RunView({ exerciseId, n, onApplied }: { exerciseId: string; n: number; 
           <Stat label="Decisions" value={res.items.length} />
           <Stat label="Open" value={Object.values(res.open).reduce((a, b) => a + b, 0)} />
         </div>
+        {r.settings.benchmark && (
+          <p className="mt-3 text-xs text-zinc-500"><span className="font-medium">Benchmark:</span> {r.settings.benchmark.replace("uploads/", "")}</p>
+        )}
         {r.settings.brief && (
           <p className="mt-3 text-xs text-zinc-500"><span className="font-medium">Brief this run read:</span> {r.settings.brief}</p>
         )}

@@ -48,6 +48,7 @@ class Options(BaseModel):
 class RunSettings(Options):
     review_of: Optional[int] = Field(None, description="the run whose answers this run applied")
     brief: str = Field("", description="the exercise's brief when the run started (spec 07 B)")
+    benchmark: Optional[str] = Field(None, description="the benchmark workbook the run started from (spec 08)")
 
 
 class RunSummary(BaseModel):
@@ -149,7 +150,10 @@ def _start(eid: str, folder: str, settings: RunSettings, proposals=None, answers
         abort(409, description="the bank is empty: add past criteria workbooks first")
     n = _new_run(folder)
     d = _run_dir(folder, n)
-    settings = settings.model_copy(update={"brief": current_app.config["WORKSPACES"].brief(eid)})
+    from .benchmark_api import chosen, settings_for
+    bench = settings_for(eid, folder)
+    settings = settings.model_copy(update={"brief": current_app.config["WORKSPACES"].brief(eid),
+                                           "benchmark": chosen(folder)})
     _write(os.path.join(d, "settings.json"), settings.model_dump())
     out = os.path.join(d, f"{ex.prefix.rstrip('-_') or ex.client}.xlsx")
 
@@ -162,7 +166,7 @@ def _start(eid: str, folder: str, settings: RunSettings, proposals=None, answers
             rebuild_existing=settings.rebuild_existing, formulas=settings.formulas,
             split_files=settings.split_files, ai_review=settings.ai_review,
             model=flows.Model(off=settings.use_model is False), proposals=proposals, answers=answers,
-            brief=settings.brief))
+            brief=settings.brief, **bench))
         _write(os.path.join(d, "proposals.json"), flows.read_review(r.qa)[0] if proposals is None else proposals)
         result = GenerateResult.of(r)
         result = result.model_copy(update={"files": [rel(f) for f in result.files], "qa": rel(result.qa),
