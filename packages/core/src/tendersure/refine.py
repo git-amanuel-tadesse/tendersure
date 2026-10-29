@@ -60,6 +60,13 @@ class Draft:
     id: str                         # the draft's own number, or "r<row>" when it has none
     description: str
     group: Optional[str] = None
+    # What the client's draft states beyond the description (spec 07 R1), in its own columns
+    sub_categories: List[str] = field(default_factory=list)
+    licence: List[str] = field(default_factory=list)      # e.g. "min G5/BC5 or above"
+    hr: List[str] = field(default_factory=list)           # key staff, e.g. "Site engineer/Residential Engineer"
+    technical: List[str] = field(default_factory=list)    # e.g. "MAF/DAF", "(Mixer, Pick up, Dump Truck)"
+    individual: bool = False        # the row says Individual Consultants may apply
+    notes: List[str] = field(default_factory=list)        # questions for the client found while reading
 
 
 def _number(text) -> Optional[str]:
@@ -69,7 +76,8 @@ def _number(text) -> Optional[str]:
 
 
 def _is_group_label(text: str) -> bool:
-    letters = [c for c in text if c.isalpha()]
+    """Capitals, small joining words aside: "ENGINEERING EQUIPMENTS and MATERIAL"."""
+    letters = [c for w in text.split() if w.lower().strip(",.&()") not in _SMALL for c in w if c.isalpha()]
     return bool(letters) and all(c.isupper() for c in letters)
 
 
@@ -86,17 +94,94 @@ def _header(ws) -> Tuple[int, int, int]:
     raise ValueError("no header row with a number column (No, #, Ref, Code) found")
 
 
+# the optional columns a draft may add, by their header (spec 07 R1)
+_EXTRA_HEADS = {"sub_categories": re.compile(r"^sub[\s-]*categor", re.I),
+                "licence": re.compile(r"contractor\s*level|licen[cs]e|grade|registration", re.I),
+                "hr": re.compile(r"^(hr\b|human\s*resource|key\s*staff|personnel)", re.I),
+                "technical": re.compile(r"technical|equipment", re.I)}
+_INDIVIDUAL = re.compile(r"individual\s+consultant", re.I)
+_DOCUMENT = re.compile(r"certific|licen[cs]e|permit|registration", re.I)
+_YEARS = re.compile(r"^(min(imum)?\.?|at\s+least)?\s*\d+\+?\s*(years?|yrs?)\b", re.I)
+
+
+def split_items(text) -> List[str]:
+    """A requirement cell as items (spec 07 R2): split on commas, semicolons
+    and line breaks; a slash keeps alternatives together ("Site
+    engineer/Residential Engineer"); "minimum 5 years" stays with the item it
+    follows; a list in brackets is one item, "(Mixer, Pick up, Dump Truck)",
+    closed when the client left it open."""
+    pieces, buf, depth = [], "", 0
+    for ch in str(text or ""):
+        depth += (ch == "(") - (ch == ")" and depth > 0)
+        if ch in ",;\n" and depth == 0:
+            pieces.append(buf)
+            buf = ""
+        else:
+            buf += ch
+    pieces.append(buf)
+    items = []
+    for x in pieces:
+        x = re.sub(r"\s*/\s*", "/", " ".join(x.split())).strip(" .")
+        if not x:
+            continue
+        if x.startswith("("):
+            x = "(" + x.strip("() ") + ")"
+        if items and _YEARS.match(x):
+            items[-1] += f" {x}"
+        else:
+            items.append(x)
+    return items
+
+
+def _extra_columns(ws, head: int, taken: Tuple[int, ...]) -> Dict[str, int]:
+    out = {}
+    for c in ws[head]:
+        label = " ".join(str(c.value or "").split())
+        if not label or c.column in taken:
+            continue
+        for name, pattern in _EXTRA_HEADS.items():
+            if name not in out and pattern.search(label):
+                out[name] = c.column
+                break
+    return out
+
+
+def _add_extras(d: Draft, cells: Dict[str, str], row_text: str):
+    """One row's requirement cells onto its category: the category's own row,
+    or a continuation row under it (no number, no description)."""
+    sub = " ".join(cells.get("sub_categories", "").split())
+    if sub and _DOCUMENT.search(sub):
+        d.licence.append(sub)
+        d.notes.append(f"'{sub}' is in the sub-category column; it is asked as a licence document. Right?")
+    elif sub:
+        d.sub_categories.append(sub)
+    for name in ("licence", "hr", "technical"):
+        getattr(d, name).extend(split_items(cells.get(name)))
+    d.individual = d.individual or bool(_INDIVIDUAL.search(row_text))
+    for name in ("sub_categories", "licence", "hr", "technical", "notes"):
+        setattr(d, name, list(dict.fromkeys(getattr(d, name))))
+
+
+def _csv_draft(i: int, d: dict) -> Draft:
+    parts = lambda name: [x.strip() for x in (d.get(name) or "").split("|") if x.strip()]
+    return Draft(str(d.get("number") or f"r{i + 2}"), d["description"].strip(), d.get("group") or None,
+                 parts("sub_categories"), parts("licence"), parts("hr"), parts("technical"),
+                 INDIVIDUAL in (d.get("applies_to") or ""))
+
+
 def read_draft(path: str, sheet: Optional[str] = None) -> List[Draft]:
     """A draft list as clients write it: a number column, a description
     column, and group rows (capitalised text without a number, in either
-    column, merged or not). A CSV categories table works too."""
+    column, merged or not); optionally sub-categories, licence, HR and
+    technical columns, filled on the category's row or on rows under it
+    (spec 07). A CSV categories table works too."""
     if path.lower().endswith(".csv"):
         with open(path, newline="") as fh:
-            return [Draft(str(d.get("number") or f"r{i + 2}"), d["description"].strip(), d.get("group") or None)
-                    for i, d in enumerate(csv.DictReader(fh))]
+            return [_csv_draft(i, d) for i, d in enumerate(csv.DictReader(fh))]
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb[sheet] if sheet else wb.worksheets[0]
     head, ncol, dcol = _header(ws)
+    extra = _extra_columns(ws, head, (ncol, dcol))
     head_label = str(ws.cell(head, ncol).value).strip()
     first = str(ws.cell(head, dcol).value or "").strip()
     group = None if _DESC_HEAD.search(first) else first or None      # NRC: the header names the group
@@ -107,9 +192,14 @@ def read_draft(path: str, sheet: Optional[str] = None) -> List[Draft]:
         if num_cell == head_label:                     # a repeated header row naming the next group
             group = desc or group
             continue
+        cells = {name: str(ws.cell(r, c).value or "").strip() for name, c in extra.items()}
+        row_text = " ".join(str(c.value) for c in ws[r] if c.value not in (None, "") and c.column != dcol)
         number = _number(num_cell)
         if not number:
             label = desc or num_cell
+            if not label and out and (any(cells.values()) or _INDIVIDUAL.search(row_text)):
+                _add_extras(out[-1], cells, row_text)           # a continuation row of the category above
+                continue
             if label and (not desc or _is_group_label(label)):
                 group = label.strip()
                 continue
@@ -117,6 +207,7 @@ def read_draft(path: str, sheet: Optional[str] = None) -> List[Draft]:
                 continue
         seen[number] += 1
         out.append(Draft(number if number and seen[number] == 1 else f"r{r}", desc, group))
+        _add_extras(out[-1], cells, row_text)
     return out
 
 
@@ -164,6 +255,9 @@ class Line:
     technical_name: str = ""                                          # research (spec 05): suggested
     usual_split: List[str] = field(default_factory=list)              # research: how it is usually split
     research_sources: List[str] = field(default_factory=list)
+    licence: List[str] = field(default_factory=list)          # the draft's requirement columns (spec 07)
+    hr: List[str] = field(default_factory=list)
+    technical: List[str] = field(default_factory=list)
 
     @property
     def gate_question(self) -> bool:
@@ -415,6 +509,22 @@ def _settle_eligibility(ln: Line, by_id: Dict[str, Draft]):
     ln.suggested_eligibility = [e for e in ln.suggested_eligibility if e.lower() not in have]
 
 
+def _carry_draft(ln: Line, by_id: Dict[str, Draft]):
+    """What the draft rows state beyond their description, on the line made
+    from them: their sub-categories (over the model's), licence, HR and
+    technical items, Individual Consultant, and the questions found reading
+    them (spec 07 R3)."""
+    rows = [by_id[i] for i in ln.from_draft if i in by_id]
+    union = lambda name: list(dict.fromkeys(x for d in rows for x in getattr(d, name)))
+    ln.sub_categories = union("sub_categories") or ln.sub_categories
+    for name in ("licence", "hr", "technical"):
+        setattr(ln, name, list(dict.fromkeys(getattr(ln, name) + union(name))))
+    if any(d.individual for d in rows) and INDIVIDUAL not in ln.applies_to:
+        ln.applies_to = [b for b in BUSINESS_TYPES if b in ln.applies_to + [INDIVIDUAL]]
+    notes = [n for n in union("notes") if n not in ln.question]
+    ln.question = " ".join([ln.question] + notes).strip()
+
+
 def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[str]]) -> List[Line]:
     """The model's proposal as lines the code stands behind (or the rules'
     proposal when there is none). Every draft row ends up on a line."""
@@ -447,6 +557,7 @@ def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[
             ln.status, ln.reason = RENAMED, f"capitalisation; was: {ln.description}"
         ln.description = new
         ln.applies_to = [b for b in BUSINESS_TYPES if b in (ln.applies_to or rule_applies_to(ln.description))]
+        _carry_draft(ln, by_id)
         _settle_eligibility(ln, by_id)
     order = {d.id: i for i, d in enumerate(drafts)}
     gpos = {g: i for i, g in enumerate(groups_order)}
@@ -469,9 +580,12 @@ def traceability(lines: List[Line], drafts: List[Draft]) -> List[str]:
 # --- workbooks ------------------------------------------------------------------
 
 REVISED_HEADERS = ["#", "Category Code", "Category Description", "Status", "From draft #", "Reason",
-                   "Question for client", "Sub-categories", "Eligibility", "Suggested eligibility (not applied)",
+                   "Question for client", "Sub-categories", "Eligibility", "Licence", "HR", "Technical",
+                   "Suggested eligibility (not applied)",
                    "Technical name (suggested)", "Usually split as", "Research sources",
                    "Gate Question", "Applies To", "Decision", "Client comment", "Group"]
+DRAFT_HEADERS = ["Draft #", "Group", "Category Description", "Sub-categories", "Licence", "HR", "Technical",
+                 "Individual Consultant", "Notes"]
 HEAD = PatternFill("solid", fgColor="FFC5D9F1")
 GROUP = PatternFill("solid", fgColor="FFDCE6F1")
 ANSWER = PatternFill("solid", fgColor="FFFFF2CC")
@@ -510,20 +624,21 @@ def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Draft"
-    ws.append(["Draft #", "Group", "Category Description"])
+    ws.append(DRAFT_HEADERS)
     for d in drafts:
-        ws.append([d.id, d.group, d.description])
-    for c, w in zip(ws[1], [9, 34, 100]):
+        ws.append([d.id, d.group, d.description, " | ".join(d.sub_categories), " | ".join(d.licence),
+                   " | ".join(d.hr), " | ".join(d.technical), "TRUE" if d.individual else "", "\n".join(d.notes)])
+    for c, w in zip(ws[1], [9, 34, 100, 36, 28, 36, 36, 12, 40]):
         c.font, c.fill = Font(bold=True), HEAD
         ws.column_dimensions[c.column_letter].width = w
 
     ws = wb.create_sheet("Revised")
     _write_lines(ws, lines, REVISED_HEADERS, lambda n, ln: [
         n, ln.code, ln.description, ln.status, ", ".join(ln.from_draft), ln.reason, ln.question,
-        " | ".join(ln.sub_categories), " | ".join(ln.eligibility), " | ".join(ln.suggested_eligibility),
-        ln.technical_name, " | ".join(ln.usual_split), "\n".join(ln.research_sources),
+        " | ".join(ln.sub_categories), " | ".join(ln.eligibility), " | ".join(ln.licence), " | ".join(ln.hr),
+        " | ".join(ln.technical), " | ".join(ln.suggested_eligibility), ln.technical_name, " | ".join(ln.usual_split), "\n".join(ln.research_sources),
         "TRUE" if ln.gate_question else "", ", ".join(ln.applies_to), ln.decision, ln.comment, ln.group or ""],
-        [5, 13, 60, 20, 10, 40, 40, 36, 28, 34, 40, 40, 50, 9, 34, 11, 30, 4])
+        [5, 13, 60, 20, 10, 40, 40, 36, 28, 28, 36, 36, 34, 40, 40, 50, 9, 34, 11, 30, 4])
     decision, comment = REVISED_HEADERS.index("Decision") + 1, REVISED_HEADERS.index("Client comment") + 1
     for row in ws.iter_rows(min_row=2):
         if row[3].value:                                   # a line, not a group row
@@ -563,8 +678,17 @@ def _split(text, sep: str) -> List[str]:
 
 def read_revised(path: str) -> Tuple[List[Draft], List[Line]]:
     wb = openpyxl.load_workbook(path)
-    drafts = [Draft(str(r[0]), str(r[2] or ""), r[1] or None)
-              for r in wb["Draft"].iter_rows(min_row=2, values_only=True) if r[0] is not None]
+    ws = wb["Draft"]
+    dcol = {c.value: i for i, c in enumerate(ws[1])}
+    drafts = []
+    for r in ws.iter_rows(min_row=2, values_only=True):
+        if r[0] is None:
+            continue
+        g = lambda name: r[dcol[name]] if name in dcol and dcol[name] < len(r) else None
+        drafts.append(Draft(str(r[0]), str(r[2] or ""), r[1] or None, _split(g("Sub-categories"), "|"),
+                            _split(g("Licence"), "|"), _split(g("HR"), "|"), _split(g("Technical"), "|"),
+                            str(g("Individual Consultant") or "").strip().upper() == "TRUE",
+                            _split(g("Notes"), "\n")))
     ws = wb["Revised"]
     col = {c.value: i for i, c in enumerate(ws[1])}
     lines = []
@@ -581,7 +705,8 @@ def read_revised(path: str) -> Tuple[List[Draft], List[Line]]:
                           str(g("Client comment") or "").strip(),
                           _split(g("Suggested eligibility (not applied)"), "|"),
                           str(g("Technical name (suggested)") or "").strip(), _split(g("Usually split as"), "|"),
-                          _split(g("Research sources"), "\n")))
+                          _split(g("Research sources"), "\n"), _split(g("Licence"), "|"), _split(g("HR"), "|"),
+                          _split(g("Technical"), "|")))
     return drafts, lines
 
 
@@ -612,8 +737,10 @@ def attach_research(lines: List[Line], table, country: str):
 # --- step B: apply the review ---------------------------------------------------
 
 def _original(d: Draft) -> Line:
-    return Line(title_case(d.description), KEPT, [d.id], d.group, "decision: reject (back to the draft row)",
-                applies_to=rule_applies_to(d.description), eligibility=rule_eligibility(d.description))
+    ln = Line(title_case(d.description), KEPT, [d.id], d.group, "decision: reject (back to the draft row)",
+              applies_to=rule_applies_to(d.description), eligibility=rule_eligibility(d.description))
+    _carry_draft(ln, {d.id: d})
+    return ln
 
 
 def apply_review(drafts: List[Draft], lines: List[Line]) -> Tuple[List[Line], List[Line], List[str]]:
@@ -661,7 +788,7 @@ def apply_review(drafts: List[Draft], lines: List[Line]) -> Tuple[List[Line], Li
 
 
 FINAL_HEADERS = ["#", "Category Code", "Category Description", "Sub-categories", "Eligibility",
-                 "Gate Question", "Applies To", "From draft #", "Group"]
+                 "Licence", "HR", "Technical", "Gate Question", "Applies To", "From draft #", "Group"]
 
 
 def write_final(path: str, final: List[Line], notes: List[Tuple[Line, str, str]]):
@@ -670,9 +797,10 @@ def write_final(path: str, final: List[Line], notes: List[Tuple[Line, str, str]]
     ws.title = "Final Categories"
     _write_lines(ws, final, FINAL_HEADERS, lambda n, ln: [
         n, ln.code, ln.description, " | ".join(ln.sub_categories), " | ".join(ln.eligibility),
+        " | ".join(ln.licence), " | ".join(ln.hr), " | ".join(ln.technical),
         "TRUE" if ln.gate_question else "", ", ".join(ln.applies_to), ", ".join(ln.from_draft), ln.group or ""],
-        [5, 13, 70, 36, 28, 9, 34, 10, 4])
-    ws.column_dimensions["I"].hidden = True
+        [5, 13, 70, 36, 28, 28, 36, 36, 9, 34, 10, 4])
+    ws.column_dimensions[openpyxl.utils.get_column_letter(len(FINAL_HEADERS))].hidden = True      # Group
     if notes:
         ws = wb.create_sheet("Client comments")
         ws.append(["Category", "Client comment", "Proposed change (not applied)"])
@@ -686,7 +814,8 @@ def write_final(path: str, final: List[Line], notes: List[Tuple[Line, str, str]]
 
 def to_categories(final: List[Line], client: str, version: Optional[str] = None) -> List[Category]:
     return [Category(i, ln.description, ln.group, ln.sub_categories, client, version, "", ln.eligibility,
-                     ln.gate_question, ln.applies_to) for i, ln in enumerate(final, 1)]
+                     ln.gate_question, ln.applies_to, ln.licence, ln.hr, ln.technical)
+            for i, ln in enumerate(final, 1)]
 
 
 # --- evaluation against a team's own revision -----------------------------------

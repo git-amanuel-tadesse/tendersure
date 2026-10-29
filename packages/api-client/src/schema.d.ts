@@ -558,8 +558,20 @@ export interface components {
              * @default null
              */
             group?: string | null;
+            /**
+             * Hr
+             * @description key staff, one evidence row each in Human Resource
+             * @default []
+             */
+            hr?: string[];
             /** Kind */
             readonly kind: string;
+            /**
+             * Licence
+             * @description licence / contractor grade, asked in the Eligibility section
+             * @default []
+             */
+            licence?: string[];
             /** Number */
             number: number;
             /**
@@ -572,6 +584,12 @@ export interface components {
              * @default []
              */
             sub_categories?: string[];
+            /**
+             * Technical
+             * @description documents and equipment, asked in Technical Specifications
+             * @default []
+             */
+            technical?: string[];
             /**
              * Version
              * @default null
@@ -625,10 +643,45 @@ export interface components {
              */
             group?: string | null;
             /**
+             * Hr
+             * @description the draft's key staff items
+             * @default []
+             */
+            hr?: string[];
+            /**
              * Id
              * @description the draft's own number, or r<row> when it has none
              */
             id: string;
+            /**
+             * Individual
+             * @description the row says Individual Consultants may apply
+             * @default false
+             */
+            individual?: boolean;
+            /**
+             * Licence
+             * @description the draft's licence / contractor level items
+             * @default []
+             */
+            licence?: string[];
+            /**
+             * Notes
+             * @description questions for the client found while reading the row
+             * @default []
+             */
+            notes?: string[];
+            /**
+             * Sub Categories
+             * @default []
+             */
+            sub_categories?: string[];
+            /**
+             * Technical
+             * @description the draft's technical documents and equipment
+             * @default []
+             */
+            technical?: string[];
         };
         /** DraftState */
         DraftState: {
@@ -925,6 +978,18 @@ export interface components {
              */
             group?: string | null;
             /**
+             * Hr
+             * @description the draft's key staff items
+             * @default []
+             */
+            hr?: string[];
+            /**
+             * Licence
+             * @description the draft's licence / contractor level items
+             * @default []
+             */
+            licence?: string[];
+            /**
              * Question
              * @description a question for the client about this line
              * @default
@@ -956,6 +1021,12 @@ export interface components {
              * @default []
              */
             suggested_eligibility?: string[];
+            /**
+             * Technical
+             * @description the draft's technical documents and equipment
+             * @default []
+             */
+            technical?: string[];
             /**
              * Technical Name
              * @default
@@ -1188,6 +1259,16 @@ export interface components {
              */
             group?: string | null;
             /**
+             * Hr
+             * @default null
+             */
+            hr?: string[] | null;
+            /**
+             * Licence
+             * @default null
+             */
+            licence?: string[] | null;
+            /**
              * Requirements
              * @default null
              */
@@ -1197,6 +1278,11 @@ export interface components {
              * @default null
              */
             sub_categories?: string[] | null;
+            /**
+             * Technical
+             * @default null
+             */
+            technical?: string[] | null;
         };
         /** RowProblem */
         RowProblem: {

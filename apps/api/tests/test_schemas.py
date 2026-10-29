@@ -11,13 +11,15 @@ from tendersure_api import schemas as S
 OFF = flows.Model(off=True)
 
 SAMPLES = [
-    flows.Draft("r12", "Supply of office stationery", "GENERAL"),
+    flows.Draft("r12", "Supply of office stationery", "GENERAL", ["Paper"], ["min G5"], ["Foreman"],
+                ["(Mixer, Pick up)"], True, ["a question"]),
     flows.Line("Supply of Office Stationery", "Renamed", ["1", "7"], "GENERAL", "typo fixed", "Toners too?",
                ["Paper", "Toners / Cartridges"], ["Trade License"], ["Share Company", "Individual Consultant"],
                "G0001", "edit", "Supply of Stationery", ["ISO 9001"], "Office Supplies", ["Paper", "Toners"],
-               ["Stationery | https://example.org/s"]),
+               ["Stationery | https://example.org/s"], ["min G5"], ["Foreman"], ["MAF/DAF"]),
     flows.Category(19, "Provision of Consultancy Services", "CONSULTANCY", ["Training", "Research"], "ERCS",
-                   "2026-09-ext", "cover methodology", ["CV"], True, ["Individual Consultant"]),
+                   "2026-09-ext", "cover methodology", ["CV"], True, ["Individual Consultant"], ["Consultancy certificate"],
+                   ["Civil engineer minimum 5 years"], ["(Drilling rig)"]),
     flows.Item("M-ERCS-ET-2026-019-abc", "marks", "Marks for 019", ["ERCS-ET-2026-019"], "technical 30", "why",
                "technical 25, experience 15", ["k1"], "applied", {"client": "ERCS", "rule": "x"}, [{"n": 1}]),
 ]

@@ -59,6 +59,9 @@ class RowChange(BaseModel):
     eligibility: Optional[List[str]] = None
     gate_question: Optional[bool] = None
     applies_to: Optional[List[str]] = None
+    licence: Optional[List[str]] = None
+    hr: Optional[List[str]] = None
+    technical: Optional[List[str]] = None
 
 
 class TableImport(BaseModel):

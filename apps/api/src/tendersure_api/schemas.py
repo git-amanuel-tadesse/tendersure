@@ -36,6 +36,12 @@ class Draft(CoreModel):
     id: str = Field(description="the draft's own number, or r<row> when it has none")
     description: str
     group: Optional[str] = None
+    sub_categories: List[str] = []
+    licence: List[str] = Field([], description="the draft's licence / contractor level items")
+    hr: List[str] = Field([], description="the draft's key staff items")
+    technical: List[str] = Field([], description="the draft's technical documents and equipment")
+    individual: bool = Field(False, description="the row says Individual Consultants may apply")
+    notes: List[str] = Field([], description="questions for the client found while reading the row")
 
 
 class Line(CoreModel):
@@ -57,6 +63,9 @@ class Line(CoreModel):
     technical_name: str = ""
     usual_split: List[str] = []
     research_sources: List[str] = []
+    licence: List[str] = Field([], description="the draft's licence / contractor level items")
+    hr: List[str] = Field([], description="the draft's key staff items")
+    technical: List[str] = Field([], description="the draft's technical documents and equipment")
 
     @computed_field
     @property
@@ -77,6 +86,9 @@ class Category(CoreModel):
     eligibility: List[str] = Field([], description="documents asked in the Eligibility section")
     gate_question: bool = Field(False, description="the Organization type question gates the sheet")
     applies_to: List[str] = Field([], description="organization types this category accepts")
+    licence: List[str] = Field([], description="licence / contractor grade, asked in the Eligibility section")
+    hr: List[str] = Field([], description="key staff, one evidence row each in Human Resource")
+    technical: List[str] = Field([], description="documents and equipment, asked in Technical Specifications")
 
     @computed_field
     @property

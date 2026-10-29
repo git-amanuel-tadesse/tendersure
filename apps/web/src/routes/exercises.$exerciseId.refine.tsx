@@ -191,6 +191,9 @@ function ReviewStep({ exerciseId, revised, draft }: {
           )}
           {ln.sub_categories.length > 0 && <div className="text-xs text-zinc-500">sub-categories: {ln.sub_categories.join(" · ")}</div>}
           {ln.eligibility.length > 0 && <div className="text-xs text-zinc-500">eligibility: {ln.eligibility.join(" · ")}</div>}
+          {ln.licence.length > 0 && <div className="text-xs text-zinc-500">licence: {ln.licence.join(" · ")}</div>}
+          {ln.hr.length > 0 && <div className="text-xs text-zinc-500">HR: {ln.hr.join(" · ")}</div>}
+          {ln.technical.length > 0 && <div className="text-xs text-zinc-500">technical: {ln.technical.join(" · ")}</div>}
           {ln.suggested_eligibility.length > 0 && (
             <div className="text-xs text-amber-700 dark:text-amber-300">suggested (not applied): {ln.suggested_eligibility.join(" · ")}</div>
           )}

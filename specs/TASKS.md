@@ -151,6 +151,18 @@ Suggested slice: T49 → T54 (the monorepo, with the CLI working as before),
 then T55–T60 → T63 → T64 → T67 (refinement end to end in the browser; it is
 the smaller flow), then T61, T62, T68, T69.
 
+## 7. The client's brief and requirement columns (spec 07)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T72 | `read_draft`: sub-category continuation rows; Licence / HR / Technical columns by header; an "Individual Consultant" cell sets Applies To and the gate; a document-like sub-category moves to licence; item splitting (commas, slashes, years, bracketed lists). | 07 R1, R2 | - | S | A synthetic PSI-shaped draft reads into the expected fields. |
+| T73 | Refinement carries the fields: Line fields, Revised tab columns (written and read back), merges join items, final list into new Category fields `licence` / `hr` / `technical` in the categories CSV; API schemas, `make contract`, Categories page columns. | 07 R3 | T72 | M | Draft -> refine -> apply -> CSV -> load is lossless; the categories page edits them. |
+| T74 | Generation rules: licence -> Eligibility rows; HR roles replace skeleton role rows keeping marks, extras 0, leftovers removed and listed; technical items replace or add upload rows; notes; fields fill `requirements`. | 07 R4 | T73 | M | The R4 acceptance sheet: 5, 5, 0 marks, total 100, check passes. |
+| T75 | Brief input: `--brief` on refine / generate / check; flows parameters; stored on the exercise and in run settings; text box on the Refinement and Generation pages. | 07 B1 | - | M | A brief typed in the browser appears in the run's settings and its prompts. |
+| T76 | Brief in the prompts of refine, selectors, reviewer, check_ai (first, with the priority wording); `from_brief` in their schemas and labelled in the QA Decisions tab; rule-conflict notes; offline note in the QA Summary. | 07 B2-B6 | T75 | M | Logged prompts of the four steps start with the brief; naming / yes-no / research prompts do not contain it. |
+
+Suggested order: T72 -> T73 -> T74 (PSI's columns work offline), then T75 -> T76.
+
 ## Suggested first slice
 
 T01 → T02 → T03 → T06 → T07: the new template plus the two fixes the team

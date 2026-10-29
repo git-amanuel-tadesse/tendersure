@@ -198,10 +198,28 @@
             "default": null,
             "title": "Group"
           },
+          "hr": {
+            "default": [],
+            "description": "key staff, one evidence row each in Human Resource",
+            "items": {
+              "type": "string"
+            },
+            "title": "Hr",
+            "type": "array"
+          },
           "kind": {
             "readOnly": true,
             "title": "Kind",
             "type": "string"
+          },
+          "licence": {
+            "default": [],
+            "description": "licence / contractor grade, asked in the Eligibility section",
+            "items": {
+              "type": "string"
+            },
+            "title": "Licence",
+            "type": "array"
           },
           "number": {
             "title": "Number",
@@ -218,6 +236,15 @@
               "type": "string"
             },
             "title": "Sub Categories",
+            "type": "array"
+          },
+          "technical": {
+            "default": [],
+            "description": "documents and equipment, asked in Technical Specifications",
+            "items": {
+              "type": "string"
+            },
+            "title": "Technical",
             "type": "array"
           },
           "version": {
@@ -341,10 +368,60 @@
             "default": null,
             "title": "Group"
           },
+          "hr": {
+            "default": [],
+            "description": "the draft's key staff items",
+            "items": {
+              "type": "string"
+            },
+            "title": "Hr",
+            "type": "array"
+          },
           "id": {
             "description": "the draft's own number, or r<row> when it has none",
             "title": "Id",
             "type": "string"
+          },
+          "individual": {
+            "default": false,
+            "description": "the row says Individual Consultants may apply",
+            "title": "Individual",
+            "type": "boolean"
+          },
+          "licence": {
+            "default": [],
+            "description": "the draft's licence / contractor level items",
+            "items": {
+              "type": "string"
+            },
+            "title": "Licence",
+            "type": "array"
+          },
+          "notes": {
+            "default": [],
+            "description": "questions for the client found while reading the row",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "sub_categories": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sub Categories",
+            "type": "array"
+          },
+          "technical": {
+            "default": [],
+            "description": "the draft's technical documents and equipment",
+            "items": {
+              "type": "string"
+            },
+            "title": "Technical",
+            "type": "array"
           }
         },
         "required": [
@@ -923,6 +1000,24 @@
             "default": null,
             "title": "Group"
           },
+          "hr": {
+            "default": [],
+            "description": "the draft's key staff items",
+            "items": {
+              "type": "string"
+            },
+            "title": "Hr",
+            "type": "array"
+          },
+          "licence": {
+            "default": [],
+            "description": "the draft's licence / contractor level items",
+            "items": {
+              "type": "string"
+            },
+            "title": "Licence",
+            "type": "array"
+          },
           "question": {
             "default": "",
             "description": "a question for the client about this line",
@@ -962,6 +1057,15 @@
               "type": "string"
             },
             "title": "Suggested Eligibility",
+            "type": "array"
+          },
+          "technical": {
+            "default": [],
+            "description": "the draft's technical documents and equipment",
+            "items": {
+              "type": "string"
+            },
+            "title": "Technical",
             "type": "array"
           },
           "technical_name": {
@@ -1461,6 +1565,36 @@
             "default": null,
             "title": "Group"
           },
+          "hr": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Hr"
+          },
+          "licence": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Licence"
+          },
           "requirements": {
             "anyOf": [
               {
@@ -1487,6 +1621,21 @@
             ],
             "default": null,
             "title": "Sub Categories"
+          },
+          "technical": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Technical"
           }
         },
         "title": "RowChange",

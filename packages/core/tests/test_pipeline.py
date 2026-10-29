@@ -1562,6 +1562,92 @@ def test_draft_lists_are_read_in_both_client_layouts(tmp_path):
                                               ("6", "Prequalification for Provision of Services")]
 
 
+def _requirements_book(path):
+    """A draft with the optional columns (spec 07): sub-categories on rows
+    under their category, licence / HR / technical cells, and an Individual
+    Consultant note in a column with no header."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    for col, label in zip("BCDEFGH", ["Category #", "#", "Category Description", "SUB-CATEGORY",
+                                     "Contractor Level", "HR", "Technical Specification"]):
+        ws[f"{col}5"] = label
+    rows = [{"D": "GENERAL"},
+            {"C": 1, "D": "Supply of relief items", "E": "Soaps"}, {"E": "Blankets"}, {"E": "Buckets"},
+            {"D": "CONSULTANCY"},
+            {"C": 2, "D": "Provision of consultancy services", "E": "Data Collection",
+             "I": "Includes Individual Consultant"},
+            {"E": "Data Analysis"},
+            {"C": 3, "D": "Provision of design consultancy for buildings", "E": "Consultancy certification ",
+             "G": "Civil/ Hydraulic and related minimum 5 years, Economics"},
+            {"D": "ENGINEERING WORKS and MATERIALS"},
+            {"C": 4, "D": "Provision of minor construction works", "F": "min G5/ BC5 or above",
+             "G": "Project Manager, Site engineer/Residential Engineer, Foreman",
+             "H": "(Dump Truck, Excavator/back loader, pick up"},
+            {"C": 5, "D": "Supply and installation of solar equipment",
+             "H": "MAF/DAF, Evidence letter for min 1 year Warranty"}]
+    for r, cells in enumerate(rows, 6):
+        for col, v in cells.items():
+            ws[f"{col}{r}"] = v
+    wb.save(path)
+    return str(path)
+
+
+def test_a_draft_s_requirement_columns_are_read(tmp_path):
+    from tendersure.refine import read_draft
+    d = {x.id: x for x in read_draft(_requirements_book(tmp_path / "req.xlsx"))}
+    assert list(d) == ["1", "2", "3", "4", "5"]
+    assert d["1"].sub_categories == ["Soaps", "Blankets", "Buckets"]
+    assert (d["2"].sub_categories, d["2"].individual) == (["Data Collection", "Data Analysis"], True)
+    assert not d["1"].individual
+    assert d["3"].sub_categories == [] and d["3"].licence == ["Consultancy certification"]
+    assert "sub-category column" in d["3"].notes[0]
+    assert d["3"].hr == ["Civil/Hydraulic and related minimum 5 years", "Economics"]
+    assert d["4"].licence == ["min G5/BC5 or above"]
+    assert d["4"].hr == ["Project Manager", "Site engineer/Residential Engineer", "Foreman"]
+    assert d["4"].technical == ["(Dump Truck, Excavator/back loader, pick up)"]
+    assert d["5"].technical == ["MAF/DAF", "Evidence letter for min 1 year Warranty"]
+    assert d["4"].group == "ENGINEERING WORKS and MATERIALS"        # small words may be lower case
+
+
+@pytest.mark.parametrize("text,items", [
+    ("Project Manager, Site engineer, 5 years", ["Project Manager", "Site engineer 5 years"]),
+    ("A; B\nC", ["A", "B", "C"]),
+    ("Mixer, (Pick up, Dump Truck), Pump", ["Mixer", "(Pick up, Dump Truck)", "Pump"]),
+    ("", []),
+])
+def test_requirement_cells_split_into_items(text, items):
+    from tendersure.refine import split_items
+    assert split_items(text) == items
+
+
+def test_requirement_columns_survive_refine_apply_and_the_categories_table(tmp_path):
+    from tendersure import categories as cat, flows
+    revised, table = tmp_path / "revised.xlsx", tmp_path / "cats.csv"
+    flows.propose_file(_requirements_book(tmp_path / "req.xlsx"), "AAA", out=str(revised),
+                       bank=str(tmp_path / "none"), research=str(tmp_path / "r.csv"), model=flows.Model(off=True))
+    wb = openpyxl.load_workbook(revised)
+    ws = wb["Revised"]
+    col = {c.value: c.column for c in ws[1]}
+    rows = {str(ws.cell(r, col["From draft #"]).value): r for r in range(2, ws.max_row + 1)
+            if ws.cell(r, col["Status"]).value}
+    assert "sub-category column" in ws.cell(rows["3"], col["Question for client"]).value
+    ws.cell(rows["5"], col["Decision"], "reject")                       # back to the draft row: keeps its columns
+    ws.cell(rows["4"], col["HR"], "Project Manager | Foreman")           # the team corrects a cell
+    wb.save(revised)
+    flows.apply_file(str(revised), "AAA", str(tmp_path / "final.xlsx"), str(table), model=flows.Model(off=True))
+    cats = {c.description: c for c in cat.load(str(table))}
+    works = cats["Provision of Minor Construction Works"]
+    assert (works.licence, works.hr) == (["min G5/BC5 or above"], ["Project Manager", "Foreman"])
+    assert works.technical == ["(Dump Truck, Excavator/back loader, pick up)"]
+    assert cats["Supply and Installation of Solar Equipment"].technical == [
+        "MAF/DAF", "Evidence letter for min 1 year Warranty"]
+    consult = cats["Provision of Consultancy Services"]
+    assert consult.gate_question and "Individual Consultant" in consult.applies_to
+    assert consult.sub_categories == ["Data Collection", "Data Analysis"]
+    assert cats["Supply of Relief Items"].sub_categories == ["Soaps", "Blankets", "Buckets"]
+    assert cat.load(str(table)) == list(cats.values())                   # the CSV round trip is lossless
+
+
 @pytest.mark.parametrize("text,title", [
     ("Supply of office stationery and genuine toners & cartridges",
      "Supply of Office Stationery and Genuine Toners & Cartridges"),

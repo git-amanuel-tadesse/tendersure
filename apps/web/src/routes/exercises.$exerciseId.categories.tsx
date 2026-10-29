@@ -33,7 +33,8 @@ function CategoriesPage() {
     const n = Math.max(0, ...t.categories.map((c) => c.number)) + 1;
     replace.mutate([...t.categories, {
       number: n, description: "New category", group: null, sub_categories: [], client: ex?.client ?? null, version: null,
-      requirements: "", eligibility: [], gate_question: false, applies_to: [], kind: "",   // kind: computed by the API
+      requirements: "", eligibility: [], gate_question: false, applies_to: [], licence: [], hr: [], technical: [],
+      kind: "",   // kind: computed by the API
     }]);
   };
   return (
@@ -87,7 +88,8 @@ function CategoriesPage() {
             <table className="w-full text-sm">
               <thead className="bg-zinc-50 text-left text-xs text-zinc-500 dark:bg-zinc-900">
                 <tr>
-                  {["#", "Description · group", "Sub-categories", "Eligibility documents", "Gate", "Applies to", ""].map((h) => (
+                  {["#", "Description · group", "Sub-categories", "Eligibility documents", "Licence · HR · technical", "Gate",
+                    "Applies to", ""].map((h) => (
                     <th key={h} className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">{h}</th>
                   ))}
                 </tr>
@@ -142,6 +144,13 @@ function Row({ c, problems, save, remove }: {
           <TextCell value={c.eligibility.join(" | ")} placeholder="none"
                     onSave={(v) => save({ eligibility: split(v) })} />
         </td>
+        <td className="space-y-1 px-3 py-2">
+          <TextCell value={c.licence.join(" | ")} placeholder="licence / grade"
+                    onSave={(v) => save({ licence: split(v) })} />
+          <TextCell value={c.hr.join(" | ")} placeholder="key staff (a | b)" onSave={(v) => save({ hr: split(v) })} />
+          <TextCell value={c.technical.join(" | ")} placeholder="technical documents, (equipment, list)"
+                    onSave={(v) => save({ technical: split(v) })} />
+        </td>
         <td className={cx("px-3 py-2", bad("gate_question") && "bg-red-50 dark:bg-red-950/30")}>
           <Check label="" aria-label="Gate question" checked={c.gate_question}
                  onChange={(e) => save({ gate_question: e.target.checked })} />
@@ -159,7 +168,7 @@ function Row({ c, problems, save, remove }: {
       {problems.length > 0 && (
         <tr className="border-b border-zinc-100 dark:border-zinc-800/60">
           <td />
-          <td colSpan={6} className="px-3 pb-2">
+          <td colSpan={7} className="px-3 pb-2">
             {problems.map((p, i) => (
               <div key={i} className={cx("text-xs", p.severity === "error" ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300")}>
                 {p.severity === "error" ? "✕" : "!"} {p.message}

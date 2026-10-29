@@ -43,6 +43,10 @@ class Category:
     eligibility: List[str] = field(default_factory=list)   # documents asked in the Eligibility section
     gate_question: bool = False     # the Organization type question gates the sheet
     applies_to: List[str] = field(default_factory=list)    # organization types this category accepts
+    # The client's own requirements from the draft's columns (spec 07): asked by rules in generation
+    licence: List[str] = field(default_factory=list)       # licence / contractor grade -> Eligibility
+    hr: List[str] = field(default_factory=list)            # key staff -> Human Resource
+    technical: List[str] = field(default_factory=list)     # documents and equipment -> Technical Specifications
 
     def code(self, prefix: str) -> str:
         """Sheet code for this category, e.g. prefix 'ERCS-ET-2026-' -> 'ERCS-ET-2026-019'."""
@@ -218,7 +222,8 @@ def diff(old: List[Category], new: List[Category]) -> List[str]:
         elif n not in a:
             out.append(f"{n}: added ({b[n].description})")
         else:
-            for f in ("description", "group", "sub_categories", "eligibility", "gate_question", "applies_to"):
+            for f in ("description", "group", "sub_categories", "eligibility", "gate_question", "applies_to",
+                      "licence", "hr", "technical"):
                 if getattr(a[n], f) != getattr(b[n], f):
                     out.append(f"{n}: {f} changed\n    was: {getattr(a[n], f)}\n    now: {getattr(b[n], f)}")
     return out
@@ -232,11 +237,12 @@ def save(cats: List[Category], path: str):
     with open(path, "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["number", "group", "description", "sub_categories", "kind", "client", "version",
-                    "requirements", "eligibility", "gate_question", "applies_to"])
+                    "requirements", "eligibility", "gate_question", "applies_to", "licence", "hr", "technical"])
         for c in cats:
             w.writerow([c.number, c.group, c.description, " | ".join(c.sub_categories),
                         c.kind, c.client, c.version, c.requirements, " | ".join(c.eligibility),
-                        "TRUE" if c.gate_question else "", ", ".join(c.applies_to)])
+                        "TRUE" if c.gate_question else "", ", ".join(c.applies_to), " | ".join(c.licence),
+                        " | ".join(c.hr), " | ".join(c.technical)])
 
 
 def load(path: str) -> List[Category]:
@@ -244,6 +250,7 @@ def load(path: str) -> List[Category]:
         with open(path) as fh:
             return [Category(**d) for d in json.load(fh)]
     out = []
+    parts = lambda text: [s.strip() for s in (text or "").split("|") if s.strip()]
     with open(path, newline="") as fh:
         for d in csv.DictReader(fh):
             out.append(Category(
@@ -254,8 +261,9 @@ def load(path: str) -> List[Category]:
                 client=d.get("client") or None,
                 version=d.get("version") or None,
                 requirements=(d.get("requirements") or "").strip(),
-                eligibility=[s.strip() for s in (d.get("eligibility") or "").split("|") if s.strip()],
+                eligibility=parts(d.get("eligibility")),
                 gate_question=(d.get("gate_question") or "").strip().lower() in ("true", "yes", "1"),
                 applies_to=[s.strip() for s in (d.get("applies_to") or "").split(",") if s.strip()],
+                licence=parts(d.get("licence")), hr=parts(d.get("hr")), technical=parts(d.get("technical")),
             ))
     return out
