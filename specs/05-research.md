@@ -92,3 +92,26 @@ rule). Bank first: the glossary and past sheets.
 - No prompt or rule names a client; the same code runs for an Ethiopian and
   a Kenyan client, differing only by country.
 - A second run on the same list makes no web call.
+
+## Amended 2026-10-30: the model's own knowledge before the web
+
+The team searches the web because *they* do not know a name; the model often
+does. Research now runs in three steps:
+
+1. **Our own data**, as before.
+2. **The model's own knowledge**, with no search. Up to 25 topics go in one
+   call. For each thing asked, the model marks whether it is sure: a
+   regulator it is not certain of, an abbreviation it does not recognise, or
+   a niche document is "not sure".
+3. **A web search**, one topic at a time, only for the things the model was
+   not sure of.
+
+A finding the model is sure of carries no web source. It is shown labelled
+"model knowledge (no source)" and is still a suggestion, never applied. This
+replaces the rule that a finding with no source is dropped, which now holds
+for web findings only.
+
+The log says how many findings came from the model's knowledge and how many
+topics go to the web, and it numbers each search ("searching the web
+(3/7)"). On PSI's 77 categories this means 4 knowledge calls and only the
+uncertain topics searched, where the first run searched all 77 one by one.

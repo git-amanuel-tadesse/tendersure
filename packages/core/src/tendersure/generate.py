@@ -844,7 +844,7 @@ def apply_research(plan: Plan, table, country: str):
     (weak match), researched technical questions are added as NEW, 0 marks,
     with their sources; licences are listed in the notes. Document
     abbreviations get their official names noted. Nothing is made mandatory."""
-    from .research import describe, document_names
+    from .research import describe, document_names, sources_text
     t = plan.target.description
     if plan.weak_match:
         q = table.lookup("questions", t, country)
@@ -856,11 +856,11 @@ def apply_research(plan: Plan, table, country: str):
                     for x in q.proposal.get("questions", []) if normalise(x["question"]) not in asked]
             if rows:
                 insert_rows(plan, "technical", rows[:RESEARCHED_QUESTIONS], NEW, "research",
-                            "researched: no past sheet covers this category. Sources: " + "; ".join(q.sources[:3]))
+                            "researched: no past sheet covers this category. Sources: " + sources_text(q))
         lic = table.lookup("licences", t, country)
         if lic:
             plan.notes.append(f"licences usually held for this category ({country or 'no country'}), not applied: "
-                              f"{describe(lic)}. Sources: {'; '.join(lic.sources[:3])}")
+                              f"{describe(lic)}. Sources: {sources_text(lic)}")
     names = document_names(table, country)
     for p in plan.questions:
         for a in _ABBREVIATION.findall(p.row.criteria):

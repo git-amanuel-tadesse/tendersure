@@ -30,7 +30,9 @@ log = logging.getLogger("tendersure")
 
 RESEARCH = "research"
 KINDS = ("names", "licences", "questions", "documents")
-BANK, WEB = "bank", "web"
+BANK, WEB, KNOWLEDGE = "bank", "web", "model knowledge"
+NO_SOURCE = "model knowledge (no source)"
+KNOW_CHUNK = 25            # topics per knowledge call
 DRAFTED, CONFIRMED = "drafted", "confirmed"
 COLUMNS = ["kind", "topic_key", "country", "topic", "proposal", "sources", "origin", "status"]
 NAME_MATCH = 0.6           # a past category this close names the new one
@@ -242,6 +244,21 @@ _ASK = {
 }
 
 
+KNOW_SYSTEM = (
+    "You are an experienced procurement officer preparing a supplier prequalification. Answer from your own "
+    "knowledge, without searching. For each topic and each thing asked, mark <thing>_sure false when you would "
+    "have to look it up: a regulator or licence in the country you are not certain of, an abbreviation you do "
+    "not recognise, a niche document. Do not guess names of bodies or documents and mark them sure; give your "
+    "best answer and mark it not sure. For a country, use that country's regulators and laws. Keep names short "
+    "and standard. An empty list marked sure means there is none."
+)
+
+
+def sources_text(f: "Finding", n: int = 3) -> str:
+    """Where a finding came from, as one line: its pages, or that the model knew it."""
+    return "; ".join(f.sources[:n]) if f.sources else NO_SOURCE
+
+
 def build_prompt(topic: str, country: str, kinds: List[str]) -> str:
     """The whole request: a topic, a country and what to find - nothing about a client."""
     where = f"Country: {country}." if country else "Country: not given (answer generally)."
@@ -249,12 +266,53 @@ def build_prompt(topic: str, country: str, kinds: List[str]) -> str:
 
 
 class WebResearcher:
-    """Gemini with Google Search. A finding the search gave no source for is dropped."""
+    """The model: its own knowledge first, many topics per call (`know`);
+    Gemini with Google Search only for what it is not sure of (`research`).
+    A web finding the search gave no source for is dropped; a finding the
+    model is sure of carries no source and says so."""
 
     def __init__(self, llm=None, model: Optional[str] = None, resolve=resolve_link):
         self.llm = llm or make_llm(model=model)
         self.resolve = resolve
         self.unanswered: List[str] = []      # topics the search found nothing sourced for
+        self.know_calls = 0
+
+    def know(self, topics: List[str], country: str, kinds: List[str],
+             client: Optional[str] = None) -> Tuple[List[Finding], Dict[str, List[str]]]:
+        """(findings the model is sure of, topic -> kinds still to search)."""
+        item = {"type": "object", "required": ["id", *kinds, *[f"{k}_sure" for k in kinds]],
+                "properties": {"id": {"type": "integer"}, **{k: _SCHEMAS[k] for k in kinds},
+                               **{f"{k}_sure": {"type": "boolean"} for k in kinds}}}
+        schema = {"type": "object", "required": ["answers"],
+                  "properties": {"answers": {"type": "array", "items": item}}}
+        where = f"Country: {country}." if country else "Country: not given (answer generally)."
+        found, unsure = [], {}
+        for start in range(0, len(topics), KNOW_CHUNK):
+            part = topics[start:start + KNOW_CHUNK]
+            prompt = "\n".join([where, "", "For each topic give:"] + [f"- {_ASK[k]}" for k in kinds] +
+                                ["", "TOPICS (id | topic):"] + [f"  {i} | {t}" for i, t in enumerate(part)])
+            try:
+                raw = self.llm.complete_json(KNOW_SYSTEM, prompt, schema, "research_knowledge", client=client,
+                                             max_tokens=16000)
+                self.know_calls += 1
+            except LLMError as e:
+                log.info(f"research: the model's knowledge not asked for {len(part)} topic(s) ({e})")
+                for t in part:
+                    unsure[t] = list(kinds)
+                continue
+            got = {a.get("id"): a for a in raw.get("answers", []) if isinstance(a.get("id"), int)}
+            for i, topic in enumerate(part):
+                a = got.get(i, {})
+                for k in kinds:
+                    value = a.get(k)
+                    if k == "licences" and value is not None:
+                        value = specific_licences(value)
+                    if a.get(f"{k}_sure") and value is not None and (value or k == "licences"):
+                        found.append(Finding(k, topic_key(topic), country, topic,
+                                             value if k == "names" else {k: value}, [], KNOWLEDGE))
+                    else:
+                        unsure.setdefault(topic, []).append(k)
+        return found, unsure
 
     def research(self, topic: str, country: str, kinds: List[str], client: Optional[str] = None) -> List[Finding]:
         schema = {"type": "object", "properties": {k: _SCHEMAS[k] for k in kinds}}
@@ -286,22 +344,43 @@ class WebResearcher:
 
 def research(topics: List[str], country: str, kinds: List[str], table: Table, bank: Optional[BankKnowledge],
              web: Optional[WebResearcher] = None, client: Optional[str] = None) -> List[Finding]:
-    """Findings for every topic and kind the table lacks: the bank first, the
-    web for the rest (one call per topic). Returns the new findings."""
-    new = []
+    """Findings for every topic and kind the table lacks: our own data first,
+    then the model's own knowledge (a batch of topics per call), and a web
+    search only for what the model is not sure of. Returns the new findings."""
+    new, todo = [], {}
     for topic in dict.fromkeys(topics):
-        todo = [k for k in kinds if table.lookup(k, topic, country) is None]
-        for k in list(todo):
+        need = [k for k in kinds if table.lookup(k, topic, country) is None]
+        for k in list(need):
             f = bank.name(topic, country) if bank and k == "names" else \
                 bank.licences(topic, country) if bank and k == "licences" else None
             if f:
                 table.add(f)
                 new.append(f)
-                todo.remove(k)
-        if todo and web is not None:
-            for f in web.research(topic, country, todo, client):
-                table.add(f)
-                new.append(f)
+                need.remove(k)
+        if need:
+            todo[topic] = need
+    if not todo or web is None:
+        return new
+    search: Dict[str, List[str]] = {}
+    by_kinds: Dict[Tuple[str, ...], List[str]] = {}
+    for topic, need in todo.items():
+        by_kinds.setdefault(tuple(need), []).append(topic)
+    known = 0
+    for need, group in by_kinds.items():
+        found, unsure = web.know(group, country, list(need), client)
+        for f in found:
+            table.add(f)
+            new.append(f)
+        known += len(found)
+        for topic, ks in unsure.items():
+            search.setdefault(topic, []).extend(k for k in ks if k not in search.get(topic, []))
+    log.info(f"research: {known} finding(s) from the model's own knowledge for {len(todo)} topic(s); "
+             f"{len(search)} topic(s) the model is not sure of go to a web search")
+    for n, (topic, ks) in enumerate(search.items(), 1):
+        log.info(f"research: searching the web ({n}/{len(search)}): {topic[:60]}")
+        for f in web.research(topic, country, ks, client):
+            table.add(f)
+            new.append(f)
     unanswered = getattr(web, "unanswered", [])
     if unanswered:
         log.info(f"research: the web search found nothing sourced for {len(unanswered)} topic(s) - "
@@ -443,8 +522,10 @@ def research_documents(abbreviations: List[str], country: str, table: Table, web
     todo = [a for a in abbreviations if a not in document_names(table, country)]
     if not todo or web is None:
         return []
-    found = web.research("Documents suppliers are asked for, abbreviated as: " + ", ".join(todo), country,
-                         ["documents"], client)
+    topic = "Documents suppliers are asked for, abbreviated as: " + ", ".join(todo)
+    found, unsure = web.know([topic], country, ["documents"], client)
+    if unsure:
+        found = web.research(topic, country, ["documents"], client)
     for f in found:
         table.add(f)
     return found

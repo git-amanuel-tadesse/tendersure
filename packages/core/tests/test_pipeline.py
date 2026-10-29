@@ -2079,6 +2079,9 @@ def test_research_answers_from_the_bank_first_and_licences_stay_national():
     table, calls = rs.Table([]), []
 
     class Web:                                                       # stands in for the web: records the asks
+        def know(self, topics, country, kinds, client=None):         # the model is never sure here
+            return [], {t: list(kinds) for t in topics}
+
         def research(self, topic, country, kinds, client=None):
             calls.append((topic, country, tuple(kinds)))
             return []
@@ -2119,7 +2122,7 @@ def test_research_prompts_name_no_client_and_differ_only_by_country():
     et = rs.build_prompt("Supply of Generators", "ET", list(rs.KINDS))
     ke = rs.build_prompt("Supply of Generators", "KE", list(rs.KINDS))
     names = [a for aliases in CLIENT_ALIASES.values() for a in aliases]
-    for text in (et, ke, rs.SYSTEM):
+    for text in (et, ke, rs.SYSTEM, rs.KNOW_SYSTEM):
         assert not any(re.search(rf"\b{re.escape(n)}\b", text) for n in names)
     assert et.replace("Country: ET", "Country: KE") == ke
 
@@ -2701,3 +2704,39 @@ def test_split_and_merge_go_through_the_workbook(tmp_path):
     assert problems == []
     assert [ln.description for ln in final][:2] == ["Supply of Soaps", "Supply of Bedding"]
     assert sum(ln.status == rf.MERGED for ln in final) == 1 and len(final) == 4
+
+
+def test_the_model_s_own_knowledge_comes_before_a_web_search(caplog):
+    """Spec 05 (amended): what the model is sure of needs no search; only the rest is searched."""
+    import logging
+    from tendersure import refine as rf, research as rs
+    asked, searched = [], []
+
+    class Model:
+        def complete_json(self, system, prompt, schema, name, client=None, search=False, **kw):
+            assert not search and name == "research_knowledge"
+            asked.append(prompt)
+            return {"answers": [
+                {"id": 0, "names": {"technical_name": "Insecticide-Treated Nets"}, "names_sure": True,
+                 "licences": [{"name": "EFDA import permit"}], "licences_sure": True},
+                {"id": 1, "names": {"technical_name": "Drone Survey"}, "names_sure": True,
+                 "licences": [{"name": "Some aviation permit"}], "licences_sure": False}]}
+
+    web = rs.WebResearcher(llm=Model())
+    web.research = lambda topic, country, kinds, client=None: searched.append((topic, tuple(kinds))) or []
+    table = rs.Table([])
+    with caplog.at_level(logging.INFO, logger="tendersure"):
+        new = rs.research(["Supply of Mosquito Nets", "Provision of Drone Survey Services"], "ET",
+                          ["names", "licences"], table, None, web)
+    assert len(asked) == 1                                              # both topics in one call
+    assert searched == [("Provision of Drone Survey Services", ("licences",))]   # only what it is not sure of
+    assert {(f.topic, f.kind, f.origin) for f in new} == {
+        ("Supply of Mosquito Nets", "names", rs.KNOWLEDGE), ("Supply of Mosquito Nets", "licences", rs.KNOWLEDGE),
+        ("Provision of Drone Survey Services", "names", rs.KNOWLEDGE)}
+    assert any("1 topic(s) the model is not sure of go to a web search" in r.message for r in caplog.records)
+    lines = [rf.Line("Supply of Mosquito Nets", rf.KEPT, ["1"])]
+    rf.attach_research(lines, table, "ET")
+    assert lines[0].technical_name == "Insecticide-Treated Nets"
+    assert all(rs.NO_SOURCE in x for x in lines[0].research_sources)    # labelled: no page behind it
+    rs.research(["Supply of Mosquito Nets"], "ET", ["names", "licences"], table, None, web)
+    assert len(asked) == 1                                              # researched once

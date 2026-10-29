@@ -765,6 +765,7 @@ def attach_research(lines: List[Line], table, country: str):
     """Research findings (spec 05) on each proposed category: a technical
     name and its usual split, and licences added to Suggested eligibility -
     each with its sources; none is applied."""
+    from . import research as rs
     from .research import describe
     for ln in lines:
         if ln.status == REPEATED:
@@ -776,12 +777,13 @@ def attach_research(lines: List[Line], table, country: str):
             if proposed and _words(proposed) != _words(ln.description):
                 ln.technical_name = proposed
             ln.usual_split = list(name.proposal.get("usually_split_as") or [])
-            sources += [f"name: {x}" for x in name.sources]
+            sources += [f"name: {x}" for x in name.sources] or ([f"name: {rs.NO_SOURCE}"] if proposed else [])
         if lic:
             have = {e.lower() for e in ln.eligibility + ln.suggested_eligibility}
             ln.suggested_eligibility += [x["name"] for x in lic.proposal.get("licences", [])
                                          if x.get("name") and x["name"].lower() not in have]
-            sources += [f"licences ({describe(lic)[:80]}): {x}" for x in lic.sources]
+            sources += [f"licences ({describe(lic)[:80]}): {x}" for x in lic.sources] or \
+                ([f"licences ({describe(lic)[:80]}): {rs.NO_SOURCE}"] if lic.proposal.get("licences") else [])
         ln.research_sources = list(dict.fromkeys(sources))
 
 
