@@ -12,7 +12,7 @@ from ..categories import Category
 from ..llm import LLMError
 from ..paths import Paths, current, use
 from ..privacy import PrivacyError
-from ..refine import Draft, Line
+from ..refine import DECISIONS, Draft, Line
 from ..review import Item
 from .benchmark import BenchmarkState, MapLine, Tab, benchmark_state, save_benchmark_map
 from .categories import (CategoriesResult, ENGINES, RowProblem, check_table, extract as extract_categories,
@@ -30,7 +30,7 @@ from .research import ResearchResult, apply_review as apply_research_review, res
 
 __all__ = [
     "FlowError", "LLMError", "PrivacyError", "Model", "Paths", "current", "use", "log",
-    "Draft", "Line", "Category", "Item",
+    "Draft", "Line", "Category", "Item", "DECISIONS",
     "load_corpus", "load_source", "load_brief",
     "ingest", "IngestResult", "bank_status", "BankStatus", "model_status", "ModelStatus",
     "extract_categories", "CategoriesResult", "ENGINES",

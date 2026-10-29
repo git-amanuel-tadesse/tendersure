@@ -104,3 +104,14 @@ On synthetic data:
   is applied unless chosen.
 - The workbook round trip keeps Split into and Merge with #.
 - The browser review gives the same final list as the workbook.
+
+## As built (2026-10-29)
+
+- **Workbook columns.** The suggestions are two columns, *Suggested split*
+  and *Suggested merge with #*, rather than one, so they read back exactly.
+- **On PSI's draft, without a model, the rules suggest:**
+  - splits for 20 (Relief Non-Food Items, 5 pieces), 42 (Grocery, 6), 54
+    (Tyres / Batteries / Lubricants), 62 (Project Based Consultancy, 10) and
+    63 (Capacity Building, 5);
+  - merges for the overlapping pairs: network 13 / 18 / 19, relief 20 / 21,
+    promotional 30 / 32, and vehicles 52 / 54 / 59.

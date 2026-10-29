@@ -97,7 +97,7 @@ def apply(drafts: List[rf.Draft], lines: List[rf.Line], client: str, version: Op
     """Step B: the review's decisions applied; client comments get a proposed change, never applied."""
     register_clients([client])
     use_model, _ = model.wanted()
-    notes = [(ln, ln.comment) for ln in lines if ln.comment and ln.decision != "edit"]
+    notes = [(ln, ln.comment) for ln in lines if ln.comment and ln.decision not in ("edit", "merge")]
     final, excluded, problems = rf.apply_review(drafts, lines)
     changes = rf.ModelRefiner(model=model.name).interpret(notes, client) if use_model and notes \
         else ["" for _ in notes]

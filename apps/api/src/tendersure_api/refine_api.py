@@ -30,7 +30,8 @@ from .workspaces import NotFound
 
 bp = APIBlueprint("refine", __name__, url_prefix="/api/exercises/<exercise_id>/refine",
                   abp_tags=[Tag(name="refine")])
-DECISIONS = ("", "accept", "reject", "remove", "edit")
+DECISIONS = flows.DECISIONS
+_LISTS = {"split_into": " | ", "merge_with": ", "}     # answer fields holding lists, as the workbook writes them
 CATEGORIES = "categories.csv"
 
 
@@ -71,9 +72,12 @@ class Propose(BaseModel):
 
 class LineChange(BaseModel):
     index: int = Field(ge=0, description="the line's position in the revised list")
-    decision: Optional[str] = Field(None, description="accept, reject, remove, edit, or '' (accept)")
-    comment: Optional[str] = Field(None, description="the client's comment; with edit, the new wording")
+    decision: Optional[str] = Field(None, description="accept, reject, remove, edit, split, merge, or '' (accept)")
+    comment: Optional[str] = Field(None, description="the client's comment; with edit or merge, the new wording")
     code: Optional[str] = None
+    split_into: Optional[List[str]] = Field(None, description="with split: each piece becomes a category")
+    merge_with: Optional[List[str]] = Field(None, description="with merge: the # numbers (index + 1) of the lines "
+                                                                "that become one category with this one")
 
 
 class LineChanges(BaseModel):
@@ -257,7 +261,8 @@ def change_lines(path: ExercisePath, body: LineChanges):
         if ch.index >= len(lines):
             abort(400, description=f"no line {ch.index}: the revised list has {len(lines)}")
         if ch.decision is not None and ch.decision.strip().lower() not in DECISIONS:
-            abort(400, description=f"line {ch.index}: decision '{ch.decision}' is not accept, reject, remove or edit")
+            abort(400, description=f"line {ch.index}: decision '{ch.decision}' is not one of "
+                                   f"{', '.join(d for d in DECISIONS if d)}")
     for ch in body.changes:
         ln = lines[ch.index]
         if ch.decision is not None:
@@ -266,6 +271,10 @@ def change_lines(path: ExercisePath, body: LineChanges):
             ln.comment = ch.comment.strip()
         if ch.code is not None:
             ln.code = ch.code.strip()
+        if ch.split_into is not None:
+            ln.split_into = [x.strip() for x in ch.split_into if x.strip()]
+        if ch.merge_with is not None:
+            ln.merge_with = [str(x).strip().lstrip("#") for x in ch.merge_with if str(x).strip()]
     _save_revised(folder, lines, target, data["created"])
     return _state(folder)
 
@@ -309,14 +318,19 @@ def import_answers(path: ExercisePath, body: RefineImport):
         if i is None:
             unmatched.append(t.description)
             continue
-        for field in ("decision", "comment", "code"):
+        for field in ("decision", "comment", "code", *_LISTS):
             before, after = getattr(lines[i], field) or "", getattr(t, field) or ""
+            if field in _LISTS:
+                before, after = _LISTS[field].join(before), _LISTS[field].join(after)
             if before != after:
                 changes.append(Change(index=i, description=lines[i].description, field=field, before=before,
                                       after=after))
     if body.confirm:
         for c in changes:
-            setattr(lines[c.index], c.field, c.after)
+            value = c.after
+            if c.field in _LISTS:
+                value = [x.strip() for x in value.split(_LISTS[c.field].strip()) if x.strip()]
+            setattr(lines[c.index], c.field, value)
         _save_revised(folder, lines, target, data["created"])
     return ImportResult(changes=changes, unmatched=unmatched, applied=body.confirm).model_dump()
 

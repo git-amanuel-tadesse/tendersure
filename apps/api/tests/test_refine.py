@@ -153,7 +153,7 @@ def test_wrong_requests_say_what_to_do(client, ex):
     state = _proposed(client, ex)
     n = len(state["revised"]["lines"])
     r = client.patch(f"{base}/lines", json={"changes": [{"index": 0, "decision": "maybe"}]}, headers=W)
-    assert r.status_code == 400 and "not accept, reject, remove or edit" in r.json["detail"]
+    assert r.status_code == 400 and "is not one of accept, reject, remove, edit, split, merge" in r.json["detail"]
     r = client.patch(f"{base}/lines", json={"changes": [{"index": n, "decision": "remove"}]}, headers=W)
     assert r.status_code == 400
     assert client.patch(f"{base}/lines", json={"changes": []}).status_code == 403          # no header
@@ -183,3 +183,20 @@ def test_propose_reads_the_draft_again(client, ex):
     state = client.get(f"/api/exercises/{ex}/refine").json
     assert state["revised"]["lines"][0]["hr"] == ["Foreman", "Site engineer"]
     assert state["draft"]["drafts"][0]["hr"] == ["Foreman", "Site engineer"]
+
+
+def test_a_split_and_a_merge_answered_in_the_browser(client, ex):
+    state = _proposed(client, ex)
+    lines = state["revised"]["lines"]
+    a = _index(state, "4")                      # the two ICT equipment rows overlap
+    b = _index(state, "5")
+    assert str(b + 1) in lines[a]["suggested_merge"]
+    r = client.patch(f"/api/exercises/{ex}/refine/lines", json={"changes": [
+        {"index": a, "decision": "merge", "merge_with": [str(b + 1)], "comment": "Supply of ICT Equipment"},
+        {"index": _index(state, "2"), "decision": "split",
+         "split_into": ["Provision of Translation Services", "Provision of Interpretation Services"]}]}, headers=W)
+    assert r.status_code == 200, r.json
+    _job(client, client.post(f"/api/exercises/{ex}/refine/apply", json={}, headers=W))
+    final = [c["description"] for c in client.get(f"/api/exercises/{ex}/refine").json["final"]["categories"]]
+    assert "Supply of ICT Equipment" in final
+    assert {"Provision of Translation Services", "Provision of Interpretation Services"} <= set(final)

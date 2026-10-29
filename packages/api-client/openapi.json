@@ -1120,6 +1120,15 @@
             "title": "Licence",
             "type": "array"
           },
+          "merge_with": {
+            "default": [],
+            "description": "with decision merge: # numbers of the lines merged into this one",
+            "items": {
+              "type": "string"
+            },
+            "title": "Merge With",
+            "type": "array"
+          },
           "question": {
             "default": "",
             "description": "a question for the client about this line",
@@ -1137,6 +1146,15 @@
               "type": "string"
             },
             "title": "Research Sources",
+            "type": "array"
+          },
+          "split_into": {
+            "default": [],
+            "description": "with decision split: each piece becomes a category",
+            "items": {
+              "type": "string"
+            },
+            "title": "Split Into",
             "type": "array"
           },
           "status": {
@@ -1159,6 +1177,24 @@
               "type": "string"
             },
             "title": "Suggested Eligibility",
+            "type": "array"
+          },
+          "suggested_merge": {
+            "default": [],
+            "description": "by rules: # numbers of overlapping lines",
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Merge",
+            "type": "array"
+          },
+          "suggested_split": {
+            "default": [],
+            "description": "by rules: a split to choose, never applied on its own",
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Split",
             "type": "array"
           },
           "technical": {
@@ -1217,7 +1253,7 @@
               }
             ],
             "default": null,
-            "description": "the client's comment; with edit, the new wording",
+            "description": "the client's comment; with edit or merge, the new wording",
             "title": "Comment"
           },
           "decision": {
@@ -1230,7 +1266,7 @@
               }
             ],
             "default": null,
-            "description": "accept, reject, remove, edit, or '' (accept)",
+            "description": "accept, reject, remove, edit, split, merge, or '' (accept)",
             "title": "Decision"
           },
           "index": {
@@ -1238,6 +1274,38 @@
             "minimum": 0.0,
             "title": "Index",
             "type": "integer"
+          },
+          "merge_with": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "with merge: the # numbers (index + 1) of the lines that become one category with this one",
+            "title": "Merge With"
+          },
+          "split_into": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "with split: each piece becomes a category",
+            "title": "Split Into"
           }
         },
         "required": [

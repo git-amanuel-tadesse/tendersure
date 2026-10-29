@@ -19,9 +19,32 @@ export const Route = createFileRoute("/exercises/$exerciseId/refine")({ componen
 const STATUS_TONE: Record<string, "neutral" | "info" | "accent" | "warn" | "good" | "bad"> = {
   Kept: "neutral", Renamed: "info", Merged: "accent", Separated: "warn", Repeated: "neutral", Additional: "good", Removed: "bad",
 };
-const DECISIONS = ["", "accept", "reject", "remove", "edit"];
+const DECISIONS = ["", "accept", "reject", "remove", "edit", "split", "merge"];
 
-type Edit = Partial<Pick<Line, "decision" | "comment" | "code">>;
+type Edit = Partial<Pick<Line, "decision" | "comment" | "code" | "split_into" | "merge_with">>;
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? "") === JSON.stringify(b ?? "");
+
+/** The pieces a split starts from: what was typed, else the suggestion, else the line itself. */
+const startPieces = (ln: Line) =>
+  ln.split_into.length ? ln.split_into : ln.suggested_split.length ? ln.suggested_split : [ln.description, ""];
+
+/** Split: each piece becomes a category of its own (spec 09). */
+function SplitEditor({ pieces, onChange }: { pieces: string[]; onChange: (p: string[]) => void }) {
+  const set = (i: number, v: string) => onChange(pieces.map((p, j) => (j === i ? v : p)));
+  return (
+    <div className="mt-2 space-y-1">
+      {pieces.map((p, i) => (
+        <div key={i} className="flex gap-1">
+          <Input value={p} aria-label={`Piece ${i + 1}`} placeholder={`category ${i + 1}`} className="w-full"
+                 onChange={(e) => set(i, e.target.value)} />
+          <Button variant="ghost" aria-label={`Remove piece ${i + 1}`} onClick={() => onChange(pieces.filter((_, j) => j !== i))}>✕</Button>
+        </div>
+      ))}
+      <Button variant="ghost" onClick={() => onChange([...pieces, ""])}>+ piece</Button>
+      {pieces.filter((p) => p.trim()).length < 2 && <div className="text-xs text-red-600">give two or more pieces</div>}
+    </div>
+  );
+}
 
 function RefinePage() {
   const { exerciseId } = Route.useParams();
@@ -165,9 +188,9 @@ function ReviewStep({ exerciseId, revised, draft }: {
     setEdits((e) => {
       const next = { ...e[index], ...patch };
       const orig = revised.lines[index];
-      const same = (Object.keys(next) as (keyof Edit)[]).every((k) => (next[k] ?? "") === (orig[k] ?? ""));
+      const unchanged = (Object.keys(next) as (keyof Edit)[]).every((k) => same(next[k], orig[k]));
       const { [index]: _, ...rest } = e;
-      return same ? rest : { ...e, [index]: next };
+      return unchanged ? rest : { ...e, [index]: next };
     });
 
   const shown = lines.filter((ln) =>
@@ -179,6 +202,7 @@ function ReviewStep({ exerciseId, revised, draft }: {
   const inTarget = !revised.target || (revised.proposed >= lo && revised.proposed <= hi);
 
   const columns = useMemo(() => [
+    col.accessor((ln) => ln.index + 1, { id: "n", header: "#", size: 44 }),
     col.accessor("status", {
       header: "Status", size: 96,
       cell: (c) => <Badge tone={STATUS_TONE[c.getValue()] ?? "neutral"}>{c.getValue()}</Badge>,
@@ -210,22 +234,58 @@ function ReviewStep({ exerciseId, revised, draft }: {
           {ln.reason && <div className="text-zinc-600 dark:text-zinc-400">{ln.reason}</div>}
           {ln.question && <div className="rounded bg-sky-50 px-1.5 py-1 text-sky-800 dark:bg-sky-950 dark:text-sky-200">? {ln.question}</div>}
           {ln.applies_to.length > 0 && <div className="text-zinc-500">applies to: {ln.applies_to.join(", ")}</div>}
+          {ln.suggested_split.length > 0 && ln.decision !== "split" && (
+            <div className="text-violet-700 dark:text-violet-300">
+              suggested split: {ln.suggested_split.join(" · ")}{" "}
+              <button type="button" className="underline" onClick={() => edit(ln.index, { decision: "split", split_into: ln.suggested_split })}>
+                split this way
+              </button>
+            </div>
+          )}
+          {ln.suggested_merge.length > 0 && ln.decision !== "merge" && (
+            <div className="text-violet-700 dark:text-violet-300">
+              overlaps: {ln.suggested_merge.map((n) => (
+                <button key={n} type="button" className="mr-1 underline"
+                        onClick={() => edit(ln.index, { decision: "merge", merge_with: [n] })}>merge with #{n}</button>
+              ))}
+            </div>
+          )}
         </div>
       ),
     }),
     col.display({
-      id: "decision", header: "Decision", size: 136,
+      id: "decision", header: "Decision", size: 220,
       cell: ({ row: { original: ln } }) => (
-        <Select value={ln.decision} aria-label="Decision" onChange={(e) => edit(ln.index, { decision: e.target.value })}
-                className={cx("w-full min-w-[7.5rem]", edits[ln.index]?.decision !== undefined && "ring-2 ring-amber-400")}>
-          {DECISIONS.map((d) => <option key={d} value={d}>{d || "(accept)"}</option>)}
-        </Select>
+        <div>
+          <Select value={ln.decision} aria-label="Decision"
+                  onChange={(e) => {
+                    const d = e.target.value;
+                    edit(ln.index, d === "split" ? { decision: d, split_into: startPieces(ln) }
+                      : d === "merge" ? { decision: d, merge_with: ln.merge_with.length ? ln.merge_with : ln.suggested_merge.slice(0, 1) }
+                      : { decision: d });
+                  }}
+                  className={cx("w-full min-w-[7.5rem]", edits[ln.index]?.decision !== undefined && "ring-2 ring-amber-400")}>
+            {DECISIONS.map((d) => <option key={d} value={d}>{d || "(accept)"}</option>)}
+          </Select>
+          {ln.decision === "split" && (
+            <SplitEditor pieces={ln.split_into} onChange={(split_into) => edit(ln.index, { split_into })} />
+          )}
+          {ln.decision === "merge" && (
+            <div className="mt-2 space-y-1">
+              <Input value={ln.merge_with.join(", ")} aria-label="Merge with #" placeholder="# numbers, e.g. 13, 19"
+                     className={cx("w-full", !ln.merge_with.length && "ring-2 ring-red-400")}
+                     onChange={(e) => edit(ln.index, { merge_with: e.target.value.split(",").map((x) => x.trim().replace(/^#/, "")).filter(Boolean) })} />
+              <div className="text-xs text-zinc-500">they become one category with this line; new wording in the next column</div>
+            </div>
+          )}
+        </div>
       ),
     }),
     col.display({
       id: "comment", header: "Client comment · new wording", size: 240,
       cell: ({ row: { original: ln } }) => (
-        <Input value={ln.comment} aria-label="Client comment" placeholder={ln.decision === "edit" ? "the new wording" : ""}
+        <Input value={ln.comment} aria-label="Client comment"
+               placeholder={ln.decision === "edit" ? "the new wording" : ln.decision === "merge" ? "the merged category's wording (optional)" : ""}
                onChange={(e) => edit(ln.index, { comment: e.target.value })}
                className={cx("w-full", edits[ln.index]?.comment !== undefined && "ring-2 ring-amber-400",
                              ln.decision === "edit" && !ln.comment && "ring-2 ring-red-400")} />

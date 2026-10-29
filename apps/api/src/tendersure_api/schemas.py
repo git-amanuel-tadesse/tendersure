@@ -66,6 +66,10 @@ class Line(CoreModel):
     licence: List[str] = Field([], description="the draft's licence / contractor level items")
     hr: List[str] = Field([], description="the draft's key staff items")
     technical: List[str] = Field([], description="the draft's technical documents and equipment")
+    split_into: List[str] = Field([], description="with decision split: each piece becomes a category")
+    merge_with: List[str] = Field([], description="with decision merge: # numbers of the lines merged into this one")
+    suggested_split: List[str] = Field([], description="by rules: a split to choose, never applied on its own")
+    suggested_merge: List[str] = Field([], description="by rules: # numbers of overlapping lines")
 
     @computed_field
     @property

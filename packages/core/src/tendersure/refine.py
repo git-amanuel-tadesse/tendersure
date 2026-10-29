@@ -41,6 +41,7 @@ log = logging.getLogger("tendersure")
 KEPT, RENAMED, MERGED, SEPARATED, REPEATED = "Kept", "Renamed", "Merged", "Separated", "Repeated"
 ADDITIONAL, REMOVED = "Additional (suggested)", "Removed"
 STATUSES = [KEPT, RENAMED, MERGED, SEPARATED, REPEATED, ADDITIONAL, REMOVED]
+DECISIONS = ("", "accept", "reject", "remove", "edit", "split", "merge")
 COMPANIES = BUSINESS_TYPES[:3]
 OVERLAP = 0.2            # subject similarity above which two draft rows are worth a question
 OVERLAP_HEAD = 0.6       # the same for the subject outside brackets ("ICT Equipment (...)")
@@ -259,6 +260,11 @@ class Line:
     licence: List[str] = field(default_factory=list)          # the draft's requirement columns (spec 07)
     hr: List[str] = field(default_factory=list)
     technical: List[str] = field(default_factory=list)
+    # Split and merge at review (spec 09): each piece becomes a category; merged lines become one
+    split_into: List[str] = field(default_factory=list)        # with decision split
+    merge_with: List[str] = field(default_factory=list)        # with decision merge: the revised list's # numbers
+    suggested_split: List[str] = field(default_factory=list)   # by rules: shown, applied only when chosen
+    suggested_merge: List[str] = field(default_factory=list)
 
     @property
     def gate_question(self) -> bool:
@@ -569,7 +575,32 @@ def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[
     gpos = {g: i for i, g in enumerate(groups_order)}
     lines.sort(key=lambda ln: (gpos.get(ln.group, len(gpos)),
                                min((order[i] for i in ln.from_draft), default=len(order))))
+    suggest(lines)
     return lines
+
+
+_HEAD = re.compile(r"^(.*?\bof)\s", re.I)
+_TWO_HEADS = re.compile(r"\s+and\s+(?=(?:supply|provision)(?:\s+and\s+\w+)?\s+of\b)", re.I)
+
+
+def suggest(lines: List[Line]):
+    """Split and merge candidates by rules (spec 09 S2), on each line by the
+    revised list's # numbers; never applied unless chosen."""
+    live = [(i, ln) for i, ln in enumerate(lines) if ln.status != REPEATED]
+    for _, ln in live:
+        ln.suggested_split, ln.suggested_merge = [], []
+        head = _HEAD.match(ln.description)
+        if len(ln.sub_categories) >= 2:
+            ln.suggested_split = [title_case(f"{head.group(1)} {s}" if head else s) for s in ln.sub_categories]
+        else:
+            parts = [p.strip(" ,") for p in _TWO_HEADS.split(ln.description) if p.strip(" ,")]
+            if len(parts) >= 2:
+                ln.suggested_split = [title_case(p) for p in parts]
+    drafts = [Draft(str(i), ln.description) for i, ln in live]
+    for a, b, _ in overlaps(drafts, {}):
+        ia, ib = int(a), int(b)
+        lines[ia].suggested_merge.append(str(ib + 1))
+        lines[ib].suggested_merge.append(str(ia + 1))
 
 
 def traceability(lines: List[Line], drafts: List[Draft]) -> List[str]:
@@ -589,7 +620,8 @@ REVISED_HEADERS = ["#", "Category Code", "Category Description", "Status", "From
                    "Question for client", "Sub-categories", "Eligibility", "Licence", "HR", "Technical",
                    "Suggested eligibility (not applied)",
                    "Technical name (suggested)", "Usually split as", "Research sources",
-                   "Gate Question", "Applies To", "Decision", "Client comment", "Group"]
+                   "Gate Question", "Applies To", "Decision", "Client comment", "Split into", "Merge with #",
+                   "Suggested split", "Suggested merge with #", "Group"]
 DRAFT_HEADERS = ["Draft #", "Group", "Category Description", "Sub-categories", "Licence", "HR", "Technical",
                  "Individual Consultant", "Notes"]
 HEAD = PatternFill("solid", fgColor="FFC5D9F1")
@@ -643,12 +675,15 @@ def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str
         n, ln.code, ln.description, ln.status, ", ".join(ln.from_draft), ln.reason, ln.question,
         " | ".join(ln.sub_categories), " | ".join(ln.eligibility), " | ".join(ln.licence), " | ".join(ln.hr),
         " | ".join(ln.technical), " | ".join(ln.suggested_eligibility), ln.technical_name, " | ".join(ln.usual_split), "\n".join(ln.research_sources),
-        "TRUE" if ln.gate_question else "", ", ".join(ln.applies_to), ln.decision, ln.comment, ln.group or ""],
-        [5, 13, 60, 20, 10, 40, 40, 36, 28, 28, 36, 36, 34, 40, 40, 50, 9, 34, 11, 30, 4])
-    decision, comment = REVISED_HEADERS.index("Decision") + 1, REVISED_HEADERS.index("Client comment") + 1
+        "TRUE" if ln.gate_question else "", ", ".join(ln.applies_to), ln.decision, ln.comment,
+        " | ".join(ln.split_into), ", ".join(ln.merge_with), " | ".join(ln.suggested_split),
+        ", ".join(ln.suggested_merge), ln.group or ""],
+        [5, 13, 60, 20, 10, 40, 40, 36, 28, 28, 36, 36, 34, 40, 40, 50, 9, 34, 11, 30, 40, 12, 40, 14, 4])
+    answers = [REVISED_HEADERS.index(h) for h in ("Decision", "Client comment", "Split into", "Merge with #")]
     for row in ws.iter_rows(min_row=2):
         if row[3].value:                                   # a line, not a group row
-            row[decision - 1].fill = row[comment - 1].fill = ANSWER
+            for c in answers:
+                row[c].fill = ANSWER
     ws.column_dimensions[openpyxl.utils.get_column_letter(len(REVISED_HEADERS))].hidden = True     # Group
 
     ws = wb.create_sheet("Summary")
@@ -666,6 +701,10 @@ def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str
     rows += [[], ["How to answer: the Decision column of the Revised tab"],
              ["blank / accept", "as proposed"], ["reject", "back to the draft row(s)"],
              ["remove", "the category is dropped"], ["edit", "use the wording typed in Client comment"],
+             ["split", "each piece in Split into (separated by |) becomes a category of its own; "
+                       "Suggested split has a ready-made one to copy"],
+             ["merge", "the lines whose # are in Merge with # (e.g. 13, 19) become one category with this "
+                       "line; it keeps this wording, or the one typed in Client comment"],
              ["", "A Client comment without a decision is a note: it is turned into a proposed change for "
                   "the team, never applied on its own. Other cells (Eligibility, Applies To...) may be "
                   "edited directly."],
@@ -715,7 +754,10 @@ def read_revised(path: str) -> Tuple[List[Draft], List[Line]]:
                           _split(g("Suggested eligibility (not applied)"), "|"),
                           str(g("Technical name (suggested)") or "").strip(), _split(g("Usually split as"), "|"),
                           _split(g("Research sources"), "\n"), _split(g("Licence"), "|"), _split(g("HR"), "|"),
-                          _split(g("Technical"), "|")))
+                          _split(g("Technical"), "|"), _split(g("Split into"), "|"),
+                          [n.lstrip("#") for n in _split(str(g("Merge with #") or ""), ",")],
+                          _split(g("Suggested split"), "|"),
+                          [n.lstrip("#") for n in _split(str(g("Suggested merge with #") or ""), ",")]))
     return drafts, lines
 
 
@@ -752,17 +794,101 @@ def _original(d: Draft) -> Line:
     return ln
 
 
+def _merges(lines: List[Line], problems: List[str]) -> Dict[int, int]:
+    """Line index -> the index of the line it is merged into (spec 09 S1). A
+    merge naming a # that does not exist, itself, or a line already merged
+    elsewhere changes nothing and is a problem."""
+    into: Dict[int, int] = {}
+    for i, ln in enumerate(lines):
+        if ln.decision != "merge":
+            continue
+        nums = [str(n).strip().lstrip("#") for n in ln.merge_with if str(n).strip()]
+        js, bad = [], None
+        if i in into:
+            bad = f"it is itself merged into #{into[i] + 1}"
+        for n in nums:
+            j = int(n) - 1 if n.isdigit() else -1
+            if not 0 <= j < len(lines):
+                bad = bad or f"#{n} is not a line of the revised list"
+            elif j == i:
+                bad = bad or "a line cannot merge with itself"
+            elif j in into or j in js or lines[j].decision == "merge" or j in into.values():
+                bad = bad or f"#{n} is already in another merge"
+            else:
+                js.append(j)
+        if not nums:
+            bad = "no # numbers in Merge with #"
+        if bad:
+            problems.append(f"'{ln.description}': merge not applied: {bad}; kept as it is")
+            ln.decision = ""
+            continue
+        for j in js:
+            into[j] = i
+    return into
+
+
+def _union(lines: List[Line], name: str) -> List[str]:
+    return list(dict.fromkeys(x for ln in lines for x in getattr(ln, name)))
+
+
+def _merged(ln: Line, others: List[Line]) -> Line:
+    """One category from the line and the lines merged into it."""
+    every = [ln] + others
+    out = Line(ln.comment or ln.description, MERGED, _union(every, "from_draft"), ln.group,
+               f"merged at review with {', '.join(o.description for o in others)}"
+               + (f"; was: {ln.description}" if ln.comment else ""), ln.question,
+               _union(every, "sub_categories"), _union(every, "eligibility"),
+               [b for b in BUSINESS_TYPES if b in _union(every, "applies_to")], ln.code,
+               licence=_union(every, "licence"), hr=_union(every, "hr"), technical=_union(every, "technical"))
+    return out
+
+
+def _same(a: str, b: str) -> bool:
+    na, nb = " ".join(_words(a)), " ".join(_words(b))
+    return bool(na and nb) and (na in nb or nb in na)
+
+
+def _pieces(ln: Line) -> List[Line]:
+    """Each piece a category of its own. Split by its sub-categories, a piece
+    named after one carries none; other pieces keep those left over."""
+    names = list(dict.fromkeys(title_case(" ".join(p.split())) for p in ln.split_into if p.strip()))
+    used = {s for s in ln.sub_categories for p in names if _same(s, p)}
+    left = [s for s in ln.sub_categories if s not in used]
+    return [Line(p, SEPARATED, ln.from_draft[:], ln.group, f"split at review; was: {ln.description}", "",
+                 [] if any(_same(s, p) for s in ln.sub_categories) else left, ln.eligibility[:], ln.applies_to[:],
+                 licence=ln.licence[:], hr=ln.hr[:], technical=ln.technical[:]) for p in names]
+
+
 def apply_review(drafts: List[Draft], lines: List[Line]) -> Tuple[List[Line], List[Line], List[str]]:
     """Returns (final lines, excluded lines, problems)."""
     by_id = {d.id: d for d in drafts}
     final, excluded, problems, undone = [], [], [], set()
-    undone_separations = {ln.from_draft[0] for ln in lines if ln.status == SEPARATED and ln.decision == "reject"}
     for ln in lines:
+        if ln.decision == "split" and len({p.strip().lower() for p in ln.split_into if p.strip()}) < 2:
+            problems.append(f"'{ln.description}': split not applied: give two or more pieces in Split into; "
+                            f"kept as it is")
+            ln.decision = ""
+    into = _merges(lines, problems)
+    folded = defaultdict(list)
+    for j, i in into.items():
+        folded[i].append(lines[j])
+    undone_separations = {ln.from_draft[0] for ln in lines if ln.status == SEPARATED and ln.decision == "reject"}
+    for index, ln in enumerate(lines):
         d = ln.decision
-        if d not in ("", "accept", "reject", "remove", "edit"):
-            problems.append(f"'{ln.description}': decision '{ln.decision}' is not accept, reject, remove or edit; "
-                            f"taken as accept")
+        if d not in DECISIONS:
+            problems.append(f"'{ln.description}': decision '{ln.decision}' is not accept, reject, remove, edit, "
+                            f"split or merge; taken as accept")
             d = ""
+        if index in into:
+            ln.reason = f"merged into #{into[index] + 1} at review"
+            excluded.append(ln)
+            continue
+        if d == "merge":
+            final.append(_merged(ln, sorted(folded[index], key=lines.index)))
+            continue
+        if d == "split":
+            final += _pieces(ln)
+            continue
         if ln.status == SEPARATED and ln.from_draft[0] in undone_separations:
             if ln.from_draft[0] not in undone:
                 undone.add(ln.from_draft[0])

@@ -2615,3 +2615,89 @@ def test_a_mapped_category_is_built_from_its_tab_and_its_marks(corpus, tmp_path)
     checked = flows.check(str(tmp_path / "gen.xlsx"), "CCC", str(tmp_path / "cats.csv"), None,
                           str(tmp_path / "yn.csv"), str(tmp_path / "report.xlsx"), flows.Model(off=True))
     assert checked.errors == 0
+
+
+# --- split and merge in the review (spec 09) ----------------------------------------------
+
+def _review_lines():
+    from tendersure import refine as rf
+    drafts = [rf.Draft("1", "Supply of Relief Non-Food Items", "RELIEF", ["Soaps", "Blankets", "Buckets"],
+                       hr=["Storekeeper"]),
+              rf.Draft("2", "Supply of ICT Equipment (Servers, Routers)", "ICT"),
+              rf.Draft("3", "Supply of ICT Equipment (Computers, Laptops)", "ICT"),
+              rf.Draft("4", "Supply of Office Furniture and Provision of Interior Design Services", "GENERAL")]
+    return drafts, rf.check(None, drafts, rf.groups_of(drafts))
+
+
+def test_rules_suggest_splits_and_merges_without_applying_them():
+    from tendersure import refine as rf
+    drafts, lines = _review_lines()
+    by = {ln.from_draft[0]: (i + 1, ln) for i, ln in enumerate(lines)}
+    assert by["1"][1].suggested_split == ["Supply of Soaps", "Supply of Blankets", "Supply of Buckets"]
+    assert by["4"][1].suggested_split == ["Supply of Office Furniture", "Provision of Interior Design Services"]
+    assert by["2"][1].suggested_merge == [str(by["3"][0])] and by["3"][1].suggested_merge == [str(by["2"][0])]
+    final, _, problems = rf.apply_review(drafts, lines)                 # nothing chosen: nothing changes
+    assert len(final) == 4 and problems == []
+
+
+def test_a_split_makes_categories_and_a_merge_makes_one():
+    from tendersure import refine as rf
+    drafts, lines = _review_lines()
+    by = {ln.from_draft[0]: (i + 1, ln) for i, ln in enumerate(lines)}
+    relief, ict, ict2 = by["1"][1], by["2"][1], by["3"][0]
+    relief.decision, relief.split_into = "split", relief.suggested_split + ["Supply of Kitchen Sets"]
+    ict.decision, ict.merge_with, ict.comment = "merge", [str(ict2)], "Supply of ICT Equipment"
+    final, excluded, problems = rf.apply_review(drafts, lines)
+    assert problems == []
+    names = [ln.description for ln in final]
+    assert names[:4] == ["Supply of Soaps", "Supply of Blankets", "Supply of Buckets", "Supply of Kitchen Sets"]
+    pieces = final[:4]
+    assert all(p.from_draft == ["1"] and p.hr == ["Storekeeper"] and p.status == rf.SEPARATED for p in pieces)
+    assert [p.sub_categories for p in pieces] == [[]] * 4     # every sub-category became a category
+    merged = next(ln for ln in final if ln.status == rf.MERGED)
+    assert (merged.description, merged.from_draft) == ("Supply of ICT Equipment", ["2", "3"])
+    assert [ln.reason for ln in excluded] == [f"merged into #{by['2'][0]} at review"]
+    assert rf.traceability(final + excluded, drafts) == []
+    assert len(rf.to_categories(final, "AAA")) == 6                     # 4 pieces + merged + the one left
+
+
+@pytest.mark.parametrize("decision,value,why", [
+    ("split", ["Only One Piece"], "give two or more pieces"),
+    ("merge", ["99"], "#99 is not a line"),
+    ("merge", ["SELF"], "cannot merge with itself"),
+    ("merge", [], "no # numbers"),
+])
+def test_a_bad_split_or_merge_changes_nothing(decision, value, why):
+    from tendersure import refine as rf
+    drafts, lines = _review_lines()
+    ln = lines[0]
+    ln.decision = decision
+    if decision == "split":
+        ln.split_into = value
+    else:
+        ln.merge_with = ["1"] if value == ["SELF"] else value
+    final, _, problems = rf.apply_review(drafts, lines)
+    assert len(final) == 4 and len(problems) == 1 and why in problems[0]
+
+
+def test_split_and_merge_go_through_the_workbook(tmp_path):
+    from tendersure import refine as rf
+    drafts, lines = _review_lines()
+    path = tmp_path / "revised.xlsx"
+    rf.write_revised(str(path), drafts, lines, "AAA")
+    wb = openpyxl.load_workbook(path)
+    ws = wb["Revised"]
+    col = {c.value: c.column for c in ws[1]}
+    rows = {str(ws.cell(r, col["From draft #"]).value): r for r in range(2, ws.max_row + 1)
+            if ws.cell(r, col["Status"]).value}
+    assert ws.cell(rows["1"], col["Suggested split"]).value == "Supply of Soaps | Supply of Blankets | Supply of Buckets"
+    ws.cell(rows["1"], col["Decision"], "split")
+    ws.cell(rows["1"], col["Split into"], "Supply of Soaps | Supply of Bedding")
+    ws.cell(rows["2"], col["Decision"], "merge")
+    ws.cell(rows["2"], col["Merge with #"], int(ws.cell(rows["3"], 1).value))     # a number, as Excel keeps it
+    wb.save(path)
+    drafts2, lines2 = rf.read_revised(str(path))
+    final, _, problems = rf.apply_review(drafts2, lines2)
+    assert problems == []
+    assert [ln.description for ln in final][:2] == ["Supply of Soaps", "Supply of Bedding"]
+    assert sum(ln.status == rf.MERGED for ln in final) == 1 and len(final) == 4

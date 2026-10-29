@@ -1102,6 +1102,12 @@ export interface components {
              */
             licence?: string[];
             /**
+             * Merge With
+             * @description with decision merge: # numbers of the lines merged into this one
+             * @default []
+             */
+            merge_with?: string[];
+            /**
              * Question
              * @description a question for the client about this line
              * @default
@@ -1118,6 +1124,12 @@ export interface components {
              */
             research_sources?: string[];
             /**
+             * Split Into
+             * @description with decision split: each piece becomes a category
+             * @default []
+             */
+            split_into?: string[];
+            /**
              * Status
              * @description Kept, Renamed, Merged, Separated, Repeated, Additional or Removed
              */
@@ -1133,6 +1145,18 @@ export interface components {
              * @default []
              */
             suggested_eligibility?: string[];
+            /**
+             * Suggested Merge
+             * @description by rules: # numbers of overlapping lines
+             * @default []
+             */
+            suggested_merge?: string[];
+            /**
+             * Suggested Split
+             * @description by rules: a split to choose, never applied on its own
+             * @default []
+             */
+            suggested_split?: string[];
             /**
              * Technical
              * @description the draft's technical documents and equipment
@@ -1159,13 +1183,13 @@ export interface components {
             code?: string | null;
             /**
              * Comment
-             * @description the client's comment; with edit, the new wording
+             * @description the client's comment; with edit or merge, the new wording
              * @default null
              */
             comment?: string | null;
             /**
              * Decision
-             * @description accept, reject, remove, edit, or '' (accept)
+             * @description accept, reject, remove, edit, split, merge, or '' (accept)
              * @default null
              */
             decision?: string | null;
@@ -1174,6 +1198,18 @@ export interface components {
              * @description the line's position in the revised list
              */
             index: number;
+            /**
+             * Merge With
+             * @description with merge: the # numbers (index + 1) of the lines that become one category with this one
+             * @default null
+             */
+            merge_with?: string[] | null;
+            /**
+             * Split Into
+             * @description with split: each piece becomes a category
+             * @default null
+             */
+            split_into?: string[] | null;
         };
         /** LineChanges */
         LineChanges: {
