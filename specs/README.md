@@ -14,6 +14,8 @@ from these specs until the task list is reviewed.
 | [02-criteria-generation.md](02-criteria-generation.md) | Final category list → one criteria sheet per category | 1, 2, 3, 4, 5, 7, 8, 10, 11 |
 | [03-check.md](03-check.md) | A sheet edited by hand → list of problems | 6 |
 | [04-bank-learning.md](04-bank-learning.md) | History → the learned names and Yes/No verdicts every build reuses | 5, 11 at scale |
+| [05-research.md](05-research.md) | Technical names, questions, licences and document names: our data first, then the web | team request, 2026-10-29 |
+| [05-web-app.md](05-web-app.md) | The browser UI for refinement and generation (Flask + TanStack), over a shared service layer | (team request, 2026-10-29) |
 
 The build order is in [TASKS.md](TASKS.md).
 

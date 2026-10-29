@@ -6,7 +6,7 @@ with no dependency between them can be built in any order.
 
 Size: **S** under half a day, **M** about a day, **L** two days or more.
 
-**Status (2026-10-29): all tasks T01-T41 are done.** The regenerated ERCS
+**Status (2026-10-29): T01-T41 are done; T42-T48 (research) are specified, not built.** The regenerated ERCS
 batch meets the spec 02 acceptance list and `check` finds 0 errors on it;
 see SPEC.md section 7 for the numbers. T09 needed no fix: the notice's five
 sub-category lists were already read correctly.
@@ -84,12 +84,54 @@ the same `find` functions, so a rule cannot drift between the two flows.
 | T40 | Review workbook of drafts, one line per group; `learn --review` applies the answers as `confirmed`. | 04 L6 | T39 | M | Answering `ok` or a correction on a line confirms every question in its group. |
 | T41 | `generate` asks only about questions new to the batch, chunked, and lists those drafts in the QA report. | 04 L7 | T38, T39 | S | After `learn`, an ERCS build makes no model call for questions the bank already holds. |
 
+## Phase 5: research - bank first, then the web (spec 05)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T42 | Research table behind the storage driver: finding (kind, topic, country, proposal, sources, status); confirmed findings never re-asked. | 05 | | S | Findings round-trip; a confirmed one survives a re-run. |
+| T43 | Gemini with Google Search: a grounded request (JSON asked in the prompt) returning the pages used; findings without a source dropped. | 05 | | M | A faked grounded reply yields findings with titles and links; one with no source is dropped. |
+| T44 | Bank-first lookups for the four kinds: closest past categories (any client), past technical questions, past eligibility/technical documents, glossary names. | 05 K1-K4 | T42 | M | A category close to a past one gets its name and source with no web call. |
+| T45 | `research` command and its review workbook; `--country` (default from the code prefix). | 05 | T42-T44 | M | A second run makes no web call; the review lists only new findings. |
+| T46 | Refine shows K1 and K3 (technical name, usual split, suggested eligibility, sources). | 05 K1, K3 | T45 | S | Red Cross: water purification chemicals named with sources; works split by trade shown. |
+| T47 | Generate uses K2 and K3 for categories the bank has no source for; K4 names unknown documents. | 05 K2-K4 | T45 | M | A category with no past sheet gets researched questions, NEW, 0 marks, sources on the rows. |
+| T48 | Client-neutral check: no client name or client-specific rule in prompts or code paths; same run for ET and KE. | 05 | T46, T47 | S | A test scans the prompts for client names; ET and KE runs differ only by country. |
+
 ## Phase 4: wrap-up
 
 | ID | Task | Spec | Depends | Size | Done when |
 |---|---|---|---|---|---|
 | T34 | Regenerate the ERCS 2026 batch end to end and run the check on it. | 02, 03 | Phases 0–2 | S | Batch written in the new template; check passes; numbers from the spec 02 acceptance list reported. |
 | T35 | Update README and SPEC.md for the new template, the three flows and the learned files. | all | T34 | S | README commands match the CLI. |
+
+## Phase 5: web app (spec 05)
+
+Agreed 2026-10-29: local first, review in the browser, two flows + bank and
+categories pages. The service layer lands first, so the CLI and the server
+share every step.
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T42 | `tendersure/flows/`: move refine (propose, apply), ingest and generate orchestration out of `cli.py`; progress callback, result dataclasses, errors instead of `sys.exit`; CLI calls them. | 05 W1 | | L | All tests pass; CLI output unchanged; an ERCS generate and a Red Cross refine give identical workbooks before and after. |
+| T43 | Generation takes `proposals` and `answers` in memory; `--review <file>` reads the file into them. | 05 W1 | T42 | S | Applying answers from a dict and from the QA file give the same workbook. |
+| T44 | JSON for Draft, Line, Category, Item and run results (to and from), with tests. | 05 W3 | T42 | S | Round-trip of every type is lossless. |
+| T45 | Flask app and `serve` command: `/api` blueprints, serves `web/dist`, 127.0.0.1 only, Host check, `X-TenderSure` header on writes, JSON errors. | 05 W2 | | S | Test client: POST without the header gets 403; a foreign Host gets 403. |
+| T46 | Workspaces: exercises (create, list, read), file upload / download with sanitised names, `workspaces/` git-ignored. | 05 W3 | T45 | S | Upload then download returns the same bytes; `../x.xlsx` is refused. |
+| T47 | Job runner: one worker thread, queue, progress lines, persisted status, `interrupted` after restart. | 05 W4 | T45 | M | A test job's progress is readable while it runs and after a simulated restart. |
+| T48 | Settings and bank endpoints: model status (no key), bank status, ingest job, report downloads. | 05 S1, S2 | T42, T47 | S | Ingesting the synthetic corpus via the API gives the same bank as the CLI. |
+| T49 | Refinement endpoints: upload and parse draft, propose job, read and patch revised lines, Excel export / import, apply. | 05 S3 | T44, T46, T47 | M | API test runs a synthetic draft through propose → decisions → apply and gets the same final list as the CLI. |
+| T50 | Categories endpoints: read, patch rows with the T19 check per row, import from final list or CSV, export CSV. | 05 S4 | T44, T46 | S | A mismatched gate row is returned with its problem; the exported CSV loads in `generate`. |
+| T51 | Generation endpoints: run job with settings, runs list, decisions read / patch, apply-answers job, downloads. | 05 S5 | T43, T44, T47 | M | API test: generate, answer one Q and one M item, apply; the second run's QA shows them applied. |
+| T52 | `web/`: Vite + React + TypeScript, TanStack Router (file routes) + Query + Table, Tailwind, API client sending the header, dev proxy to :5000, `pnpm build` into `web/dist`. | 05 | T45 | S | `pnpm dev` shows the home page reading `/api/settings`; `serve` serves the build. |
+| T53 | App shell and Home: exercises list and create, bank and model status, job progress component. | 05 S1 | T48, T52 | S | Create an exercise from the browser; a running job shows its lines. |
+| T54 | Bank page: add workbooks, ingest summary, report downloads. | 05 S2 | T53 | S | Ingest from the browser matches the CLI summary. |
+| T55 | Refinement page: upload draft, preview, run, review table (filters, decision, comment, edit wording), Excel round-trip, apply and final list. | 05 S3 | T49, T53 | L | The Red Cross draft goes from upload to categories table in the browser. |
+| T56 | Categories page: editable table, inline gate check, import / export. | 05 S4 | T50, T53 | M | A gate mismatch is shown on its row and cleared by the edit that fixes it. |
+| T57 | Generation page: settings, run with progress, results and downloads, Decisions table with per-kind controls that write the spec 02 answer grammar, apply, earlier runs. | 05 S5 | T51, T53 | L | The ERCS batch is generated, reviewed and re-applied from the browser. |
+| T58 | Tests for the answer-grammar builders (Vitest); one end-to-end API test of both flows on synthetic data. | 05 | T55, T57 | S | Both run in CI-free local `pytest` / `pnpm test`. |
+| T59 | README: install (Python + pnpm), `serve`, dev mode; SPEC.md pointer to spec 05. | 05 | T57 | S | A fresh clone reaches the home page by following the README. |
+
+Suggested slice: T42 → T44 → T45 → T49 → T52 → T55 (refinement end to end
+in the browser first; it is the smaller flow), then T43 → T51 → T57.
 
 ## Suggested first slice
 
