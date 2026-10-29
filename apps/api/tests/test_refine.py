@@ -159,3 +159,27 @@ def test_wrong_requests_say_what_to_do(client, ex):
     assert client.patch(f"{base}/lines", json={"changes": []}).status_code == 403          # no header
     assert client.post(f"{base}/propose", json={"target": [60, 50]}, headers=W).status_code == 400
     assert client.get("/api/exercises/nope/refine").status_code == 404
+
+
+
+def test_propose_reads_the_draft_again(client, ex):
+    """A draft chosen before the reader learned a column is read again when proposing."""
+    import json
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws["B3"], ws["C3"], ws["D3"] = "No", "Category Description", "HR"
+    ws["B4"], ws["C4"], ws["D4"] = 1, "Provision of minor construction works", "Foreman, Site engineer"
+    buf = io.BytesIO()
+    wb.save(buf)
+    f = _upload(client, ex, "d.xlsx", buf.getvalue())
+    client.post(f"/api/exercises/{ex}/refine/draft", json={"file": f}, headers=W)
+    path = os.path.join(client.application.config["WORKSPACES"].folder(ex), "refine", "draft.json")
+    with open(path) as fh:
+        stale = json.load(fh)
+    stale["drafts"] = [{"id": "1", "description": "Provision of minor construction works", "group": None}]
+    with open(path, "w") as fh:
+        json.dump(stale, fh)                                   # as an older reader left it
+    _job(client, client.post(f"/api/exercises/{ex}/refine/propose", json={"use_model": False}, headers=W))
+    state = client.get(f"/api/exercises/{ex}/refine").json
+    assert state["revised"]["lines"][0]["hr"] == ["Foreman", "Site engineer"]
+    assert state["draft"]["drafts"][0]["hr"] == ["Foreman", "Site engineer"]

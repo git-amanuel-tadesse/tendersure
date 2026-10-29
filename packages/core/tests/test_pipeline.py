@@ -2495,3 +2495,15 @@ def test_a_brief_is_read_from_a_file_or_taken_as_text(tmp_path):
     f.write_text(BRIEF + "\n")
     assert flows.load_brief(str(f)) == BRIEF == flows.load_brief(f"  {BRIEF} ")
     assert flows.load_brief(None) == ""
+
+
+def test_near_identical_tabs_with_spaces_and_brackets_in_their_names_are_graded(corpus):
+    from copy import deepcopy
+    from tendersure import trust
+    sheets = load_corpus(str(corpus))[:1]
+    a, b = deepcopy(sheets[0]), deepcopy(sheets[0])
+    a.name, b.name, a.code, b.code, a.client, b.client = \
+        "PSI General with Technical", "PSI Eng con (2)", None, None, None, None
+    grades = trust.grade([a, b])                          # the other tab's name is read whole
+    assert [g.tier for g in grades.values()].count(trust.SUPERSEDED) == 1
+    assert any(r.startswith("earlier copy of PSI ") for g in grades.values() for r in g.reasons)

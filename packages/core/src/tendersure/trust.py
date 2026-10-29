@@ -66,7 +66,7 @@ def grade(sheets: List[Sheet]) -> Dict[str, Grade]:
     by_name = {s.name: s for s in sheets}
     for f in check_corpus(sheets):
         a = by_name[f.sheet]
-        other = re.search(r"identical to (\S+) \(", f.message).group(1)
+        other = re.search(r"identical to (.+) \([^()]*\)\. Both", f.message).group(1)   # names may hold spaces
         b = by_name.get(other)
         if b is None:
             continue

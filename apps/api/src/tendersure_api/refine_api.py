@@ -225,7 +225,9 @@ def propose(path: ExercisePath, body: Propose):
     folder = _folder(eid)
     ex = _exercise(eid)
     draft = _need(folder, "draft.json", "choose the draft list first")
-    drafts = [Draft(**d).core() for d in draft["drafts"]]
+    # read again: the reader may have learned columns since the draft was chosen
+    drafts = _flow(flows.read_draft, _upload(eid, draft["file"]), draft.get("sheet"))
+    _write(folder, "draft.json", {**draft, "drafts": [Draft.of(d).model_dump() for d in drafts]})
     target = tuple(body.target) if body.target else None
     if target and not 0 < target[0] <= target[1]:
         abort(400, description=f"target {list(target)}: give [low, high] with 0 < low <= high")
