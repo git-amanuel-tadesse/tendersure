@@ -80,7 +80,7 @@ class LineChanges(BaseModel):
     changes: List[LineChange]
 
 
-class Import(BaseModel):
+class RefineImport(BaseModel):
     file: str = Field(description="an uploaded revised list with its Decision column answered")
     confirm: bool = Field(False, description="False: only list what would change")
 
@@ -99,7 +99,7 @@ class ImportResult(BaseModel):
     applied: bool
 
 
-class Apply(BaseModel):
+class RefineApply(BaseModel):
     version: Optional[str] = Field(None, description="a label for this version of the list")
     use_model: Optional[bool] = None
 
@@ -284,7 +284,7 @@ def _key(ln) -> tuple:
 
 
 @bp.post("/import", responses={200: ImportResult})
-def import_answers(path: ExercisePath, body: Import):
+def import_answers(path: ExercisePath, body: RefineImport):
     """A revised list the client answered in Excel: its decisions and comments replace the browser's.
     Without `confirm`, only lists what would change."""
     eid = path.exercise_id
@@ -318,7 +318,7 @@ def import_answers(path: ExercisePath, body: Import):
 
 
 @bp.post("/apply", responses={202: Job})
-def apply(path: ExercisePath, body: Apply):
+def apply(path: ExercisePath, body: RefineApply):
     """Apply the review, as a job: the final list, and the exercise's categories table."""
     eid = path.exercise_id
     folder = _folder(eid)

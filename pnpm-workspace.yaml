@@ -1,0 +1,4 @@
+# the JavaScript parties of the monorepo (spec 06 M4); Python is in pyproject.toml files
+packages:
+  - apps/web
+  - packages/api-client

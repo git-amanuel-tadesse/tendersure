@@ -61,7 +61,7 @@ class RowChange(BaseModel):
     applies_to: Optional[List[str]] = None
 
 
-class Import(BaseModel):
+class TableImport(BaseModel):
     source: str = Field(description="'refine' (the applied review), or an uploaded CSV such as uploads/x.csv")
 
 
@@ -126,7 +126,7 @@ def change_row(path: RowPath, body: RowChange):
 
 
 @bp.post("/import", responses={200: Table})
-def import_table(path: ExercisePath, body: Import):
+def import_table(path: ExercisePath, body: TableImport):
     """Replace the table: from the applied refinement review, or from an uploaded CSV. The table it
     replaces is kept in history/."""
     eid = path.exercise_id

@@ -13,15 +13,41 @@ category refinement, the check command, learning from the bank).
 
 ## Install
 
-    make install                    # .venv at the root; core, the CLI and the API installed editable
+Needs Python 3.11+ and Node 20+ with pnpm.
+
+    make install                    # .venv at the root (core, CLI, API editable) and pnpm install
     source .venv/bin/activate       # puts `tendersure` and `tendersure-api` on the PATH
 
-The repo is a monorepo (spec 06). `packages/core` is the `tendersure`
-package: every rule, the bank, and `tendersure.flows`, the steps every app
-calls. `apps/cli` is the `tendersure` command: arguments in, flows out.
-`apps/api` is the local server for the web app (`tendersure-api`, on
-127.0.0.1 only): HTTP in, flows out. The web app follows in `apps/web`. `.env` and `data/` live at the repo
-root (or wherever `$TENDERSURE_HOME` points), so commands work from any folder.
+The repo is a monorepo (spec 06), one folder per party:
+
+| Folder | Party | May use |
+|---|---|---|
+| `packages/core` | `tendersure`: every rule, the bank, and `tendersure.flows`, the steps every app calls | openpyxl, pdfplumber |
+| `apps/cli` | `tendersure` command: arguments in, flows out | `tendersure.flows` only |
+| `apps/api` | `tendersure-api`: the local server (Flask, 127.0.0.1 only): HTTP in, flows out | `tendersure.flows` only |
+| `packages/api-client` | the TypeScript client: types generated from the API's OpenAPI document | - |
+| `apps/web` | the web app (React, TanStack Router, Query, Table) | `@tendersure/api-client` only |
+
+`make test` checks those boundaries (import-linter and a web check), and that
+the committed API contract matches the API. `.env` and `data/` live at the
+repo root (or wherever `$TENDERSURE_HOME` points), so commands work from any folder.
+
+## The web app
+
+    make serve      # builds the web app; the API serves it at http://localhost:5000/
+    make dev        # while working on it: the API on :5000 and Vite on http://127.0.0.1:5173/
+
+An exercise is one client's round. Its three steps follow the CLI's:
+**1 Refine categories** (draft list → revised list → the client's review → final list),
+**2 Categories table** (edited in place, each row checked: a gate mismatch shows
+on its row), **3 Generate criteria** (runs, the Decisions answered in the browser,
+applied as the next run). The Excel workbooks still go to and come back from the
+client. Everything stays on this machine, in `workspaces/` (git-ignored); the
+bank and the learned files are shared with the CLI.
+
+After changing the API, regenerate its contract and the web app's types:
+
+    make contract
 
 ## Run
 

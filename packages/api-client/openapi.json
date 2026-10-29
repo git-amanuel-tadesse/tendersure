@@ -1,0 +1,3368 @@
+{
+  "components": {
+    "schemas": {
+      "Answers": {
+        "properties": {
+          "answers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "item ID -> answer in the Decisions grammar; '' clears an answer",
+            "title": "Answers",
+            "type": "object"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "title": "Answers",
+        "type": "object"
+      },
+      "ApplyResult": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "categories_out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Categories Out"
+          },
+          "excluded": {
+            "items": {
+              "$ref": "#/components/schemas/Line"
+            },
+            "title": "Excluded",
+            "type": "array"
+          },
+          "final": {
+            "items": {
+              "$ref": "#/components/schemas/Line"
+            },
+            "title": "Final",
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/ClientNote"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "out": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Out"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Problems",
+            "type": "array"
+          }
+        },
+        "required": [
+          "final",
+          "excluded",
+          "notes",
+          "problems",
+          "categories"
+        ],
+        "title": "ApplyResult",
+        "type": "object"
+      },
+      "BankStatus": {
+        "properties": {
+          "clients": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Clients",
+            "type": "array"
+          },
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "last_ingest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Ingest"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "questions": {
+            "title": "Questions",
+            "type": "integer"
+          },
+          "sheets": {
+            "title": "Sheets",
+            "type": "integer"
+          },
+          "workbooks": {
+            "title": "Workbooks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "exists",
+          "workbooks",
+          "sheets",
+          "questions",
+          "clients"
+        ],
+        "title": "BankStatus",
+        "type": "object"
+      },
+      "Category": {
+        "description": "A row of the categories table generation reads.",
+        "properties": {
+          "applies_to": {
+            "default": [],
+            "description": "organization types this category accepts",
+            "items": {
+              "type": "string"
+            },
+            "title": "Applies To",
+            "type": "array"
+          },
+          "client": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Client"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "eligibility": {
+            "default": [],
+            "description": "documents asked in the Eligibility section",
+            "items": {
+              "type": "string"
+            },
+            "title": "Eligibility",
+            "type": "array"
+          },
+          "gate_question": {
+            "default": false,
+            "description": "the Organization type question gates the sheet",
+            "title": "Gate Question",
+            "type": "boolean"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "kind": {
+            "readOnly": true,
+            "title": "Kind",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "requirements": {
+            "default": "",
+            "title": "Requirements",
+            "type": "string"
+          },
+          "sub_categories": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sub Categories",
+            "type": "array"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          }
+        },
+        "required": [
+          "number",
+          "description",
+          "kind"
+        ],
+        "title": "Category",
+        "type": "object"
+      },
+      "Change": {
+        "properties": {
+          "after": {
+            "title": "After",
+            "type": "string"
+          },
+          "before": {
+            "title": "Before",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index",
+          "description",
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "Change",
+        "type": "object"
+      },
+      "ChooseDraft": {
+        "properties": {
+          "file": {
+            "title": "File",
+            "type": "string"
+          },
+          "sheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sheet"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "ChooseDraft",
+        "type": "object"
+      },
+      "ClientNote": {
+        "properties": {
+          "change": {
+            "description": "the model's proposed change: shown, never applied",
+            "title": "Change",
+            "type": "string"
+          },
+          "comment": {
+            "title": "Comment",
+            "type": "string"
+          },
+          "line": {
+            "$ref": "#/components/schemas/Line"
+          }
+        },
+        "required": [
+          "line",
+          "comment",
+          "change"
+        ],
+        "title": "ClientNote",
+        "type": "object"
+      },
+      "Draft": {
+        "description": "A row of a client's draft category list.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "id": {
+            "description": "the draft's own number, or r<row> when it has none",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "description"
+        ],
+        "title": "Draft",
+        "type": "object"
+      },
+      "DraftState": {
+        "properties": {
+          "drafts": {
+            "items": {
+              "$ref": "#/components/schemas/Draft"
+            },
+            "title": "Drafts",
+            "type": "array"
+          },
+          "file": {
+            "description": "the uploaded file, e.g. uploads/Red Cross Draft.xlsx",
+            "title": "File",
+            "type": "string"
+          },
+          "sheet": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sheet"
+          },
+          "tabs": {
+            "description": "the workbook's tabs, to pick the one with the list",
+            "items": {
+              "type": "string"
+            },
+            "title": "Tabs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "file",
+          "tabs",
+          "drafts"
+        ],
+        "title": "DraftState",
+        "type": "object"
+      },
+      "Exercise": {
+        "properties": {
+          "client": {
+            "description": "client code, e.g. ERCS",
+            "title": "Client",
+            "type": "string"
+          },
+          "client_name": {
+            "default": "",
+            "title": "Client Name",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "description": "sheet code prefix, e.g. ERCS-ET-2026-",
+            "title": "Prefix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "client",
+          "prefix",
+          "created"
+        ],
+        "title": "Exercise",
+        "type": "object"
+      },
+      "ExerciseDetail": {
+        "properties": {
+          "client": {
+            "description": "client code, e.g. ERCS",
+            "title": "Client",
+            "type": "string"
+          },
+          "client_name": {
+            "default": "",
+            "title": "Client Name",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/StoredFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "description": "sheet code prefix, e.g. ERCS-ET-2026-",
+            "title": "Prefix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "client",
+          "prefix",
+          "created",
+          "files"
+        ],
+        "title": "ExerciseDetail",
+        "type": "object"
+      },
+      "Exercises": {
+        "properties": {
+          "exercises": {
+            "items": {
+              "$ref": "#/components/schemas/Exercise"
+            },
+            "title": "Exercises",
+            "type": "array"
+          }
+        },
+        "required": [
+          "exercises"
+        ],
+        "title": "Exercises",
+        "type": "object"
+      },
+      "GenerateResult": {
+        "properties": {
+          "failed": {
+            "items": {
+              "$ref": "#/components/schemas/NotWritten"
+            },
+            "title": "Failed",
+            "type": "array"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "learned_review": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Learned Review"
+          },
+          "open": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "open decisions by kind: Q, A, M, C, N, T, F",
+            "title": "Open",
+            "type": "object"
+          },
+          "qa": {
+            "title": "Qa",
+            "type": "string"
+          },
+          "review_log": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Review Log",
+            "type": "array"
+          },
+          "review_problems": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Review Problems",
+            "type": "array"
+          },
+          "written": {
+            "description": "the sheet codes written",
+            "items": {
+              "type": "string"
+            },
+            "title": "Written",
+            "type": "array"
+          }
+        },
+        "required": [
+          "written",
+          "failed",
+          "files",
+          "qa",
+          "items",
+          "open"
+        ],
+        "title": "GenerateResult",
+        "type": "object"
+      },
+      "Health": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "version"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "ImportResult": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "unmatched": {
+            "description": "rows of the workbook that match no line here: not applied",
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmatched",
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes",
+          "unmatched",
+          "applied"
+        ],
+        "title": "ImportResult",
+        "type": "object"
+      },
+      "IngestForm": {
+        "properties": {
+          "files": {
+            "description": "the workbooks; a file's name may carry its path in the folder",
+            "items": {
+              "format": "binary",
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "IngestForm",
+        "type": "object"
+      },
+      "Item": {
+        "description": "A line of the Decisions tab: one decision for the team, with its answer once given.",
+        "properties": {
+          "answer": {
+            "default": "",
+            "description": "the answer, in the Decisions tab's grammar (blank accepts the proposal)",
+            "title": "Answer",
+            "type": "string"
+          },
+          "codes": {
+            "description": "the sheets it concerns",
+            "items": {
+              "type": "string"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "decide": {
+            "title": "Decide",
+            "type": "string"
+          },
+          "id": {
+            "description": "Q-, A-, M-, C-, N-, T- or F- followed by what it is about",
+            "title": "Id",
+            "type": "string"
+          },
+          "keys": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Keys",
+            "type": "array"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Payload"
+          },
+          "proposed": {
+            "title": "Proposed",
+            "type": "string"
+          },
+          "ruling": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ruling"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "why": {
+            "default": "",
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "decide",
+          "codes",
+          "proposed"
+        ],
+        "title": "Item",
+        "type": "object"
+      },
+      "Job": {
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error"
+          },
+          "exercise_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Exercise Id"
+          },
+          "finished": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Finished"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "e.g. refine.propose, generate, ingest",
+            "title": "Kind",
+            "type": "string"
+          },
+          "lines": {
+            "description": "the step's report lines so far, as the CLI prints them",
+            "items": {
+              "type": "string"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "result": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "the step's result once done; its shape depends on kind",
+            "title": "Result"
+          },
+          "started": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Started"
+          },
+          "status": {
+            "description": "queued, running, done, failed or interrupted",
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "status",
+          "lines",
+          "created"
+        ],
+        "title": "Job",
+        "type": "object"
+      },
+      "Jobs": {
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/Job"
+            },
+            "title": "Jobs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "jobs"
+        ],
+        "title": "Jobs",
+        "type": "object"
+      },
+      "Line": {
+        "description": "A line of the revised category list: one proposed category, with how it came from the draft.",
+        "properties": {
+          "applies_to": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Applies To",
+            "type": "array"
+          },
+          "code": {
+            "default": "",
+            "title": "Code",
+            "type": "string"
+          },
+          "comment": {
+            "default": "",
+            "description": "the client's comment; with edit, the new wording",
+            "title": "Comment",
+            "type": "string"
+          },
+          "decision": {
+            "default": "",
+            "description": "the review: accept, reject, remove or edit (blank accepts)",
+            "title": "Decision",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "eligibility": {
+            "default": [],
+            "description": "stated by the draft: applied",
+            "items": {
+              "type": "string"
+            },
+            "title": "Eligibility",
+            "type": "array"
+          },
+          "from_draft": {
+            "items": {
+              "type": "string"
+            },
+            "title": "From Draft",
+            "type": "array"
+          },
+          "gate_question": {
+            "readOnly": true,
+            "title": "Gate Question",
+            "type": "boolean"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "question": {
+            "default": "",
+            "description": "a question for the client about this line",
+            "title": "Question",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "research_sources": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Research Sources",
+            "type": "array"
+          },
+          "status": {
+            "description": "Kept, Renamed, Merged, Separated, Repeated, Additional or Removed",
+            "title": "Status",
+            "type": "string"
+          },
+          "sub_categories": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sub Categories",
+            "type": "array"
+          },
+          "suggested_eligibility": {
+            "default": [],
+            "description": "the model's or research's: shown, not applied",
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested Eligibility",
+            "type": "array"
+          },
+          "technical_name": {
+            "default": "",
+            "title": "Technical Name",
+            "type": "string"
+          },
+          "usual_split": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Usual Split",
+            "type": "array"
+          }
+        },
+        "required": [
+          "description",
+          "status",
+          "from_draft",
+          "gate_question"
+        ],
+        "title": "Line",
+        "type": "object"
+      },
+      "LineChange": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Code"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "the client's comment; with edit, the new wording",
+            "title": "Comment"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "accept, reject, remove, edit, or '' (accept)",
+            "title": "Decision"
+          },
+          "index": {
+            "description": "the line's position in the revised list",
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index"
+        ],
+        "title": "LineChange",
+        "type": "object"
+      },
+      "LineChanges": {
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/LineChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "title": "LineChanges",
+        "type": "object"
+      },
+      "ModelStatus": {
+        "properties": {
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "runs": {
+            "description": "whether steps use a model by default",
+            "title": "Runs",
+            "type": "boolean"
+          },
+          "why_not": {
+            "description": "why not, when they do not (e.g. no key in .env)",
+            "title": "Why Not",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runs",
+          "why_not",
+          "provider",
+          "model"
+        ],
+        "title": "ModelStatus",
+        "type": "object"
+      },
+      "NewExercise": {
+        "properties": {
+          "client": {
+            "title": "Client",
+            "type": "string"
+          },
+          "client_name": {
+            "default": "",
+            "title": "Client Name",
+            "type": "string"
+          },
+          "name": {
+            "description": "e.g. ERCS 2026-2029",
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "client",
+          "prefix"
+        ],
+        "title": "NewExercise",
+        "type": "object"
+      },
+      "NotWritten": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "reason"
+        ],
+        "title": "NotWritten",
+        "type": "object"
+      },
+      "Options": {
+        "properties": {
+          "ai_review": {
+            "default": true,
+            "description": "False: stop after the proposals (rewordings applied)",
+            "title": "Ai Review",
+            "type": "boolean"
+          },
+          "formulas": {
+            "default": false,
+            "title": "Formulas",
+            "type": "boolean"
+          },
+          "only": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "category numbers; all when absent",
+            "title": "Only"
+          },
+          "rebuild_existing": {
+            "default": false,
+            "title": "Rebuild Existing",
+            "type": "boolean"
+          },
+          "split_files": {
+            "default": false,
+            "title": "Split Files",
+            "type": "boolean"
+          },
+          "use_model": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "None: when one is configured; False: no AI step",
+            "title": "Use Model"
+          }
+        },
+        "title": "Options",
+        "type": "object"
+      },
+      "Propose": {
+        "properties": {
+          "country": {
+            "default": "",
+            "description": "ISO code for researched licences, e.g. ET",
+            "title": "Country",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "[low, high], e.g. [50, 60]",
+            "title": "Target"
+          },
+          "use_model": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "None: when one is configured; False: rules only",
+            "title": "Use Model"
+          }
+        },
+        "title": "Propose",
+        "type": "object"
+      },
+      "RefineApply": {
+        "properties": {
+          "use_model": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Use Model"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "a label for this version of the list",
+            "title": "Version"
+          }
+        },
+        "title": "RefineApply",
+        "type": "object"
+      },
+      "RefineImport": {
+        "properties": {
+          "confirm": {
+            "default": false,
+            "description": "False: only list what would change",
+            "title": "Confirm",
+            "type": "boolean"
+          },
+          "file": {
+            "description": "an uploaded revised list with its Decision column answered",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "RefineImport",
+        "type": "object"
+      },
+      "RefineState": {
+        "properties": {
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "final": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplyResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "revised": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Revised"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "RefineState",
+        "type": "object"
+      },
+      "Replace": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            },
+            "title": "Categories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "categories"
+        ],
+        "title": "Replace",
+        "type": "object"
+      },
+      "Revised": {
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/Line"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "proposed": {
+            "title": "Proposed",
+            "type": "integer"
+          },
+          "questions": {
+            "title": "Questions",
+            "type": "integer"
+          },
+          "statuses": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Statuses",
+            "type": "object"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target"
+          }
+        },
+        "required": [
+          "lines",
+          "proposed",
+          "statuses",
+          "questions",
+          "created"
+        ],
+        "title": "Revised",
+        "type": "object"
+      },
+      "RowChange": {
+        "description": "Only the fields given change.",
+        "properties": {
+          "applies_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Applies To"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "eligibility": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Eligibility"
+          },
+          "gate_question": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Gate Question"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group"
+          },
+          "requirements": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Requirements"
+          },
+          "sub_categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sub Categories"
+          }
+        },
+        "title": "RowChange",
+        "type": "object"
+      },
+      "RowProblem": {
+        "properties": {
+          "field": {
+            "description": "the column to fix",
+            "title": "Field",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "severity": {
+            "description": "error: fix before generating; warning: worth a look",
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "field",
+          "severity",
+          "message"
+        ],
+        "title": "RowProblem",
+        "type": "object"
+      },
+      "Run": {
+        "properties": {
+          "answers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "the review being answered: Decisions item ID -> answer",
+            "title": "Answers",
+            "type": "object"
+          },
+          "created": {
+            "title": "Created",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "not_written": {
+            "default": 0,
+            "title": "Not Written",
+            "type": "integer"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "open": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Open",
+            "type": "object"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerateResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RunSettings"
+          },
+          "status": {
+            "description": "the job's: queued, running, done, failed or interrupted",
+            "title": "Status",
+            "type": "string"
+          },
+          "written": {
+            "default": 0,
+            "title": "Written",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "created",
+          "job_id",
+          "status",
+          "settings",
+          "answers"
+        ],
+        "title": "Run",
+        "type": "object"
+      },
+      "RunSettings": {
+        "properties": {
+          "ai_review": {
+            "default": true,
+            "description": "False: stop after the proposals (rewordings applied)",
+            "title": "Ai Review",
+            "type": "boolean"
+          },
+          "formulas": {
+            "default": false,
+            "title": "Formulas",
+            "type": "boolean"
+          },
+          "only": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "category numbers; all when absent",
+            "title": "Only"
+          },
+          "rebuild_existing": {
+            "default": false,
+            "title": "Rebuild Existing",
+            "type": "boolean"
+          },
+          "review_of": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "the run whose answers this run applied",
+            "title": "Review Of"
+          },
+          "split_files": {
+            "default": false,
+            "title": "Split Files",
+            "type": "boolean"
+          },
+          "use_model": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "None: when one is configured; False: no AI step",
+            "title": "Use Model"
+          }
+        },
+        "title": "RunSettings",
+        "type": "object"
+      },
+      "RunSummary": {
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "not_written": {
+            "default": 0,
+            "title": "Not Written",
+            "type": "integer"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "open": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Open",
+            "type": "object"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RunSettings"
+          },
+          "status": {
+            "description": "the job's: queued, running, done, failed or interrupted",
+            "title": "Status",
+            "type": "string"
+          },
+          "written": {
+            "default": 0,
+            "title": "Written",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "number",
+          "created",
+          "job_id",
+          "status",
+          "settings"
+        ],
+        "title": "RunSummary",
+        "type": "object"
+      },
+      "Runs": {
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "Runs",
+        "type": "object"
+      },
+      "Settings": {
+        "properties": {
+          "home": {
+            "description": "where .env, data/ and workspaces/ live",
+            "title": "Home",
+            "type": "string"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelStatus"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "home",
+          "model"
+        ],
+        "title": "Settings",
+        "type": "object"
+      },
+      "StoredFile": {
+        "properties": {
+          "modified": {
+            "title": "Modified",
+            "type": "string"
+          },
+          "path": {
+            "description": "relative to the exercise, e.g. uploads/Red Cross Draft.xlsx",
+            "title": "Path",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "size",
+          "modified"
+        ],
+        "title": "StoredFile",
+        "type": "object"
+      },
+      "Table": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "errors": {
+            "title": "Errors",
+            "type": "integer"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/RowProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "updated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Updated"
+          }
+        },
+        "required": [
+          "categories",
+          "problems",
+          "errors"
+        ],
+        "title": "Table",
+        "type": "object"
+      },
+      "TableImport": {
+        "properties": {
+          "source": {
+            "description": "'refine' (the applied review), or an uploaded CSV such as uploads/x.csv",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "TableImport",
+        "type": "object"
+      },
+      "Upload": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Upload",
+        "type": "object"
+      },
+      "ValidationErrorModel": {
+        "properties": {
+          "ctx": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "An optional object which contains values required to render the error message.",
+            "title": "Error context"
+          },
+          "input": {
+            "description": "The input provided for validation.",
+            "title": "Input"
+          },
+          "loc": {
+            "description": "The error's location as a list.",
+            "items": {},
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "description": "A human readable explanation of the error.",
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "description": "A computer-readable identifier of the error type.",
+            "title": "Error Type",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "The URL to further information about the error.",
+            "title": "URL"
+          }
+        },
+        "required": [
+          "type",
+          "loc",
+          "msg",
+          "input"
+        ],
+        "title": "ValidationErrorModel",
+        "type": "object"
+      }
+    },
+    "securitySchemes": null
+  },
+  "info": {
+    "title": "TenderSure",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/bank": {
+      "get": {
+        "operationId": "bank_bank_bank_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "bank"
+        ]
+      }
+    },
+    "/api/bank/ingest": {
+      "post": {
+        "description": "their earlier version, as a re-ingest of the folder does.",
+        "operationId": "bank_ingest_bank_ingest_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "files": {
+                  "explode": true,
+                  "style": "form"
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/IngestForm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Add workbooks to the bank, as a job. Workbooks uploaded again under the same path replace",
+        "tags": [
+          "bank"
+        ]
+      }
+    },
+    "/api/bank/reports/{name}": {
+      "get": {
+        "operationId": "bank_report_bank_reports__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "validation_report.xlsx or bank.xlsx, as the last ingest wrote them.",
+        "tags": [
+          "bank"
+        ]
+      }
+    },
+    "/api/exercises": {
+      "get": {
+        "operationId": "exercises_list_exercises_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Exercises"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "exercises"
+        ]
+      },
+      "post": {
+        "operationId": "exercises_create_exercise_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewExercise"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseDetail"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "exercises"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}": {
+      "get": {
+        "operationId": "exercises_get_exercise__exercise_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "exercises"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/categories": {
+      "get": {
+        "operationId": "categories_get_table_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Table"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "categories"
+        ]
+      },
+      "put": {
+        "operationId": "categories_replace_table_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Replace"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Table"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "The whole table, as the browser holds it (rows added, removed or renumbered).",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/categories/categories.csv": {
+      "get": {
+        "operationId": "categories_download_table_categories_csv_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/categories/import": {
+      "post": {
+        "description": "replaces is kept in history/.",
+        "operationId": "categories_import_table_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TableImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Table"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Replace the table: from the applied refinement review, or from an uploaded CSV. The table it",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/categories/{number}": {
+      "patch": {
+        "operationId": "categories_change_row__int_number__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Table"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/files": {
+      "post": {
+        "operationId": "exercises_upload_file__exercise_id__files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Upload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoredFile"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "exercises"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/files/{path}": {
+      "get": {
+        "operationId": "exercises_download_file__exercise_id__files__path_path__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "The file's bytes, as an attachment under its own name.",
+        "tags": [
+          "exercises"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/generate": {
+      "get": {
+        "operationId": "generate_list_runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runs"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "generate"
+        ]
+      },
+      "post": {
+        "operationId": "generate_generate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Options"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "A first build of the exercise's categories table, as a job (a new run).",
+        "tags": [
+          "generate"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/generate/runs/{number}": {
+      "get": {
+        "operationId": "generate_get_run_runs__int_number__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "generate"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/generate/runs/{number}/answers": {
+      "patch": {
+        "operationId": "generate_answer_runs__int_number__answers_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Answers"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Answer Decisions items of a finished run; '' clears an answer. Nothing is built yet.",
+        "tags": [
+          "generate"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/generate/runs/{number}/apply": {
+      "post": {
+        "description": "them). Answers this run already carried are kept, as in its QA file.",
+        "operationId": "generate_apply_runs__int_number__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Build again with this run's answers: same settings, same proposals (no new model call for",
+        "tags": [
+          "generate"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine": {
+      "get": {
+        "operationId": "refine_get_state_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefineState"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "refine"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/apply": {
+      "post": {
+        "operationId": "refine_apply_apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefineApply"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Apply the review, as a job: the final list, and the exercise's categories table.",
+        "tags": [
+          "refine"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/draft": {
+      "post": {
+        "description": "to refine/history/: a new draft starts the refinement again.",
+        "operationId": "refine_choose_draft_draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChooseDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefineState"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Read the draft list from an uploaded file. A revised or final list from an earlier draft moves",
+        "tags": [
+          "refine"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/final.xlsx": {
+      "get": {
+        "operationId": "refine_download_final_final_xlsx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "refine"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/import": {
+      "post": {
+        "description": "Without `confirm`, only lists what would change.",
+        "operationId": "refine_import_answers_import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefineImport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "A revised list the client answered in Excel: its decisions and comments replace the browser's.",
+        "tags": [
+          "refine"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/lines": {
+      "patch": {
+        "operationId": "refine_change_lines_lines_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LineChanges"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefineState"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "The review: decisions, client comments and category codes, for any number of lines at once.",
+        "tags": [
+          "refine"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/propose": {
+      "post": {
+        "operationId": "refine_propose_propose_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Propose"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Propose the revised list, as a job; its result is the proposal, also kept as the revised list.",
+        "tags": [
+          "refine"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/revised.xlsx": {
+      "get": {
+        "operationId": "refine_download_revised_revised_xlsx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "The revised list as a workbook, to send to the client; written from the state as it is now.",
+        "tags": [
+          "refine"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "default"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "operationId": "jobs_list_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "exercise_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Exercise Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1.0,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Jobs"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Newest first. A list leaves out each job's lines and result: read the job for those.",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "operationId": "jobs_get_job__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "operationId": "bank_settings_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "bank"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "exercises"
+    },
+    {
+      "name": "jobs"
+    },
+    {
+      "name": "bank"
+    },
+    {
+      "name": "refine"
+    },
+    {
+      "name": "categories"
+    },
+    {
+      "name": "generate"
+    }
+  ]
+}

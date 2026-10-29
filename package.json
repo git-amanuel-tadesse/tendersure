@@ -1,0 +1,12 @@
+{
+  "name": "tender-sure",
+  "private": true,
+  "description": "Monorepo root: JavaScript tooling only (see the Makefile for every party)",
+  "scripts": {
+    "dev": "pnpm --filter @tendersure/web dev",
+    "build": "pnpm --filter @tendersure/web build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "contract": "pnpm --filter @tendersure/api-client generate"
+  }
+}

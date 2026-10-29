@@ -76,3 +76,21 @@ def test_the_server_listens_on_this_machine_only(monkeypatch):
     monkeypatch.setattr("flask.Flask.run", lambda self, **kw: seen.update(kw))
     server.main(["--no-browser", "--port", "5055"])
     assert seen["host"] == "127.0.0.1" and seen["port"] == 5055
+
+
+def test_every_model_the_api_uses_has_a_name_of_its_own():
+    """OpenAPI names a schema by its class: two models called Import would share one schema, and the web app's
+    generated types would be wrong for one of the endpoints."""
+    import importlib
+    import inspect
+    import pkgutil
+
+    import tendersure_api
+    from pydantic import BaseModel
+    seen = {}
+    for m in pkgutil.iter_modules(tendersure_api.__path__):
+        mod = importlib.import_module(f"tendersure_api.{m.name}")
+        for name, cls in inspect.getmembers(mod, inspect.isclass):
+            if issubclass(cls, BaseModel) and cls.__module__ == mod.__name__:
+                seen.setdefault(name, set()).add(mod.__name__)
+    assert {n: sorted(ms) for n, ms in seen.items() if len(ms) > 1} == {}

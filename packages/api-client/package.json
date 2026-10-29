@@ -1,0 +1,20 @@
+{
+  "name": "@tendersure/api-client",
+  "private": true,
+  "type": "module",
+  "description": "The typed client of the TenderSure API: types generated from openapi.json, a fetch client that sends the write header",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "openapi-typescript openapi.json --default-non-nullable false -o src/schema.d.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "openapi-fetch": "0.17.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

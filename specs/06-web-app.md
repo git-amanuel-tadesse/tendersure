@@ -326,3 +326,25 @@ browser (the team edits the workbook in Excel and runs `check`); the
   refused; no API response contains a key.
 - `make test` runs every party's tests, the import contracts and the
   contract-freshness check, and all pass.
+
+## As built (2026-10-29)
+
+Where the build differs from the plan above, and why:
+
+- **Web boundary check.** It's a script (`scripts/check-web-imports.mjs`, in
+  `make test`), not an ESLint rule. There is no `fetch`, `XMLHttpRequest` or
+  `"/api/..."` path in `apps/web/src` except as a typed `api.GET(...)` call;
+  download links come from api-client's `links`, which are type-checked
+  against the contract. ESLint was left out because its TypeScript plugin
+  lags the TypeScript and Vite versions in use.
+- **TypeScript 5.9, not 7.** openapi-typescript generates the types through
+  TypeScript's JavaScript API, which TypeScript 7 (native) does not have.
+- **TanStack Table 8.21.** Version 9 is a new API; the one table component
+  (`DataTable`) is where a move to v9 would happen.
+- **Two type sets in api-client.** `Inputs` (what the app sends) leaves a
+  field with a default optional, so a PATCH sends only what changed.
+  `Schemas` (what the app reads) has every field present, as the API always
+  sends them.
+- **Schema names are unique.** OpenAPI names a schema after its pydantic
+  class, and two `Import` classes had silently shared one schema. A test now
+  fails on any repeated model name in the API.
