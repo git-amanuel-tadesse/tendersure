@@ -13,7 +13,8 @@ from ..paths import Paths, current, use
 from ..privacy import PrivacyError
 from ..refine import Draft, Line
 from ..review import Item
-from .categories import CategoriesResult, extract as extract_categories, ENGINES
+from .categories import (CategoriesResult, ENGINES, RowProblem, check_table, extract as extract_categories,
+                         gate_problem, normalise as normalise_category)
 from .check import CheckResult, check
 from .common import FlowError, Model, ModelStatus, load_corpus, load_source, log, model_status
 from .evaluate import ModelEvaluation, PrivacyCheck, evaluate, evaluate_model, privacy_check
@@ -31,6 +32,7 @@ __all__ = [
     "load_corpus", "load_source",
     "ingest", "IngestResult", "bank_status", "BankStatus", "model_status", "ModelStatus",
     "extract_categories", "CategoriesResult", "ENGINES",
+    "check_table", "gate_problem", "normalise_category", "RowProblem",
     "propose", "propose_file", "apply", "apply_file", "evaluate_refinement", "ProposeResult", "ApplyResult",
     "draft_tabs", "read_draft", "export_revised", "import_revised", "export_final",
     "save_categories", "load_categories",

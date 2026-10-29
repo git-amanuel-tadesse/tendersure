@@ -61,3 +61,53 @@ def extract(pdf: str, client: str, out: str, version: Optional[str] = None, engi
         for c in r.changes:
             log.info(f"  {c}")
     return r
+
+
+# --- the table generation reads, checked row by row --------------------------------
+
+ERROR, WARNING = "error", "warning"
+
+
+@dataclass
+class RowProblem:
+    number: int                     # the category's number in the table
+    field: str                      # the column to fix
+    severity: str                   # error: fix before generating (gate: the sheet is NOT WRITTEN); warning: a look
+    message: str
+
+
+def gate_problem(c: cat.Category) -> Optional[str]:
+    """Spec 02 G7 / T19: the gate is TRUE exactly when individuals may apply."""
+    from ..schema import INDIVIDUAL, business_types
+    if c.gate_question == (INDIVIDUAL in business_types(c.applies_to)):
+        return None
+    return (f"categories table: Gate Question is {'TRUE' if c.gate_question else 'empty'} "
+            f"but Applies To ({', '.join(c.applies_to) or 'empty'}) "
+            f"{'lacks' if c.gate_question else 'includes'} {INDIVIDUAL}")
+
+
+def normalise(c: cat.Category) -> cat.Category:
+    """Applies To in the canonical names and order ('plc' -> Private Limited Company)."""
+    from ..schema import business_types
+    c.applies_to = business_types(c.applies_to)
+    return c
+
+
+def check_table(cats: List[cat.Category]) -> List[RowProblem]:
+    from ..schema import BUSINESS_TYPES
+    out = []
+    seen = Counter(c.number for c in cats)
+    for c in cats:
+        if seen[c.number] > 1:
+            out.append(RowProblem(c.number, "number", ERROR, f"number {c.number} is used {seen[c.number]} times: "
+                                                             f"two sheets would get the same code"))
+        if not c.description.strip():
+            out.append(RowProblem(c.number, "description", ERROR, "no description"))
+        g = gate_problem(c)
+        if g:
+            out.append(RowProblem(c.number, "gate_question", ERROR, g.removeprefix("categories table: ")))
+        unknown = [b for b in c.applies_to if b not in BUSINESS_TYPES]
+        if unknown:
+            out.append(RowProblem(c.number, "applies_to", WARNING,
+                                  f"{', '.join(unknown)}: not one of {', '.join(BUSINESS_TYPES)}"))
+    return out

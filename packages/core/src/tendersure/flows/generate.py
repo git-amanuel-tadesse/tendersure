@@ -24,9 +24,10 @@ from ..generate import Generator, MarksError, Target, check_total, finalise, to_
 from ..generate import apply_research as generate_research
 from ..paths import current
 from ..reports import load_decisions, write_qa_report
-from ..schema import INDIVIDUAL, business_types
+from ..schema import business_types
 from ..similarity import Retriever
 from ..writer import Writer
+from .categories import gate_problem
 from .common import FlowError, Model, audience, glossary, groups_for, load_source, log, read_marks, research_tools
 
 
@@ -105,11 +106,9 @@ def generate(s: Settings) -> Result:
 
     plans, failed = [], []
     for c in list(cats):
-        # spec 02 G7 / T19: the gate is TRUE exactly when individuals may apply
-        if c.gate_question != (INDIVIDUAL in business_types(c.applies_to)):
-            failed.append((c.code(s.prefix), f"categories table: Gate Question is {'TRUE' if c.gate_question else 'empty'} "
-                                             f"but Applies To ({', '.join(c.applies_to) or 'empty'}) "
-                                             f"{'lacks' if c.gate_question else 'includes'} {INDIVIDUAL}"))
+        problem = gate_problem(c)                   # the same rule the categories page shows per row
+        if problem:
+            failed.append((c.code(s.prefix), problem))
             cats.remove(c)
     for c in cats:
         code = c.code(s.prefix)

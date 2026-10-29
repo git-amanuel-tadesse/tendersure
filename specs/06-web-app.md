@@ -270,10 +270,19 @@ content is still skipped by its hash.
 
 The table generation reads: number, description, group, sub-categories, and
 the three team columns (eligibility, gate question, applies to). Editable in
-place. The T19 rule (Gate Question TRUE exactly when Individual Consultant
-is in Applies To) is shown inline on each row, so a mismatch is fixed
-before generation instead of reported as NOT WRITTEN. Import from the
-refinement's final list, or from a CSV; export to CSV.
+place. Every answer carries the table's problems, row by row:
+- the T19 rule (Gate Question TRUE exactly when Individual Consultant is in
+  Applies To): an error;
+- a number used twice: an error;
+- an empty description: an error;
+- an organization type that is not one of the four: a warning.
+
+The T19 check is the same function generation applies (`flows.gate_problem`),
+so a mismatch is fixed here instead of turning up as NOT WRITTEN. A table
+with problems is still saved, since the team fixes it over several edits.
+Applies To is stored in canonical names (`plc` → Private Limited Company).
+Import from the refinement's final list, or from a CSV; the table it
+replaces is kept in `history/`. Export to CSV.
 
 ### S5. Generation (flow 2)
 
