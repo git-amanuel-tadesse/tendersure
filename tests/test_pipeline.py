@@ -1951,3 +1951,18 @@ def test_a_network_failure_is_a_model_error_steps_can_fall_back_on(monkeypatch):
     judge = yesno.ModelJudge(llm=OpenRouterLLM(model="m", transport=llm._http))
     got = judge.judge([yesno.Need("AAA", "k", "Have you had any contracts terminated?")])
     assert [(v.yes_is, v.status) for v in got] == [("bad", yesno.RULE_DRAFTED)]     # fell back, no crash
+
+
+def test_underscore_sheet_codes_and_names_inside_them_are_hidden():
+    from tendersure.privacy import Anonymiser, PrivacyError, register_clients
+    register_clients(["NRC"])
+    anon = Anonymiser("NRC")
+    text = ("NEW CATEGORY: NRC_2027_28_030: Provision of Reception Services\n"
+            "Draft copied from: NRC_2027_28_020: Provision of Freight Clearing\n"
+            "Is your company a current supplier of Norwegian Refugee Council?")
+    out = anon.anonymise(text)
+    assert "NRC" not in out and "Norwegian" not in out and "[REF-" in out and "[CLIENT]" in out
+    assert anon.leaks(out) == []
+    with pytest.raises(PrivacyError):
+        anon.guard("Built from NRC_2027_28_020")           # the final scan refuses a raw code
+    assert "ERCS" not in Anonymiser("ERCS").anonymise("ERCS-ET-2026-002 and SNV-ET-2026_006")

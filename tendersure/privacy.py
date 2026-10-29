@@ -54,7 +54,11 @@ _PHONE = re.compile(r"\+?\d[\d\s().-]{7,}\d")    # counted as a phone only with 
 _LONGNUM = re.compile(r"\b\d{6,}\b")
 # Sheet codes always carry a number (ERCS-ET-2026-002, ILRI-ET-078); requiring
 # a digit keeps headings like SUB-CATEGORY and words like FIATA-affiliated.
-_CODE = re.compile(r"\b[A-Z]{2,6}-(?:[A-Z]{2}-)?[\w]*\d[\w]*(?:[-_][\w]+)*\b")
+# Codes are written with hyphens (ERCS-ET-2026-002) or underscores (NRC_2027_28_030).
+_CODE = re.compile(r"\b[A-Z]{2,6}[-_](?:[A-Z]{2}[-_])?[\w]*\d[\w]*(?:[-_][\w]+)*\b")
+# A name is found when no letter or digit touches it: "NRC" inside "NRC_2027"
+# counts (an underscore is a word character, so \b would miss it).
+_BEFORE, _AFTER = r"(?<![A-Za-z0-9])", r"(?![A-Za-z0-9])"
 _PLACEHOLDER = re.compile(r"\[(?:CLIENT(?:-[A-Z]{1,2})?|PLATFORM|REF-\d+|EMAIL|URL|PHONE|NUMBER|NAME-\d+)\]")
 
 
@@ -112,7 +116,7 @@ class Anonymiser:
         text = _URL.sub("[URL]", text)
         text = _CODE.sub(lambda m: self._ref(m.group(0)), text)
         for term in self._terms:
-            text = re.sub(rf"(?<![\w]){re.escape(term)}(?![\w])", self.forward[term], text, flags=re.I)
+            text = re.sub(rf"{_BEFORE}{re.escape(term)}{_AFTER}", self.forward[term], text, flags=re.I)
         text = _PHONE.sub(lambda m: "[PHONE]" if _is_phone(m.group(0)) else m.group(0), text)
         text = _LONGNUM.sub("[NUMBER]", text)
         return text
@@ -131,7 +135,7 @@ class Anonymiser:
         """Anything identifying still present in text that is about to be sent."""
         found = []
         for term in self._terms:
-            if re.search(rf"(?<![\w]){re.escape(term)}(?![\w])", text, flags=re.I):
+            if re.search(rf"{_BEFORE}{re.escape(term)}{_AFTER}", text, flags=re.I):
                 found.append(f"name '{term}'")
         stripped = _PLACEHOLDER.sub("", text)
         for label, rx in (("email", _EMAIL), ("url", _URL), ("sheet code", _CODE)):
