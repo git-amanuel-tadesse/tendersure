@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiNotes, benchRows, inTab, plainStatus, quiet, sheetsOf, type Decision } from "./triage";
+import { aiNotes, asProposed, benchRows, inTab, plainStatus, quiet, sheetsOf, type Decision } from "./triage";
 
 const q = (status = "", extra: Partial<Decision> = {}): Decision =>
   ({ id: "Q-1", type: "question", codes: ["PSI-ET-2026-022", "PSI-ET-2026-081"], decide: "x", proposed: "remove: 22, 81", status, ...extra });
@@ -31,5 +31,12 @@ describe("triage", () => {
   });
   it("lists sheets by category number", () => {
     expect(sheetsOf([{ codes: ["P-010", "P-002"] }, { codes: ["P-002", "P-001"] }])).toEqual(["P-001", "P-002", "P-010"]);
+  });
+});
+
+describe("as proposed", () => {
+  it("is a blank, except on a freed-marks line, where the split itself is written so it sticks", () => {
+    expect(asProposed({ id: "Q-1", proposed: "remove: 3" })).toBe("");
+    expect(asProposed({ id: "M-FREED-sla-d63c27", proposed: "integrity 10, technical 32" })).toBe("integrity 10, technical 32");
   });
 });

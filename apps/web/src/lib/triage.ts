@@ -24,6 +24,11 @@ export const TAB_LABEL: Record<Tab, string> = {
 
 export const isBench = (d: Pick<Decision, "id">) => d.id.startsWith("M-BENCH-");
 
+/** What "as proposed" is written as. A blank accepts a proposal - except on a freed-marks line,
+ * which every apply makes again and treats as unseen while blank: there the split itself is
+ * written, so the answer sticks and the line closes (review.apply_answers). */
+export const asProposed = (d: Pick<Decision, "id" | "proposed">) => (d.id.startsWith("M-FREED-") ? d.proposed : "");
+
 /** The reviewer's notes in an AI status: "AI: applied: removed from 1 | 22: removal not applied, reviewer: …". */
 export function aiNotes(status = ""): string {
   const i = status.indexOf(" | ");

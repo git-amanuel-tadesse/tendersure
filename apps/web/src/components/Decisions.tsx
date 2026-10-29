@@ -11,7 +11,7 @@ import {
 } from "../lib/answers";
 import { type Item, keys, type Run, useCategories, useGenerateActions, useJob, isRunning } from "../lib/api";
 import {
-  aiNotes, benchRows, failed, inTab, isBench, matches, plainStatus, quiet, sheetsOf, type Tab, TAB_LABEL, TABS,
+  aiNotes, asProposed, benchRows, failed, inTab, isBench, matches, plainStatus, quiet, sheetsOf, type Tab, TAB_LABEL, TABS,
 } from "../lib/triage";
 import { JobPanel } from "./JobPanel";
 import { Badge, Button, Card, Check, cx, Empty, ErrorNotice, Field, Input, Notice, Select } from "./ui";
@@ -144,7 +144,7 @@ export function Decisions({ exerciseId, run, onApplied }: { exerciseId: string; 
                 </Button>
               </>
             )}
-            <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => bulk((i) => (i.type === "check" ? undefined : ""))}>
+            <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => bulk((i) => (i.type === "check" ? undefined : asProposed(i)))}>
               Accept as proposed
             </Button>
             {shown.some((i) => changed(i.id)) && (
@@ -387,10 +387,14 @@ function MControl({ item, value, onChange }: { item: Item; value: string; onChan
   const set = (i: number, v: number) => {
     const next = marks.map(([k, m], j) => [k, j === i ? v : m] as [string, number]);
     const text = marksAnswer(next);
-    onChange(text === marksAnswer(parseMarks(item.proposed)) ? "" : text);
+    onChange(text === marksAnswer(parseMarks(item.proposed)) ? asProposed(item) : text);
   };
   return (
     <div className="space-y-1">
+      {item.id.startsWith("M-FREED-") && (
+        <Button variant={value === item.proposed ? "primary" : "secondary"} className="px-2 py-1 text-xs"
+                onClick={() => onChange(item.proposed)}>Accept the proposed spread</Button>
+      )}
       <div className="grid grid-cols-2 gap-1.5">
         {marks.map(([k, m], i) => (
           <label key={k} className="flex items-center justify-between gap-2 text-xs">
