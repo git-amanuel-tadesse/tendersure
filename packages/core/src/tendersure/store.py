@@ -63,8 +63,13 @@ class BankStore:
 
     # --- writing ---------------------------------------------------------------
 
-    def ingest_folder(self, folder: str) -> Dict[str, int]:
-        """Add every new or changed workbook under `folder` (subfolders too)."""
+    def ingest_folder(self, folder: str, label: Optional[str] = None) -> Dict[str, int]:
+        """Add every new or changed workbook under `folder` (subfolders too).
+
+        A workbook is known by its path: new content at the same path replaces
+        the old. `label` records paths as `<label>/<path inside folder>` instead
+        of absolute ones, for a folder that is only a staging copy (an upload):
+        uploading the same files again then replaces as a re-ingest does."""
         import glob
         files = sorted(f for f in glob.glob(os.path.join(folder, "**", "*.xlsx"), recursive=True)
                        if not os.path.basename(f).startswith("~$"))
@@ -76,15 +81,17 @@ class BankStore:
             if self.db.execute("SELECT 1 FROM files WHERE hash=?", (h,)).fetchone():
                 stats["unchanged"] += 1
                 continue
+            known_as = "/".join([label] + os.path.relpath(path, folder).split(os.sep)) if label \
+                else os.path.abspath(path)
             old = self.db.execute("SELECT hash FROM files WHERE path=? AND superseded=0",
-                                  (os.path.abspath(path),)).fetchall()
+                                  (known_as,)).fetchall()
             for (oh,) in old:                       # same workbook, new content: replace it
                 self._drop_file_sheets(oh)
                 self.db.execute("UPDATE files SET superseded=1, content=NULL WHERE hash=?", (oh,))
                 stats["replaced"] += 1
             sheets = parse_workbook(path)
             self.db.execute("INSERT INTO files VALUES (?,?,?,?,?,0,?)",
-                            (h, os.path.basename(path), os.path.abspath(path), len(content),
+                            (h, os.path.basename(path), known_as, len(content),
                              time.strftime("%Y-%m-%d %H:%M:%S"), content))
             for s in sheets:
                 self._insert_sheet(s, h)
@@ -156,3 +163,10 @@ class BankStore:
                 "sheets": one("SELECT COUNT(*) FROM sheets"),
                 "questions": one("SELECT COUNT(*) FROM rows"),
                 "clients": one("SELECT COUNT(DISTINCT client) FROM sheets WHERE client IS NOT NULL")}
+
+    def clients(self) -> List[str]:
+        return [c for (c,) in self.db.execute(
+            "SELECT DISTINCT client FROM sheets WHERE client IS NOT NULL ORDER BY client")]
+
+    def last_ingest(self) -> Optional[str]:
+        return self.db.execute("SELECT MAX(ingested_at) FROM files").fetchone()[0]

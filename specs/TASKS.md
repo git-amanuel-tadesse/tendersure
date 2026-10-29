@@ -6,7 +6,7 @@ with no dependency between them can be built in any order.
 
 Size: **S** under half a day, **M** about a day, **L** two days or more.
 
-**Status (2026-10-29): T01-T41 are done; T42-T48 (research) are built; T49-T54 (web app, 6a: monorepo, Paths, flows, apps/cli, import contracts) and T55-T58 (apps/api: server, schemas, exercises and files, jobs) are built.** The regenerated ERCS
+**Status (2026-10-29): T01-T41 are done; T42-T48 (research) are built; T49-T54 (web app, 6a: monorepo, Paths, flows, apps/cli, import contracts) and T55-T59 (apps/api: server, schemas, exercises and files, jobs, settings and bank) are built.** The regenerated ERCS
 batch meets the spec 02 acceptance list and `check` finds 0 errors on it;
 see SPEC.md section 7 for the numbers. T09 needed no fix: the notice's five
 sub-category lists were already read correctly.

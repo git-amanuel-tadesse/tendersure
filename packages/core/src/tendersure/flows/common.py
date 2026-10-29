@@ -64,6 +64,23 @@ class Model:
         return True, ""
 
 
+@dataclass(frozen=True)
+class ModelStatus:
+    """Which model a step would use by default, and whether it runs - never the key."""
+    runs: bool
+    why_not: str
+    provider: str
+    model: str
+
+
+def model_status() -> ModelStatus:
+    runs, why_not = Model().wanted()                 # reads .env first
+    provider = os.environ.get("TENDERSURE_PROVIDER", "openrouter").lower()
+    from ..llm import DEFAULT_GEMINI_MODEL, DEFAULT_MODEL
+    model = os.environ.get("TENDERSURE_MODEL") or (DEFAULT_GEMINI_MODEL if provider == "gemini" else DEFAULT_MODEL)
+    return ModelStatus(runs, why_not, provider, model)
+
+
 # --- where the sheets come from ------------------------------------------------
 
 def load_corpus(folder: str, cache: bool = None) -> List[Sheet]:

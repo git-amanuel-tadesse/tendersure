@@ -38,3 +38,13 @@ def corpus(tmp_path_factory):
     """The synthetic history, in a folder of its own (a build reads every workbook under it)."""
     from tendersure.testing import write_corpus
     return write_corpus(tmp_path_factory.mktemp("corpus"))
+
+
+@pytest.fixture
+def home(tmp_path_factory):
+    """A project home of this test's own (bank, reports, learned files), restored afterwards."""
+    before = flows.current()
+    h = tmp_path_factory.mktemp("home")
+    flows.use(flows.Paths(str(h)))
+    yield h
+    flows.use(before)

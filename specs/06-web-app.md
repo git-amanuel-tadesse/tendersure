@@ -233,9 +233,18 @@ off and why, using the same `_model_wanted` rule as the CLI).
 
 ### S2. Bank
 
-Add workbooks: pick a folder or several `.xlsx` files; they are copied to a
-temporary folder, ingested, and removed. Shows the ingest summary and links
-to download `validation_report.xlsx` and `bank.xlsx`.
+Add workbooks: pick a folder or several `.xlsx` files. They are copied to a
+staging folder (`workspaces/.staging/`), ingested as a job, and removed;
+the bank keeps each workbook's bytes. The page shows the ingest summary and
+links to download `validation_report.xlsx` and `bank.xlsx`.
+
+The bank knows a workbook by its path: new content at the same path
+replaces the old version. Uploaded workbooks are therefore recorded as
+`browser/<path inside the picked folder>`, not by the staging path, which
+changes every time. Uploading the same folder again replaces what changed,
+as a re-ingest of the folder from the CLI does. A workbook ingested once
+from the CLI and once from the browser is known under two paths; identical
+content is still skipped by its hash.
 
 ### S3. Refinement (flow 1)
 
