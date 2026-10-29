@@ -2288,3 +2288,122 @@ def test_links_resolve_in_parallel_and_fall_back_to_get(monkeypatch):
     got = rs.resolve_links(links)
     assert got[redirect + "p7"] == "https://site.example/p7" and "https://plain.example/x" not in got
     assert len(seen) > 1                                         # many at a time
+
+
+# --- the category's own requirements (spec 07 R4) -------------------------------------
+
+def _plan_with_hr(corpus, **wants):
+    """A plan on AAA's service sheet with a Human Resource section of two CV
+    rows of 5 marks (taken from the trade reference, so the sheet stays at 100)."""
+    from tendersure.generate import ADAPTED, insert_rows
+    from tendersure.parser import Row
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, "Provision of Minor Construction Works", src.client, **wants))
+    cv = lambda role: Row("", "", 0, section="Human Resource- HRM", sub_section="N/A", answer_type=5, marks=5.0,
+                          criteria=f"Attach evidence (CV, contract and education experience) for an {role}",
+                          compliance_attach=True)
+    insert_rows(p, "hr", [cv("Architect"), cv("Structural Engineer")], ADAPTED, "test", "test")
+    for q in p.questions:
+        if section_key(q.row.section) == "hr":
+            q.row.marks = q.row.compliance = 5.0
+        elif q.row.marks == 50:
+            q.row.marks = q.row.compliance = 40.0
+    assert p.total() == 100
+    return p
+
+
+def _checked(p):
+    """The template check's findings once the rows are named, as generation does."""
+    from tendersure import glossary as gl, naming
+    from tendersure.generate import to_sheet
+    from tendersure.validate import check_template
+    naming.name_documents([p], gl.Glossary([]), naming.RuleDrafter())
+    return check_template(to_sheet(p))
+
+
+def test_hr_roles_take_the_skeleton_s_role_rows_and_their_marks(corpus):
+    from tendersure.generate import finalise, to_sheet
+    from tendersure.validate import check_template
+    p = _plan_with_hr(corpus, hr=["Project Manager", "Site engineer/Residential Engineer minimum 5 years", "Foreman"])
+    finalise(p)
+    hr = [q.row for q in p.questions if section_key(q.row.section) == "hr"]
+    assert [(r.criteria, r.marks) for r in hr] == [
+        ("Attach evidence (CV, contract and education/experience) for Project Manager", 5),
+        ("Attach evidence (CV, contract and education/experience) for Site engineer/Residential Engineer "
+         "with at least 5 years of experience", 5),
+        ("Attach evidence (CV, contract and education/experience) for Foreman", 0)]
+    assert p.total() == 100 and _checked(p) == []
+
+
+def test_skeleton_roles_left_over_go_and_their_marks_stay_in_the_section(corpus):
+    from tendersure.generate import finalise
+    p = _plan_with_hr(corpus, hr=["Structural Engineer"])
+    finalise(p)
+    hr = [q.row for q in p.questions if section_key(q.row.section) == "hr"]
+    assert [(r.criteria, r.marks) for r in hr] == [
+        ("Attach evidence (CV, contract and education/experience) for Structural Engineer", 10)]
+    assert [why for _, why in p.dropped] == ["role not in the category's HR column (Structural Engineer)"]
+    assert p.total() == 100
+
+
+def test_technical_items_replace_matching_rows_or_arrive_with_no_marks(corpus):
+    from tendersure.generate import finalise, to_sheet
+    from tendersure.validate import check_template
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-002")
+    p = g.plan(Target(src.code, "Supply and Installation of Solar Equipment", src.client,
+                      technical=["MAF/DAF", "(Mixer, Pick up, Dump Truck)"]))
+    finalise(p)
+    tech = [(q.row.criteria, q.row.marks) for q in p.questions if section_key(q.row.section) == "technical"]
+    assert ("Please attach MAF/DAF", 10) in tech                          # the DAF row, its marks kept
+    assert ("Please attach evidence of ownership or rent agreement for: Mixer, Pick up, Dump Truck", 0) in tech
+    assert ("Do you offer extended warranty on goods sold Yes/No", 10) in tech       # not matched: kept
+    assert p.total() == 100 and _checked(p) == []
+
+
+def test_licence_items_are_asked_in_the_eligibility_section(corpus):
+    from tendersure import glossary as gl, naming
+    from tendersure.generate import finalise, to_sheet
+    from tendersure.validate import check_template
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    p = g.plan(Target(src.code, "Provision of Minor Construction Works", src.client,
+                      licence=["min G5/BC5 or above", "Consultancy certification"]))
+    finalise(p)
+    naming.name_documents([p], gl.Glossary([]), naming.RuleDrafter())
+    elig = [q.row for q in p.questions if section_key(q.row.section) == "eligibility"]
+    assert [(r.criteria, r.answer_type, r.eligibility) for r in elig] == [
+        ("Please attach a valid Trade license", 5, True),
+        ("Please specify your contractor grade/level", 1, False),
+        ("Please attach a valid grade/competence certificate from the relevant authority "
+         "(required: min G5/BC5 or above)", 5, True),
+        ("Please attach a valid consultancy certification", 5, True)]
+    assert all(r.archive_short_name and r.acronym for r in elig)
+    assert p.total() == 100 and check_template(to_sheet(p)) == []
+
+
+def test_the_requirements_reach_the_model_as_text():
+    from tendersure.requirements import stated
+    c = Category(4, "Provision of Minor Construction Works", licence=["min G5"], hr=["Foreman"])
+    assert stated(c) == ("licence / contractor grade: min G5; key staff: Foreman (rows asking for each are "
+                         "added automatically; do not add them)")
+    assert stated(Category(1, "Supply of Stationery")) == ""
+
+
+def test_a_category_with_requirement_columns_is_written_and_passes_the_check(corpus, tmp_path):
+    from tendersure import categories as cat, flows
+    cat.save([cat.Category(1, "Provision of Minor Construction Works", "ENGINEERING WORKS", client="AAA",
+                           licence=["min G5/BC5 or above"], hr=["Project Manager", "Foreman"],
+                           technical=["(Dump Truck, Mixer)"])], str(tmp_path / "cats.csv"))
+    r = flows.generate(flows.GenerateSettings(
+        str(tmp_path / "cats.csv"), "AAA", "AAA-ET-2026-", str(tmp_path / "gen.xlsx"), source=str(corpus),
+        audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
+        model=flows.Model(off=True)))
+    assert (r.written, r.failed) == (["AAA-ET-2026-001"], [])
+    texts = [q.row.criteria for q in r.plans[0].questions]
+    assert "Please specify your contractor grade/level" in texts
+    assert "Attach evidence (CV, contract and education/experience) for Foreman" in texts
+    assert "Please attach evidence of ownership or rent agreement for: Dump Truck, Mixer" in texts
+    errors, _ = _check(tmp_path / "gen.xlsx", tmp_path, str(tmp_path / "cats.csv"))
+    assert errors == 0

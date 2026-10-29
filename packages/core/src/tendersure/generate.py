@@ -65,6 +65,9 @@ class Target:
     eligibility: List[str] = field(default_factory=list)    # documents the Eligibility section asks for
     gate_question: bool = False     # the business-type question gates the sheet
     applies_to: List[str] = field(default_factory=list)     # business types the category accepts
+    licence: List[str] = field(default_factory=list)        # the draft's requirement columns (spec 07)
+    hr: List[str] = field(default_factory=list)
+    technical: List[str] = field(default_factory=list)
 
     @property
     def name_in_text(self) -> str:
@@ -423,9 +426,11 @@ def place_eligibility(plan: Plan):
     """An Eligibility section right after Company Information, holding the
     Trade License and the category's own eligibility documents (spec 02 G2,
     G3)."""
+    from .requirements import licence_rows
     in_section = [p for p in plan.questions if section_key(p.row.section) == "eligibility"]
     moving = _trade_license_to_move(plan, in_section)
     moving += _eligibility_documents(plan, in_section)
+    moving += [p for p in licence_rows(plan, in_section) if p not in moving]
     for p in moving:
         if p in plan.rows:
             plan.rows.remove(p)
@@ -496,7 +501,10 @@ def finalise(plan: Plan):
     """Apply the template rules (specs/02) once nothing else will change the
     plan's rows: after proposals, review answers and section splits. Running
     them here also keeps the AI's cached answers valid, as its prompts are
-    built from the plan before this point."""
+    built from the plan before this point. The category's own licence, HR
+    and technical items come first (spec 07 R4)."""
+    from .requirements import place_requirements
+    place_requirements(plan)
     place_sub_category_question(plan)
     place_eligibility(plan)
     _relabel_sections(plan)

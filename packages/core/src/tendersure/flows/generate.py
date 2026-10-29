@@ -24,6 +24,7 @@ from ..generate import Generator, MarksError, Target, check_total, finalise, to_
 from ..generate import apply_research as generate_research
 from ..paths import current
 from ..reports import load_decisions, write_qa_report
+from ..requirements import stated as stated_requirements
 from ..schema import business_types
 from ..similarity import Retriever
 from ..writer import Writer
@@ -114,7 +115,8 @@ def generate(s: Settings) -> Result:
         code = c.code(s.prefix)
         exclude = {sh.name for sh in sheets if sh.code == code} if s.rebuild_existing else None
         target = Target(code, c.description, s.client, c.group, s.client_name, c.sub_categories,
-                        c.requirements, c.eligibility, c.gate_question, business_types(c.applies_to))
+                        c.requirements or stated_requirements(c), c.eligibility, c.gate_question,
+                        business_types(c.applies_to), c.licence, c.hr, c.technical)
         try:
             plan = gen.plan(target, exclude=exclude, marks=marks.get(code))
             check_total(plan)
