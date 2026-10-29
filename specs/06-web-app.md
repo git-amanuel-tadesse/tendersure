@@ -143,9 +143,12 @@ function:
 
 - takes plain inputs (paths, dataclasses, dicts, `Paths`), not `argparse`
   namespaces;
-- reports progress and warnings through a `progress(message)` callback, not
-  `print` (including the five model-fallback messages in `refine.py`,
-  `naming.py`, `yesno.py` and `check_ai.py`);
+- reports each line a person should see through the `tendersure` logger
+  (`log.info`), not `print`. The six model-fallback messages in `refine.py`,
+  `naming.py`, `yesno.py`, `research.py` and `check_ai.py` do the same, so no
+  callback has to be threaded through the rule modules. The CLI attaches a
+  handler that prints the lines unchanged. The API attaches one per job and
+  keeps them as the job's progress;
 - returns a result dataclass (counts, output paths, problems, NOT WRITTEN
   list) instead of printing a summary;
 - raises an error type instead of `sys.exit`.

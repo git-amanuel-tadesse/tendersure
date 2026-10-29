@@ -12,6 +12,7 @@ not there are judged in one model call per batch (anonymised like every
 call), else by a keyword rule; both are drafts the team confirms there.
 """
 
+import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ from .learned_store import YES_NO, resolve
 from .llm import LLMError, make_llm
 from .trust import context_key
 from .validate import YES_BAD, YES_GOOD, is_yes_no, yes_no_target
+
+log = logging.getLogger("tendersure")
 
 DRAFTED, RULE_DRAFTED, CONFIRMED = "drafted", "drafted (rules)", "confirmed"
 SIMILAR = "drafted (from similar)"   # taken from a confirmed rewording of the question
@@ -120,7 +123,7 @@ class ModelJudge:
             raw = self.llm.complete_json(SYSTEM, prompt, SCHEMA, "yes_no_polarity", client=client, max_tokens=4000)
             return {a["id"]: a["yes_is"] for a in raw["answers"]}
         except LLMError as e:
-            print(f"yes/no: no model verdicts for {client} ({e}); judged by keywords")
+            log.info(f"yes/no: no model verdicts for {client} ({e}); judged by keywords")
             return {}
 
     def judge(self, needs: List[Need]) -> List[Verdict]:

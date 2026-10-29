@@ -5,7 +5,7 @@ import openpyxl
 import pytest
 
 from tendersure.categories import _split_sub_categories, category_kind
-from tendersure.cli import load_corpus
+from tendersure.flows import load_corpus
 from tendersure.generate import (Generator, MarksError, Target, apply_section_marks, check_total,
                                  fill_placeholder, swap_client)
 from tendersure.parser import parse_workbook, section_key

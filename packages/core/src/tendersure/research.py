@@ -14,6 +14,7 @@ topic and a country only.
 """
 
 import json
+import logging
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -24,6 +25,8 @@ from .llm import LLMError, make_llm
 from .parser import Sheet, normalise, section_key
 from .similarity import TfidfEmbedder, cosine
 from .validate import needs_names
+
+log = logging.getLogger("tendersure")
 
 RESEARCH = "research"
 KINDS = ("names", "licences", "questions", "documents")
@@ -210,7 +213,7 @@ class WebResearcher:
             raw = self.llm.complete_json(SYSTEM, build_prompt(topic, country, kinds), schema, "research",
                                          client=client, max_tokens=6000, search=True)
         except LLMError as e:
-            print(f"research: '{topic[:50]}' not researched on the web ({e})")
+            log.info(f"research: '{topic[:50]}' not researched on the web ({e})")
             return []
         sources = [f"{s['title']} | {s['uri']}" for s in self.llm.last_sources]
         if not sources:

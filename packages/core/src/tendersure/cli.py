@@ -9,13 +9,12 @@
 """
 
 import argparse
-import csv
-import glob
+import logging
 import os
 import re
 import sys
 from collections import Counter, defaultdict
-from typing import Dict, List
+from typing import List
 
 from . import categories as cat
 from . import glossary as gl
@@ -24,130 +23,35 @@ from . import naming
 from . import research as rs
 from . import yesno
 from . import category_llm as cl
-from .bank import Bank
 from .evaluate import evaluate, summarise
 from .llm import LLMError
 from .paths import current
 from .privacy import PrivacyError
-from .generate import (Generator, MarksError, Target, apply_section_marks, check_total, finalise, to_sheet,
-                       apply_research as generate_research)
-from .parser import Sheet, parse_workbook
-from .reports import load_decisions, write_bank, write_qa_report, write_validation_report
+from .generate import Generator, Target
+from .parser import Sheet
 from .similarity import Retriever
-from .schema import INDIVIDUAL, business_types
-from .validate import check_corpus, validate_sheet
 from . import trust
-from .writer import Writer
+from . import flows
+from .flows.common import groups_for, past_categories, research_tools
 
 
-
-
-def load_corpus(folder: str, cache: bool = None) -> List[Sheet]:
-    """Every workbook under `folder` (subfolders included, e.g. one per year).
-
-    Parsed sheets are cached per file and reused until the file changes, so a
-    corpus of years only costs a full parse once.
-    """
-    if cache is None:
-        cache = os.environ.get("TENDERSURE_NO_CACHE") != "1"
-    files = sorted(f for f in glob.glob(os.path.join(folder, "**", "*.xlsx"), recursive=True)
-                   if not os.path.basename(f).startswith("~$"))
-    if not os.path.isdir(folder):
-        sys.exit(f"corpus folder not found: {folder}\n  quote the path if it contains spaces")
-    if not files:
-        sys.exit(f"no .xlsx files in {folder}")
-    sheets = []
-    for f in files:
-        sheets.extend(_parse_cached(f) if cache else parse_workbook(f))
-    from .privacy import register_clients
-    register_clients(s.client for s in sheets)     # every client is anonymised in model calls
-    names = Counter(s.name for s in sheets)
-    for s in sheets:                       # the same tab name in two workbooks must stay distinct
-        if names[s.name] > 1:
-            s.name = f"{s.name} [{os.path.splitext(s.source_file)[0]}]"
-    return sheets
+def _note_source(a):
+    src = getattr(a, "source", None)
+    if src and os.path.isdir(src):
+        print(f"note: reading workbooks straight from '{src}'; run `ingest` to put them in the bank",
+              file=sys.stderr)
 
 
 def load_source(a):
     """Sheets for a command: from the bank (default), or straight from a folder.
 
     Returns (sheets, template_loader for the writer)."""
-    from .store import BankStore
-    src = getattr(a, "source", None)
-    if src and os.path.isdir(src):
-        print(f"note: reading workbooks straight from '{src}'; run `ingest` to put them in the bank",
-              file=sys.stderr)
-        return load_corpus(src), None
-    path = src or a.bank
-    if not os.path.exists(path):
-        sys.exit(f"no bank at {path}\n  build it first: python -m tendersure ingest \"<folder of workbooks>\"")
-    store = BankStore(path)
-    sheets = store.load_sheets()
-    if not sheets:
-        sys.exit(f"the bank at {path} is empty; run ingest first")
-    return sheets, store.template
-
-
-def _parse_cached(path: str) -> List[Sheet]:
-    import hashlib
-    import pickle
-    st = os.stat(path)
-    key = hashlib.sha1(f"{os.path.abspath(path)}|{st.st_mtime_ns}|{st.st_size}".encode()).hexdigest()
-    cached = os.path.join(current().cache, key + ".pkl")
-    if os.path.exists(cached):
-        try:
-            with open(cached, "rb") as fh:
-                return pickle.load(fh)
-        except Exception:
-            pass
-    sheets = parse_workbook(path)
-    os.makedirs(current().cache, exist_ok=True)
-    with open(cached, "wb") as fh:
-        pickle.dump(sheets, fh)
-    return sheets
-
-
-def _groups_for(sheets: List[Sheet], cats: List[cat.Category], client: str) -> Dict[str, str]:
-    """Advert group per past sheet, via the category number at the end of its code."""
-    by_num = {c.number: c.group for c in cats}
-    out = {}
-    for s in sheets:
-        if s.client != client or not s.code:
-            continue
-        digits = "".join(ch for ch in s.code.split("-")[-1].split("_")[-1] if ch.isdigit())
-        if digits and int(digits) in by_num:
-            out[s.name] = by_num[int(digits)]
-    return out
+    _note_source(a)
+    return flows.load_source(getattr(a, "source", None), a.bank)
 
 
 def cmd_ingest(a):
-    from .store import BankStore
-    if not os.path.isdir(a.corpus):
-        sys.exit(f"folder not found: {a.corpus}\n  quote the path if it contains spaces")
-    store = BankStore(a.bank)
-    st = store.ingest_folder(a.corpus)
-    print(f"bank {a.bank}: {st['added']} workbook(s) added ({st['sheets_added']} sheets), "
-          f"{st['unchanged']} already in the bank, {st['replaced']} replaced by a newer version")
-    sheets = store.load_sheets()
-    findings = [f for s in sheets for f in validate_sheet(s)] + check_corpus(sheets)
-    bank = Bank()
-    bank.ingest(sheets)
-    bank.finalise()
-    os.makedirs(a.out, exist_ok=True)
-    grades = trust.grade(sheets)
-    vr = write_validation_report(sheets, findings, os.path.join(a.out, "validation_report.xlsx"), grades)
-    br = write_bank(bank, os.path.join(a.out, "bank.xlsx"))
-    t = bank.tiers()
-    kinds = Counter(f.kind for f in findings)
-    print(f"{len(sheets)} sheets, {sum(len(s.rows) for s in sheets)} questions")
-    print(f"{len(findings)} findings ({kinds['platform']} platform, {kinds['silent']} silent)")
-    tiers = Counter(g.tier for g in grades.values())
-    print(f"sheets graded automatically: {tiers['clean']} clean, {tiers['correctable']} fixed on reuse, "
-          f"{tiers['quarantined']} quarantined (never copied), {tiers['superseded']} superseded - no review needed")
-    print(f"bank: {len(bank.entries)} questions (core {len(t['core'])}, common {len(t['common'])}, "
-          f"category {len(t['category'])}); {len(bank.conflicts())} cross-sheet disagreements (reference only: "
-          f"settled by client convention, or asked in a batch that uses them)")
-    print(f"wrote {vr}\nwrote {br}")
+    flows.ingest(a.corpus, a.bank, a.out)
 
 
 def cmd_categories(a):
@@ -188,14 +92,6 @@ def cmd_categories(a):
             print(f"  {c}")
 
 
-def _read_marks(path: str) -> Dict[str, Dict[str, float]]:
-    out: Dict[str, Dict[str, float]] = defaultdict(dict)
-    with open(path, newline="") as fh:
-        for row in csv.DictReader(fh):
-            out[row["code"].strip()][row["section"].strip()] = float(row["marks"])
-    return out
-
-
 def _need(path: str, what: str, how: str):
     if path and not os.path.exists(path):
         sys.exit(f"{what} not found: {path}\n  {how}")
@@ -205,45 +101,13 @@ CATEGORIES_HOW = ('create it first with the categories step, e.g.\n'
                   '  python -m tendersure categories "<notice.pdf>" --client ERCS --out data/ercs_categories.csv')
 
 
+def _model(a) -> flows.Model:
+    return flows.Model(a.model, getattr(a, "no_model", False))
+
+
 def _model_wanted(a):
     """The AI runs by default whenever a model is configured; --no-model turns it off."""
-    if getattr(a, "no_model", False):
-        return False, "--no-model given"
-    if a.model is not None:
-        return True, ""
-    from .llm import load_dotenv
-    load_dotenv()
-    provider = os.environ.get("TENDERSURE_PROVIDER", "openrouter").lower()
-    if provider == "gemini":
-        if not os.environ.get("GEMINI_API_KEY"):
-            return False, "no GEMINI_API_KEY in .env"
-        if os.environ.get("GEMINI_PAID_TIER", "").lower() != "yes":
-            return False, "GEMINI_PAID_TIER is not 'yes' (unpaid keys may expose prompts)"
-        return True, ""
-    if not os.environ.get("OPENROUTER_API_KEY"):
-        return False, "no model key in .env (see .env.example)"
-    return True, ""
-
-
-def _audience(path: str, sheets: List[Sheet]) -> "gating.Book":
-    """Who answers each question; seeded from the bank the first time."""
-    entries = gating.load(path)
-    if not entries:
-        entries = gating.seed(trust.usable(sheets, trust.grade(sheets)))
-        gating.save(entries, path)
-        print(f"audience: seeded {len(entries)} questions from the bank -> {path}")
-    return gating.Book(entries)
-
-
-def _glossary(path: str, sheets: List[Sheet]) -> "gl.Glossary":
-    """The team's glossary; seeded from the bank the first time."""
-    if os.path.exists(path):
-        return gl.Glossary(gl.load(path))
-    entries = gl.seed(trust.usable(sheets, trust.grade(sheets)))
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    gl.save(entries, path)
-    print(f"glossary: seeded {len(entries)} entries from the bank -> {path}")
-    return gl.Glossary(entries)
+    return _model(a).wanted()
 
 
 def cmd_learn(a):
@@ -287,63 +151,15 @@ def cmd_learn(a):
           + ("  (answer the Decision column, then: learn --review <file>)" if n or y else ""))
 
 
-def _past_categories(bank: str) -> List[str]:
-    """Category descriptions from past exercises, for suggested additions."""
-    if not os.path.exists(bank):
-        return []
-    from .store import BankStore
-    seen = {}
-    for s in BankStore(bank).load_sheets():
-        if s.description:
-            seen.setdefault(" ".join(s.description.lower().split()), s.description.strip())
-    return sorted(seen.values())
-
-
 def cmd_refine(a):
     """Spec 01: a draft category list -> revised list -> final list."""
-    from . import refine as rf
-    from .privacy import register_clients
-    register_clients([a.client])
-    use_model, why_not = _model_wanted(a)
     if a.apply:
-        drafts, lines = rf.read_revised(a.apply)
-        notes = [(ln, ln.comment) for ln in lines if ln.comment and ln.decision != "edit"]
-        final, excluded, problems = rf.apply_review(drafts, lines)
-        changes = rf.ModelRefiner(model=a.model or None).interpret(notes, a.client) if use_model and notes \
-            else ["" for _ in notes]
-        out = a.out or os.path.splitext(a.apply)[0] + "_final.xlsx"
-        rf.write_final(out, final, [(ln, c, ch) for (ln, c), ch in zip(notes, changes)])
-        print(f"refine: {len(drafts)} draft rows -> {len(final)} final categories "
-              f"({len(excluded)} lines removed, rejected or folded); {len(notes)} client comments listed -> {out}")
-        if a.categories_out:
-            cat.save(rf.to_categories(final, a.client, a.version), a.categories_out)
-            print(f"refine: categories table -> {a.categories_out} (the input of generate)")
-        for p in problems:
-            print(f"REVIEW PROBLEM: {p}")
+        flows.apply_file(a.apply, a.client, a.out, a.categories_out, a.version, _model(a))
         return
     if not a.draft:
         sys.exit("give a draft category list, or --apply <reviewed revised list>")
-    drafts = rf.read_draft(a.draft, a.sheet)
     target = tuple(int(x) for x in a.target.split("-")) if a.target else None
-    if not use_model:
-        print(f"refine: without a model ({why_not}): duplicates folded, overlaps raised as questions")
-    raw = rf.ModelRefiner(model=a.model or None).propose(drafts, a.client, _past_categories(a.bank), target) \
-        if use_model else None
-    lines = rf.check(raw, drafts, rf.groups_of(drafts))
-    table, bank, web = _research_tools(a, load_source(a)[0] if os.path.exists(a.bank) else [])
-    rs.research([ln.description for ln in lines if ln.status != rf.REPEATED], a.country or "",
-                ["names", "licences"], table, bank, web, a.client)
-    rf.attach_research(lines, table, a.country or "")
-    rs.save(table, a.research)
-    out = a.out or os.path.join(current().reports, os.path.splitext(os.path.basename(a.draft))[0] + " - Revised.xlsx")
-    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    rf.write_revised(out, drafts, lines, a.client, target)
-    kept = sum(ln.status != rf.REPEATED for ln in lines)
-    counts = Counter(ln.status for ln in lines)
-    print(f"refine: {len(drafts)} draft rows -> {kept} proposed categories"
-          + (f" (target {target[0]}-{target[1]})" if target else "") + "; "
-          + ", ".join(f"{n} {s}" for s, n in counts.most_common())
-          + f"; {sum(bool(ln.question) for ln in lines)} questions for the client -> {out}")
+    flows.propose_file(a.draft, a.client, a.sheet, target, a.out, a.bank, a.research, a.country or "", _model(a))
 
 
 def cmd_refine_evaluate(a):
@@ -354,7 +170,7 @@ def cmd_refine_evaluate(a):
     drafts = rf.read_draft(a.workbook, a.draft_tab)
     team = [d.description for d in rf.read_draft(a.workbook, a.final_tab)]
     use_model, why_not = _model_wanted(a)
-    raw = rf.ModelRefiner(model=a.model or None).propose(drafts, a.client, _past_categories(a.bank), None) \
+    raw = rf.ModelRefiner(model=a.model or None).propose(drafts, a.client, past_categories(a.bank), None) \
         if use_model else None
     lines = rf.check(raw, drafts, rf.groups_of(drafts))
     if a.out:
@@ -430,13 +246,7 @@ def cmd_check(a):
 
 def _research_tools(a, sheets: List[Sheet]):
     """The research table, the bank's knowledge and (with a model) the web."""
-    table = rs.load(a.research)
-    bank = rs.BankKnowledge(trust.usable(sheets, trust.grade(sheets))) if sheets else None
-    use_model, why_not = _model_wanted(a)
-    web = rs.WebResearcher(model=a.model or None) if use_model else None
-    if web is None:
-        print(f"research: our own data only ({why_not})")
-    return table, bank, web
+    return research_tools(a.research, sheets, _model(a))
 
 
 def cmd_research(a):
@@ -512,211 +322,16 @@ def cmd_generate(a):
           "run generate once without --review; it writes the QA file, which you then answer")
     _need(a.decisions, "decisions file", "it is reports/bank.xlsx, written by the ingest step")
     _need(a.marks, "marks file", "a CSV with columns code,section,marks")
-    sheets, template_loader = load_source(a)
-    cats = cat.load(a.categories)
-    if a.only:
-        wanted = {int(x) for x in a.only.split(",")}
-        cats = [c for c in cats if c.number in wanted]
-    groups = _groups_for(sheets, cat.load(a.categories), a.client)
-    decisions = load_decisions(a.decisions) if a.decisions else {}
-    marks = _read_marks(a.marks) if a.marks else {}
-    grades = trust.grade(sheets)
-    rulings, ruled = trust.load_rulings(a.rulings)
-    gen = Generator(sheets, Retriever(sheets, groups), decisions, grades, rulings)
-
-    plans, failed = [], []
-    for c in list(cats):
-        # spec 02 G7 / T19: the gate is TRUE exactly when individuals may apply
-        if c.gate_question != (INDIVIDUAL in business_types(c.applies_to)):
-            failed.append((c.code(a.prefix), f"categories table: Gate Question is {'TRUE' if c.gate_question else 'empty'} "
-                                             f"but Applies To ({', '.join(c.applies_to) or 'empty'}) "
-                                             f"{'lacks' if c.gate_question else 'includes'} {INDIVIDUAL}"))
-            cats.remove(c)
-    for c in cats:
-        code = c.code(a.prefix)
-        exclude = {s.name for s in sheets if s.code == code} if a.rebuild_existing else None
-        target = Target(code, c.description, a.client, c.group, a.client_name, c.sub_categories,
-                        c.requirements, c.eligibility, c.gate_question, business_types(c.applies_to))
-        try:
-            plan = gen.plan(target, exclude=exclude, marks=marks.get(code))
-            check_total(plan)
-        except MarksError as e:
-            failed.append((code, str(e)))
-            continue
-        plans.append(plan)
-
-    # Model proposals: replayed from the review file when applying a review
-    # (exactly what the reviewer saw, no new model call); otherwise asked for.
+    proposals = answers = None
     if a.review:
-        from .review import read_proposals
-        stored = read_proposals(a.review)
-        for p in plans:
-            p.proposal = stored.get(p.target.code)
-    use_model, why_not = _model_wanted(a)
-    if not use_model:
-        print(f"building without AI: {why_not}")
-    ai_cache, save_ai_cache = {}, None
-    if use_model:
-        import hashlib
-        import json
-        from .selectors import PROMPT_VERSION, ModelSelector, build_prompt
-        selector = ModelSelector(model=a.model or None)
-        # Every AI answer is saved the moment it arrives: a rerun after a crash
-        # (or with unchanged inputs) reuses it instead of paying again.
-        cache_path = os.path.join(current().cache, f"build_{a.client}_{selector.llm.model.replace('/', '_')}"
-                                            f"_v{PROMPT_VERSION}.json")
-        if os.path.exists(cache_path):
-            with open(cache_path) as fh:
-                ai_cache = json.load(fh)
-
-        def save_ai_cache():
-            os.makedirs(current().cache, exist_ok=True)
-            with open(cache_path, "w") as fh:
-                json.dump(ai_cache, fh)
-
-        asked = reused = 0
-        for p in plans:
-            if p.same_category or p.proposal is not None:
-                continue
-            key = f"{p.target.code}|{hashlib.sha1(build_prompt(p).encode()).hexdigest()[:12]}"
-            if key in ai_cache:
-                p.proposal = json.loads(json.dumps(ai_cache[key]))
-                reused += 1
-                continue
-            try:
-                prop = selector.propose(p)
-            except Exception as e:      # one failed category must not sink the batch
-                print(f"{p.target.code}: no model proposal ({e})")
-                continue
-            ai_cache[key] = json.loads(json.dumps(prop))
-            save_ai_cache()
-            asked += 1
-            print(f"{p.target.code}: {prop['model']} rewords {len(prop.get('reword', {}))} (applied), "
-                  f"proposes {len(prop['drop'])} removal(s), "
-                  f"{len(prop['add'])} addition(s), {len(prop['drafts'])} new question(s)"
-                  + (f"; ignored {len(prop['ignored'])} invalid" if prop["ignored"] else ""))
-        print(f"model proposals: {asked} new, {reused} reused from earlier runs")
-
-    items = None
-    if use_model and not a.review:
-        if a.no_ai_review:
-            from .review import auto_reword
-            items, n = auto_reword(plans)
-            if n:
-                print(f"reworded {n} copied question(s); removals and additions wait in the QA file")
-        else:
-            from .reviewer import ModelReviewer, ai_review
-            print("AI review: a second pass checks every proposal; only what both agree on is applied")
-            items, summary = ai_review(gen, plans, ModelReviewer(), cache=ai_cache, save=save_ai_cache)
-            print(f"AI review: {summary['answered']} decisions answered, {summary['disagreements']} "
-                  f"disagreement(s) kept as the client's past sheet had it, "
-                  f"{len(summary['rebalanced'])} sheet(s) rebalanced to 100 (all recorded in the QA file)")
-            new_rulings = [i.ruling for i in items if i.ruling]
-            if new_rulings:
-                trust.save_rulings(a.rulings, new_rulings)
-                print(f"saved {len(new_rulings)} client convention(s) settled by majority to {a.rulings}")
-    if a.review:
-        from .review import apply_answers, read_answers
-        items, log, problems = apply_answers(plans, read_answers(a.review), ruled)
-        new_rulings = [i.ruling for i in items if i.ruling]
-        if new_rulings:
-            trust.save_rulings(a.rulings, new_rulings)
-            print(f"saved {len(new_rulings)} standing ruling(s) to {a.rulings}")
-        for line in log:
-            print(f"review: {line}")
-        for line in problems:
-            print(f"REVIEW PROBLEM: {line}")
-
-    country = a.country or rs.country_of(a.prefix)
-    r_table, r_bank, r_web = _research_tools(a, sheets) if use_model or os.path.exists(a.research) \
-        else (rs.Table([]), None, None)
-    known = {e.acronym for e in gl.load(a.glossary)} if os.path.exists(a.glossary) else set()
-    rs.batch_research(plans, country, r_table, r_bank, r_web, a.client, known)
-    for p in plans:
-        generate_research(p, r_table, country)
-    if r_table.findings:
-        rs.save(r_table, a.research)
-    audience = _audience(a.audience, sheets)
-    donor_rows = gating.donors(trust.usable(sheets, grades), audience)
-    for p in plans:
-        gating.apply(p, audience, donor_rows)
-    for p in plans:
-        finalise(p)
-    book = yesno.load(a.yes_no)
-    judge = yesno.ModelJudge(model=a.model or None) if use_model else yesno.RuleJudge()
-    judged = yesno.settle(plans, book, judge)
-    if judged:
-        yesno.save(book, a.yes_no)
-        bad = sum(v.yes_is == "bad" for v in judged)
-        print(f"yes/no: judged {len(judged)} scored questions ({bad} where Yes is bad; "
-              f"{sum(v.status == yesno.RULE_DRAFTED for v in judged)} by keywords), saved as drafts in "
-              f"{a.yes_no}: confirm or change them there")
-    glossary = _glossary(a.glossary, sheets)
-    drafter = naming.ModelDrafter(model=a.model or None, examples=glossary.entries) if use_model \
-        else naming.RuleDrafter()
-    drafted = naming.name_documents(plans, glossary, drafter)
-    from . import learned_review as lr
-    n, y = lr.write_review(glossary, book, os.path.splitext(a.out)[0] + "_learned_review.xlsx")
-    if n or y:
-        print(f"learned drafts waiting for review: {n} name lines, {y} Yes/No lines -> "
-              f"{os.path.splitext(a.out)[0]}_learned_review.xlsx (answer it, then: learn --review <file>)")
-    if drafted:
-        gl.save(glossary.entries, a.glossary)
-        by_rules = sum(e.status == gl.RULE_DRAFTED for e in drafted)
-        print(f"glossary: named {len(drafted)} new documents ({by_rules} short names drafted by rules, "
-              f"the rest given or drafted by the model; acronyms by the letter rule), saved as drafts in "
-              f"{a.glossary}: confirm or change them there")
-
-    # Spec 02 G11: every sheet passes the check's content rules before it is
-    # written; a sheet with an error is listed, not written.
-    from . import check as ck
-    by_code = {c.code(a.prefix): c for c in cats}
-
-    def yes_is(rows, i):
-        v = book.lookup(trust.context_key(rows, i))
-        return v.yes_is if v else None
-    for p in list(plans):
-        errors = [f for f in ck.sheet_findings(to_sheet(p), a.client, by_code.get(p.target.code), True, yes_is)
-                  if f.severity == "error"]
-        if errors:
-            plans.remove(p)
-            rules = Counter(f.rule for f in errors)
-            failed.append((p.target.code, f"{len(errors)} check error(s): " + ", ".join(
-                f"{r} {n}" for r, n in rules.most_common()) + f" (first: {errors[0].message})"))
-
-    # Whatever happened above, a sheet that does not total 100 is listed, not
-    # written - and never stops the rest of the batch.
-    for p in list(plans):
-        try:
-            check_total(p)
-        except MarksError as e:
-            plans.remove(p)
-            failed.append((p.target.code, str(e)))
-
-    if not plans:
-        sys.exit("nothing to write: " + "; ".join(m for _, m in failed))
-    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-    writer = Writer(formulas=a.formulas, template_loader=template_loader)
-    if a.split_files:
-        base = os.path.splitext(a.out)[0]
-        for p in plans:
-            writer.write([p], f"{base}_{p.target.code}.xlsx")
-        print(f"wrote {len(plans)} files {base}_<code>.xlsx")
-    else:
-        writer.write(plans, a.out)
-        print(f"wrote {len(plans)} sheets -> {a.out}")
-    from .review import decision_items
-    items = items if items is not None else decision_items(plans)
-    qa = write_qa_report(plans, os.path.splitext(a.out)[0] + "_qa.xlsx", items)
-    open_items = [i for i in items if not i.answer and not i.status]
-    kinds = Counter(i.id[0] for i in open_items)
-    print(f"wrote {qa}")
-    print(f"Decisions tab: {len(items)} decisions, {len(items) - len(open_items)} settled; open: "
-          f"{kinds['Q']} questions, {kinds['A']} additions, {kinds['M']} marks, "
-          f"{kinds['C']} client conventions to settle, {kinds['N']} categories with no source, "
-          f"{kinds['T'] + kinds['F']} team-wide")
-    for code, msg in failed:
-        print(f"NOT WRITTEN {code}: {msg}")
+        from .review import read_answers, read_proposals
+        proposals, answers = read_proposals(a.review), read_answers(a.review)
+    _note_source(a)
+    flows.generate(flows.GenerateSettings(
+        a.categories, a.client, a.prefix, a.out, a.source, a.bank, a.client_name,
+        [int(x) for x in a.only.split(",")] if a.only else None, a.decisions, a.marks, a.rulings, a.research,
+        a.audience, a.yes_no, a.glossary, a.country, a.rebuild_existing, a.formulas, a.split_files,
+        not a.no_ai_review, _model(a), proposals, answers))
 
 
 def cmd_privacy_check(a):
@@ -729,7 +344,7 @@ def cmd_privacy_check(a):
     if a.only:
         wanted = {int(x) for x in a.only.split(",")}
         cats = [c for c in cats if c.number in wanted]
-    gen = Generator(sheets, Retriever(sheets, _groups_for(sheets, cats, a.client)), grades=trust.grade(sheets))
+    gen = Generator(sheets, Retriever(sheets, groups_for(sheets, cats, a.client)), grades=trust.grade(sheets))
     out = os.path.join(current().outbox, "preview")
     os.makedirs(out, exist_ok=True)
     checked, leaking, replaced = 0, [], Counter()
@@ -774,7 +389,7 @@ def cmd_evaluate_model(a):
     groups = {}
     if a.categories:
         _need(a.categories, "categories file", CATEGORIES_HOW)
-        groups = _groups_for(sheets, cat.load(a.categories), a.client or "ERCS")
+        groups = groups_for(sheets, cat.load(a.categories), a.client or "ERCS")
     gen = Generator(sheets, Retriever(sheets, groups), grades=trust.grade(sheets))
     jobs = model_jobs(gen, sheets, a.client)
     if a.limit:
@@ -816,9 +431,16 @@ def cmd_evaluate(a):
     sheets, template_loader = load_source(a)
     groups = {}
     if a.categories:
-        groups = _groups_for(sheets, cat.load(a.categories), a.client)
+        groups = groups_for(sheets, cat.load(a.categories), a.client)
     gen = Generator(sheets, Retriever(sheets, groups))
     print(summarise(evaluate(gen, sheets, a.client)))
+
+
+class _Print(logging.Handler):
+    """The flows' report lines, printed as they come (to the stdout of the moment, so tests can capture it)."""
+
+    def emit(self, record):
+        print(record.getMessage())
 
 
 def main(argv=None):
@@ -987,10 +609,18 @@ def main(argv=None):
     p.set_defaults(fn=cmd_evaluate)
 
     a = ap.parse_args(argv)
+    handler = _Print()
+    flows.log.addHandler(handler)
+    flows.log.setLevel(logging.INFO)
+    flows.log.propagate = False
     try:
         a.fn(a)
     except (LLMError, PrivacyError) as e:
         sys.exit(f"model step stopped: {e}")
+    except flows.FlowError as e:
+        sys.exit(str(e))
+    finally:
+        flows.log.removeHandler(handler)
 
 
 if __name__ == "__main__":

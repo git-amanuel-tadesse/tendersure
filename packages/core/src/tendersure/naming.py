@@ -12,6 +12,7 @@ A question that repeats in a sheet (an ID for each shareholder) is numbered
 on both names: "Shareholder ID or passport 1" / "SIDP 1", as references are.
 """
 
+import logging
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ from .generate import Plan, PlannedRow
 from .llm import LLMError, make_llm
 from .trust import context_key
 from .validate import needs_names
+
+log = logging.getLogger("tendersure")
 
 _SMALL = {"a", "an", "and", "as", "at", "by", "for", "from", "in", "of", "on", "or", "the", "to", "with"}
 _LEAD = {"please", "kindly", "attach", "upload", "provide", "submit", "include", "a", "an", "the", "your",
@@ -131,7 +134,7 @@ class ModelDrafter:
                                          client=client, max_tokens=8000)
             return {a["id"]: a["short_name"].strip() for a in raw["names"]}
         except LLMError as e:
-            print(f"naming: no model drafts for {client} ({e}); drafted by rules")
+            log.info(f"naming: no model drafts for {client} ({e}); drafted by rules")
             return {}
 
     def draft(self, needs: List[Need]) -> List[gl.Entry]:

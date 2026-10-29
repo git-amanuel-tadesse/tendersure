@@ -12,6 +12,7 @@ re-check after an edit asks only about what changed.
 
 import hashlib
 import json
+import logging
 import os
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
@@ -22,6 +23,8 @@ from .llm import LLMError, make_llm
 from .parser import parse_sheet
 from .paths import current
 from .validate import Finding
+
+log = logging.getLogger("tendersure")
 
 CHUNK = 60
 KINDS = ["answer type", "yes/no scoring", "category fit", "wording"]
@@ -73,7 +76,7 @@ def read(path: str, model: Optional[str] = None, llm=None, client: Optional[str]
         try:
             raw = llm.complete_json(SYSTEM, prompt, SCHEMA, "check_read", client=client, max_tokens=8000)
         except LLMError as e:
-            print(f"check: the AI read skipped {len(part)} questions ({e})")
+            log.info(f"check: the AI read skipped {len(part)} questions ({e})")
             continue
         found = defaultdict(list)
         for p in raw["problems"]:

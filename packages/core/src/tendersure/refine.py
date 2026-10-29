@@ -20,6 +20,7 @@ business decision: the tool reports it against a target, never forces it.
 """
 
 import csv
+import logging
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -33,6 +34,8 @@ from .categories import Category, category_kind
 from .llm import LLMError, make_llm
 from .schema import BUSINESS_TYPES, INDIVIDUAL
 from .similarity import TfidfEmbedder, cosine
+
+log = logging.getLogger("tendersure")
 
 KEPT, RENAMED, MERGED, SEPARATED, REPEATED = "Kept", "Renamed", "Merged", "Separated", "Repeated"
 ADDITIONAL, REMOVED = "Additional (suggested)", "Removed"
@@ -338,7 +341,7 @@ class ModelRefiner:
             return self.llm.complete_json(SYSTEM, build_prompt(drafts, past, target), SCHEMA,
                                           "category_refinement", client=client, max_tokens=32000)
         except LLMError as e:
-            print(f"refine: no model proposal ({e}); proposing by rules")
+            log.info(f"refine: no model proposal ({e}); proposing by rules")
             return None
 
     def interpret(self, comments: List[Tuple[Line, str]], client: str) -> List[str]:
@@ -355,7 +358,7 @@ class ModelRefiner:
                                          prompt, schema, "category_comments", client=client, max_tokens=8000)
             got = {a["id"]: a["change"] for a in raw["changes"]}
         except LLMError as e:
-            print(f"refine: comments not interpreted ({e})")
+            log.info(f"refine: comments not interpreted ({e})")
             got = {}
         return [got.get(i, "") for i in range(len(comments))]
 
