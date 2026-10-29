@@ -174,6 +174,15 @@ Suggested order: T72 -> T73 -> T74 (PSI's columns work offline), then T75 -> T76
 
 Suggested order: T77 -> T78 -> T79 (works from the CLI), then T80.
 
+## 9. Split and merge in the review (spec 09)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T81 | Line fields `split_into`, `merge_with`, `suggested_split`, `suggested_merge`; `apply_review` applies split and merge (pieces keep the line's rows and items, sub-category pieces have none; folded lines listed), bad ones are problems that change nothing; traceability holds. | 09 S1 | - | M | The S1 acceptance cases pass. |
+| T82 | Rule suggestions: merge from overlaps, split from the draft's sub-categories and from two procurement heads joined by 'and'. | 09 S2 | T81 | S | The suggested split / merge cases pass; none is applied unless chosen. |
+| T83 | Workbook: Split into, Merge with #, Suggested split / merge columns written and read back; Decision takes split / merge; Summary explains them. | 09 S3 | T81 | S | Round trip keeps both; an answered workbook applies like the browser. |
+| T84 | API and web: line change takes split_into / merge_with; Review table shows #, split editor (pieces, add / remove, from the suggestion), merge input with the overlap button; `make contract`. | 09 S4 | T81-T83 | M | A split and a merge done in the browser give the same final list as the workbook. |
+
 ## Suggested first slice
 
 T01 → T02 → T03 → T06 → T07: the new template plus the two fixes the team
