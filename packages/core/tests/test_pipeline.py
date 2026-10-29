@@ -2789,3 +2789,31 @@ def test_the_model_s_own_knowledge_comes_before_a_web_search(caplog):
     assert all(rs.NO_SOURCE in x for x in lines[0].research_sources)    # labelled: no page behind it
     rs.research(["Supply of Mosquito Nets"], "ET", ["names", "licences"], table, None, web)
     assert len(asked) == 1                                              # researched once
+
+
+def test_split_pieces_never_list_their_sibling_pieces_as_sub_categories():
+    from tendersure import refine as rf
+    ln = rf.Line("Provision of WASH Works", rf.KEPT, ["7"], "WORKS",
+                 sub_categories=["Borehole Drilling, Spring & Deep Well Works", "Solar-Powered Water Supply",
+                                 "Latrines & WASH Facilities", "Water Trucking"])
+    ln.decision, ln.split_into = "split", ["Provision of Borehole Drilling, Spring and Deep Well Works",
+                                           "Provision of Solar-Powered Water Supply & Pump Installation",
+                                           "Provision of Construction of Latrines and WASH Facilities"]
+    final, _, problems = rf.apply_review([rf.Draft("7", "Provision of WASH Works", "WORKS")], [ln])
+    assert problems == [] and [p.sub_categories for p in final] == [[], [], []]
+
+
+def test_when_the_draft_marks_individual_consultants_only_those_categories_include_them(tmp_path):
+    from tendersure import refine as rf
+    drafts = [rf.Draft("1", "Provision of Project Based Consultancy Services", "CONSULTANCY", individual=True),
+              rf.Draft("2", "Provision of Translation and Interpretation Services", "COMMUNICATION"),
+              rf.Draft("3", "Supply of Office Stationery", "GENERAL")]
+    lines = {ln.from_draft[0]: ln for ln in rf.check(None, drafts, rf.groups_of(drafts))}
+    assert lines["1"].gate_question                                    # the draft marks it
+    assert not lines["2"].gate_question and rf.INDIVIDUAL_ASK in lines["2"].question   # rules would: asked instead
+    assert lines["3"].applies_to == rf.COMPANIES and rf.INDIVIDUAL_ASK not in lines["3"].question
+    lines["2"].decision = "reject"
+    final, _, _ = rf.apply_review(drafts, list(lines.values()))
+    assert not next(ln for ln in final if ln.from_draft == ["2"]).gate_question   # back to the draft: still companies
+    unmarked = [rf.Draft("2", "Provision of Translation and Interpretation Services", "COMMUNICATION")]
+    assert rf.check(None, unmarked, rf.groups_of(unmarked))[0].gate_question       # no marks: the rules decide

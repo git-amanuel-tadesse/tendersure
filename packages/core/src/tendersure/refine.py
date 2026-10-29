@@ -559,10 +559,25 @@ def _carry_draft(ln: Line, by_id: Dict[str, Draft]):
     ln.question = " ".join([ln.question] + notes).strip()
 
 
+INDIVIDUAL_ASK = "Open to Individual Consultants too? (the draft names the categories that include them)"
+
+
+def _draft_decides_individuals(ln: Line, by_id: Dict[str, Draft]):
+    """When the draft marks which categories include Individual Consultants,
+    only those do; a wider opening by the rules or the model becomes a
+    question for the client."""
+    if INDIVIDUAL not in ln.applies_to or any(by_id[i].individual for i in ln.from_draft if i in by_id):
+        return
+    ln.applies_to = [b for b in ln.applies_to if b != INDIVIDUAL] or COMPANIES[:]
+    if INDIVIDUAL_ASK not in ln.question:
+        ln.question = f"{ln.question} {INDIVIDUAL_ASK}".strip()
+
+
 def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[str]]) -> List[Line]:
     """The model's proposal as lines the code stands behind (or the rules'
     proposal when there is none). Every draft row ends up on a line."""
     by_id = {d.id: d for d in drafts}
+    marked = any(d.individual for d in drafts)
     dups = duplicates(drafts)
     lines = rule_lines(drafts) if raw is None else \
         [ln for r in raw.get("lines", []) for ln in _line_from_model(r, by_id, dups)]
@@ -592,6 +607,8 @@ def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[
         ln.description = new
         ln.applies_to = [b for b in BUSINESS_TYPES if b in (ln.applies_to or rule_applies_to(ln.description))]
         _carry_draft(ln, by_id)
+        if marked:
+            _draft_decides_individuals(ln, by_id)
         _settle_eligibility(ln, by_id)
     order = {d.id: i for i, d in enumerate(drafts)}
     gpos = {g: i for i, g in enumerate(groups_order)}
@@ -811,9 +828,12 @@ def attach_research(lines: List[Line], table, country: str):
 
 # --- step B: apply the review ---------------------------------------------------
 
-def _original(d: Draft) -> Line:
+def _original(d: Draft, marked: bool = False) -> Line:
+    """The draft row as it was; `marked`: the draft names the categories
+    open to Individual Consultants, so only those are."""
     ln = Line(title_case(d.description), KEPT, [d.id], d.group, "decision: reject (back to the draft row)",
-              applies_to=rule_applies_to(d.description), eligibility=rule_eligibility(d.description))
+              applies_to=COMPANIES[:] if marked else rule_applies_to(d.description),
+              eligibility=rule_eligibility(d.description))
     _carry_draft(ln, {d.id: d})
     return ln
 
@@ -868,8 +888,11 @@ def _merged(ln: Line, others: List[Line]) -> Line:
 
 
 def _same(a: str, b: str) -> bool:
-    na, nb = " ".join(_words(a)), " ".join(_words(b))
-    return bool(na and nb) and (na in nb or nb in na)
+    """The same goods or services, whatever the verbs and small words:
+    "Provision of Borehole Drilling, Spring & Deep Well Works" and "Borehole
+    Drilling, Spring & Deep Well Works"."""
+    wa, wb = _words(_VERBS.sub(" ", a)), _words(_VERBS.sub(" ", b))
+    return bool(wa and wb) and len(wa & wb) / min(len(wa), len(wb)) >= 0.75
 
 
 def _pieces(ln: Line) -> List[Line]:
@@ -886,6 +909,7 @@ def _pieces(ln: Line) -> List[Line]:
 def apply_review(drafts: List[Draft], lines: List[Line]) -> Tuple[List[Line], List[Line], List[str]]:
     """Returns (final lines, excluded lines, problems)."""
     by_id = {d.id: d for d in drafts}
+    marked = any(d.individual for d in drafts)
     final, excluded, problems, undone = [], [], [], set()
     for ln in lines:
         if ln.decision == "split" and len({p.strip().lower() for p in ln.split_into if p.strip()}) < 2:
@@ -916,7 +940,7 @@ def apply_review(drafts: List[Draft], lines: List[Line]) -> Tuple[List[Line], Li
         if ln.status == SEPARATED and ln.from_draft[0] in undone_separations:
             if ln.from_draft[0] not in undone:
                 undone.add(ln.from_draft[0])
-                final.append(_original(by_id[ln.from_draft[0]]))
+                final.append(_original(by_id[ln.from_draft[0]], marked))
             excluded.append(ln)
         elif d == "remove":
             ln.status = REMOVED
@@ -924,7 +948,7 @@ def apply_review(drafts: List[Draft], lines: List[Line]) -> Tuple[List[Line], Li
         elif d == "reject":
             excluded.append(ln)
             if ln.status in (RENAMED, MERGED, REPEATED):
-                final += [_original(by_id[i]) for i in ln.from_draft if i in by_id]
+                final += [_original(by_id[i], marked) for i in ln.from_draft if i in by_id]
             elif ln.status == KEPT:
                 final.append(ln)
         elif d == "edit":
@@ -938,7 +962,10 @@ def apply_review(drafts: List[Draft], lines: List[Line]) -> Tuple[List[Line], Li
         else:
             final.append(ln)
     for ln in final:
-        ln.applies_to = [b for b in BUSINESS_TYPES if b in ln.applies_to] or rule_applies_to(ln.description)
+        ln.applies_to = [b for b in BUSINESS_TYPES if b in ln.applies_to] or \
+            (COMPANIES[:] if marked else rule_applies_to(ln.description))
+        if marked:                                   # also for a list proposed before this rule
+            _draft_decides_individuals(ln, by_id)
     gpos = {g: i for i, g in enumerate(groups_of(drafts))}
     final.sort(key=lambda ln: gpos.get(ln.group, len(gpos)))          # stable: keeps the review's order
     covered = {i for ln in final + excluded for i in ln.from_draft}
