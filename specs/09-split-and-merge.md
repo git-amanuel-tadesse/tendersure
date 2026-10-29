@@ -24,12 +24,18 @@ Agreed 2026-10-29:
 
 ## S1. Two more decisions
 
+**Split** means each piece becomes a category of its own: a line in the final
+list and its own sheet. **Merge** means the lines become one category: one
+line and one sheet. Neither turns a category into sub-categories, or
+sub-categories into categories, except as stated below.
+
 - **split.** The line becomes the pieces listed in *Split into*, one
   description each, in Title Case. Every piece keeps the line's draft rows,
   eligibility, Applies To and licence, HR and technical items.
-  - A piece named as one of the line's sub-categories has no sub-categories
-    of its own.
-  - The other pieces keep the sub-categories not used as pieces.
+  - When the line is split by its sub-categories, each one becomes a category
+    of its own, and so carries no sub-category question. ("Supply of Relief
+    Non-Food Items" split by its five items gives five categories.)
+  - Any other piece keeps the sub-categories that did not become categories.
   - A split into fewer than two pieces is a problem, and the line is kept.
 - **merge.** The lines listed in *Merge with #* (the revised list's #
   numbers) fold into this line.
