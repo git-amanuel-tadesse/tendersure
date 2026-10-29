@@ -2174,3 +2174,31 @@ def test_tidy_brings_stored_findings_up_to_the_rules_without_searching():
     assert t.lookup("licences", "Supply of x", "ET") is None                  # only generic: gone
     assert t.lookup("names", "Supply of x", "ET").sources == ["a | https://a/page"]
     assert t.lookup("licences", "y", "ET") is not None                         # the team's word stands
+
+
+def test_links_resolve_in_parallel_and_fall_back_to_get(monkeypatch):
+    import threading
+    import urllib.error
+    import urllib.request
+    from tendersure import research as rs
+    redirect = "https://vertexaisearch.cloud.google.com/grounding-api-redirect/"
+    seen = set()
+
+    def urlopen(req, timeout):
+        seen.add(threading.current_thread().name)
+        if req.get_method() == "HEAD":                         # this site refuses HEAD
+            raise urllib.error.URLError("method not allowed")
+
+        class Resp:
+            def geturl(self):
+                return "https://site.example/" + req.full_url.rsplit("/", 1)[1]
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+        return Resp()
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    links = [redirect + f"p{i}" for i in range(20)] + ["https://plain.example/x"]
+    got = rs.resolve_links(links)
+    assert got[redirect + "p7"] == "https://site.example/p7" and "https://plain.example/x" not in got
+    assert len(seen) > 1                                         # many at a time

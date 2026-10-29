@@ -126,20 +126,34 @@ _REDIRECT = "grounding-api-redirect"
 
 def resolve_link(uri: str, timeout: float = 8) -> str:
     """The page a Google grounding link redirects to - its own address lasts,
-    the redirect may expire. Only the link is requested; nothing else is
-    sent. On any failure the link is kept as it was."""
+    the redirect may expire. Only the link is requested (HEAD, then GET for a
+    page that refuses HEAD; the body is never read); nothing else is sent. On
+    any failure the link is kept as it was."""
     import urllib.error
     import urllib.request
     if _REDIRECT not in uri:
         return uri
-    try:
-        with urllib.request.urlopen(urllib.request.Request(uri, method="HEAD"), timeout=timeout) as resp:
-            return resp.geturl() or uri
-    except urllib.error.HTTPError as e:              # the page refused HEAD, but the redirect was followed
-        final = e.geturl() or uri
-        return uri if _REDIRECT in final else final
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-        return uri
+    for method in ("HEAD", "GET"):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(uri, method=method), timeout=timeout) as resp:
+                final = resp.geturl()
+        except urllib.error.HTTPError as e:          # the page answered with an error, after the redirect
+            final = e.geturl()
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            continue
+        if final and _REDIRECT not in final:
+            return final
+    return uri
+
+
+def resolve_links(uris, resolve=resolve_link, workers: int = 16) -> Dict[str, str]:
+    """Redirect link -> the page's own address, many at a time."""
+    from concurrent.futures import ThreadPoolExecutor
+    todo = list(dict.fromkeys(u for u in uris if _REDIRECT in u))
+    if not todo:
+        return {}
+    with ThreadPoolExecutor(min(workers, len(todo))) as pool:
+        return dict(zip(todo, pool.map(resolve, todo)))
 
 
 def _subject(text: str) -> str:
@@ -250,7 +264,8 @@ class WebResearcher:
         except LLMError as e:
             log.info(f"research: '{topic[:50]}' not researched on the web ({e})")
             return []
-        sources = list(dict.fromkeys(f"{s['title']} | {self.resolve(s['uri'])}" for s in self.llm.last_sources))
+        pages = resolve_links([s["uri"] for s in self.llm.last_sources], self.resolve)
+        sources = list(dict.fromkeys(f"{s['title']} | {pages.get(s['uri'], s['uri'])}" for s in self.llm.last_sources))
         out = []
         for k in kinds if sources else []:
             value = raw.get(k)
@@ -295,6 +310,8 @@ def tidy(table: Table, resolve=resolve_link) -> Tuple[int, int]:
     replaced by the pages' own addresses. Confirmed findings are the team's
     and are left alone. Returns (findings dropped, links resolved)."""
     dropped = resolved = 0
+    pages = resolve_links([src.partition(" | ")[2] for f in table.findings if f.status != CONFIRMED
+                           for src in f.sources], resolve)
     for f in list(table.findings):
         if f.status == CONFIRMED:
             continue
@@ -308,7 +325,7 @@ def tidy(table: Table, resolve=resolve_link) -> Tuple[int, int]:
         links = []
         for src in f.sources:
             title, sep, uri = src.partition(" | ")
-            new_uri = resolve(uri) if sep else uri
+            new_uri = pages.get(uri, uri) if sep else uri
             resolved += new_uri != uri
             links.append(f"{title} | {new_uri}" if sep else src)
         f.sources = list(dict.fromkeys(links))
