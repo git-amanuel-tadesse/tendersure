@@ -7,3 +7,29 @@
 
 [tool.pytest.ini_options]
 testpaths = ["packages/core/tests", "apps/cli/tests"]
+
+# Who may import whom (spec 06 M1), checked by `make test` (lint-imports).
+# apps/* are adapters; the logic lives in packages/core.
+[tool.importlinter]
+root_packages = ["tendersure", "tendersure_cli"]
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Core knows nothing above it: no app, no argparse, no web framework"
+type = "forbidden"
+source_modules = ["tendersure"]
+forbidden_modules = ["tendersure_cli", "argparse", "flask"]
+
+[[tool.importlinter.contracts]]
+name = "Apps reach core only through tendersure.flows"
+type = "forbidden"
+source_modules = ["tendersure_cli"]
+forbidden_modules = ["tendersure.*"]
+ignore_imports = ["tendersure_cli.** -> tendersure.flows"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "Only apps call the flows: no rule module imports tendersure.flows"
+type = "protected"
+protected_modules = ["tendersure.flows"]
+allowed_importers = ["tendersure_cli"]

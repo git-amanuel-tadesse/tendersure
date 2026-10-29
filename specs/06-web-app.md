@@ -79,9 +79,17 @@ apps/web ──▶ packages/api-client ──HTTP──▶ apps/api ──▶ te
   error types), never the rule modules directly. Neither imports the other.
 - **web** reaches the backend only through `api-client`; no hand-written
   `fetch` to `/api` elsewhere, no Python types copied by hand.
-- These rules are checked, not just written down: `import-linter` contracts
-  for the Python side (part of `make test`), an ESLint
-  `no-restricted-imports` / `no-restricted-globals` rule for the web side.
+- These rules are checked, not just written down. On the Python side,
+  `import-linter` contracts in the root `pyproject.toml` run as part of
+  `make test` (`make imports` alone):
+  - core imports no app, no argparse and no web framework;
+  - apps import only `tendersure.flows` from core, checking direct imports only,
+    since flows itself imports the rules;
+  - only apps import `tendersure.flows`, so no rule module reaches up;
+  - the API and the CLI are independent of each other, a contract added with
+    the API.
+  On the web side, an ESLint `no-restricted-imports` / `no-restricted-globals`
+  rule does the same job.
 
 ### M2. The contract between api and web
 

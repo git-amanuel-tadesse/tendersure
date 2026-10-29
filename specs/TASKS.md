@@ -6,7 +6,7 @@ with no dependency between them can be built in any order.
 
 Size: **S** under half a day, **M** about a day, **L** two days or more.
 
-**Status (2026-10-29): T01-T41 are done; T42-T48 (research) are built; T49-T53 (web app, 6a: monorepo, Paths, flows, apps/cli) are built.** The regenerated ERCS
+**Status (2026-10-29): T01-T41 are done; T42-T48 (research) are built; T49-T54 (web app, 6a: monorepo, Paths, flows, apps/cli, import contracts) are built.** The regenerated ERCS
 batch meets the spec 02 acceptance list and `check` finds 0 errors on it;
 see SPEC.md section 7 for the numbers. T09 needed no fix: the notice's five
 sub-category lists were already read correctly.
@@ -118,7 +118,7 @@ and the service layer land first, so the CLI and the API share every step.
 | T51 | `tendersure.flows`: ingest, refine (propose, apply) and generate orchestration out of `cli.py`; progress callback (incl. the 5 fallback prints), result dataclasses, errors instead of `sys.exit`. | 06 W1 | T50 | L | An ERCS generate and a Red Cross refine give identical workbooks before and after. |
 | T52 | Generation takes `proposals` and `answers` in memory; reading a QA file fills the same dicts. | 06 W1 | T51 | S | Answers from a dict and from the QA file give the same workbook. |
 | T53 | `apps/cli` (`tendersure_cli`, console script `tendersure`): argparse and printing only, over `flows`; `cli.py` leaves core. | 06 W1, M1 | T51 | M | Every README command runs as `tendersure …` with the same output; core has no argparse import. |
-| T54 | Import contracts (import-linter): core imports no Flask/argparse and no app; apps import only `tendersure.flows`; api and cli never import each other. Wired into `make test`. | 06 M1 | T53 | S | A deliberate forbidden import fails `make test`. |
+| T54 | Import contracts (import-linter): core imports no Flask/argparse and no app; apps import only `tendersure.flows`; only apps import flows; api and cli never import each other (added with the API in T55). Wired into `make test`. | 06 M1 | T53 | S | A deliberate forbidden import fails `make test`. |
 
 ### 6b. API
 
