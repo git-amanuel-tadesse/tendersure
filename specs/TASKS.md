@@ -163,6 +163,17 @@ the smaller flow), then T61, T62, T68, T69.
 
 Suggested order: T72 -> T73 -> T74 (PSI's columns work offline), then T75 -> T76.
 
+## 8. The client's benchmark criteria (spec 08)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T77 | `benchmark` module: load a workbook as the exercise client's tabs (any code or client on them ignored), check each (total 100, structure errors), report usable / refused with reasons. | 08 B1 | - | S | The synthetic three-tab benchmark: one usable, the 98 tab refused with its total, the coded tab usable under the exercise's client. |
+| T78 | The map: propose group (+ kind) -> tab by shared words, else by content, one line per kind in a mixed group; read / write the CSV, keeping corrected lines. | 08 B2 | T77 | S | The proposal matches by word, by content, and splits a mixed group. |
+| T79 | Generation from a mapped tab: `Generator.plan` takes the skeleton, rows not flagged as category-specific; flows `benchmark` / `benchmark_map` settings; refused or unmapped -> bank with a note; QA names the tab; CLI `--benchmark`, `--benchmark-map`. | 08 B3 | T78 | M | A mapped category's section marks equal the tab's, HR roles keep the tab's role marks, the check passes. |
+| T80 | API and web: benchmark upload per exercise, its tab report, the map table (proposed, editable), generation runs use them. | 08 B1, B2 | T79 | M | Upload, correct one map line and generate in the browser; the run's sheets come from the mapped tabs. |
+
+Suggested order: T77 -> T78 -> T79 (works from the CLI), then T80.
+
 ## Suggested first slice
 
 T01 → T02 → T03 → T06 → T07: the new template plus the two fixes the team
