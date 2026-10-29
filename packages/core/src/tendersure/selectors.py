@@ -24,6 +24,7 @@ details; see privacy.py). Works with any configured backend (see llm.py).
 
 from typing import Optional
 
+from . import brief as cb
 from .llm import make_llm
 from .generate import Plan
 from .parser import normalise, section_key
@@ -37,30 +38,33 @@ The draft questionnaire was copied from the client's most similar past category.
 3. Which SUGGESTED rows the new category needs. Suggestions come from other similar categories. Propose one only if it tests something this category genuinely needs.
 4. Genuinely new questions, only for a clear gap neither the draft nor the suggestions cover: a licence, certification, equipment, method or qualification specific to this category. Match the wording style of the existing questions. Most categories need zero to three; a category with no close past match may need more.
 
-Never set marks: marks are the client's decision. Answer types: 1 text, 2 single select, 3 multi select, 4 yes/no, 5 attachment. A question asking for a document is type 5. Give options only for types 2 and 3, comma-separated. Keep each reason to one short sentence."""
+Never set marks: marks are the client's decision. Answer types: 1 text, 2 single select, 3 multi select, 4 yes/no, 5 attachment. A question asking for a document is type 5. Give options only for types 2 and 3, comma-separated. Keep each reason to one short sentence.
+
+When the client's brief is given, it comes first: propose what it asks for this category, over what past questionnaires suggest. Set from_brief on each proposal made because of it. List under brief_not_applied what the brief asks that you cannot propose here (marks, a rule above, rows that are not flagged), with the reason. Without a brief, from_brief is false and brief_not_applied is empty."""
 
 SECTIONS = [k for _, k in SECTION_KEYS]
 # Never removed by a model (see schema.PROTECTED_SECTIONS).
 PROTECTED = PROTECTED_SECTIONS
 # Bump when the prompt or schema changes, so saved evaluations are not mixed up.
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 
 SCHEMA = {
     "type": "object",
     "properties": {
         "drop": {"type": "array", "items": {
             "type": "object",
-            "properties": {"row": {"type": "integer"}, "reason": {"type": "string"}},
-            "required": ["row", "reason"], "additionalProperties": False}},
+            "properties": {"row": {"type": "integer"}, "reason": {"type": "string"}, "from_brief": {"type": "boolean"}},
+            "required": ["row", "reason", "from_brief"], "additionalProperties": False}},
         "reword": {"type": "array", "items": {
             "type": "object",
             "properties": {"row": {"type": "integer"}, "criteria": {"type": "string"},
-                           "reason": {"type": "string"}},
-            "required": ["row", "criteria", "reason"], "additionalProperties": False}},
+                           "reason": {"type": "string"}, "from_brief": {"type": "boolean"}},
+            "required": ["row", "criteria", "reason", "from_brief"], "additionalProperties": False}},
         "add": {"type": "array", "items": {
             "type": "object",
-            "properties": {"suggestion": {"type": "integer"}, "reason": {"type": "string"}},
-            "required": ["suggestion", "reason"], "additionalProperties": False}},
+            "properties": {"suggestion": {"type": "integer"}, "reason": {"type": "string"},
+                           "from_brief": {"type": "boolean"}},
+            "required": ["suggestion", "reason", "from_brief"], "additionalProperties": False}},
         "drafts": {"type": "array", "items": {
             "type": "object",
             "properties": {
@@ -69,18 +73,23 @@ SCHEMA = {
                 "answer_type": {"type": "integer", "description": "1 to 5"},
                 "options": {"type": "string"},
                 "reason": {"type": "string"},
+                "from_brief": {"type": "boolean"},
             },
-            "required": ["section", "criteria", "answer_type", "options", "reason"],
+            "required": ["section", "criteria", "answer_type", "options", "reason", "from_brief"],
             "additionalProperties": False}},
+        "brief_not_applied": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"request": {"type": "string"}, "why": {"type": "string"}},
+            "required": ["request", "why"], "additionalProperties": False}},
     },
-    "required": ["drop", "reword", "add", "drafts"],
+    "required": ["drop", "reword", "add", "drafts", "brief_not_applied"],
     "additionalProperties": False,
 }
 
 
 def build_prompt(plan: Plan) -> str:
     t = plan.target
-    lines = [
+    lines = cb.prompt_lines(t.brief) + [
         f"NEW CATEGORY: {t.code}: {t.description}",
         f"Group in the client's notice: {t.group or 'unknown'}",
     ]
@@ -128,7 +137,10 @@ def normalise_proposal(plan: Plan, raw: dict, model: str) -> dict:
     drop anything invalid: only flagged rows may be proposed for removal,
     only existing suggestions for addition, only well-formed drafts."""
     from .review import qkey
-    out = {"model": model, "drop": {}, "reword": {}, "add": [], "drafts": [], "ignored": []}
+    out = {"model": model, "drop": {}, "reword": {}, "add": [], "drafts": [], "ignored": [],
+           "brief_not_applied": [f"{b.get('request', '')}: {b.get('why', '')}" for b in raw.get("brief_not_applied", [])
+                                 if b.get("request")]}
+    why = lambda d: cb.labelled(d.get("reason", ""), d.get("from_brief"))
 
     def flagged(i, what):
         p = plan.rows[i] if isinstance(i, int) and 0 <= i < len(plan.rows) else None
@@ -146,7 +158,7 @@ def normalise_proposal(plan: Plan, raw: dict, model: str) -> dict:
             out["ignored"].append(f"reword of row {d.get('row')}: no new wording")
             continue
         out["reword"][qkey(section_key(p.row.section), normalise(p.row.criteria))] = \
-            {"text": text, "reason": d.get("reason", "")}
+            {"text": text, "reason": why(d)}
     for d in raw.get("drop", []):
         p = flagged(d.get("row"), "drop")
         if p is None:
@@ -158,7 +170,7 @@ def normalise_proposal(plan: Plan, raw: dict, model: str) -> dict:
             continue
         if k in out["reword"]:
             continue                      # rewording was also proposed: the gentler change wins
-        out["drop"][k] = d.get("reason", "")
+        out["drop"][k] = why(d)
     for a in raw.get("add", []):
         j = a.get("suggestion")
         if not (isinstance(j, int) and 0 <= j < len(plan.suggestions)):
@@ -166,13 +178,14 @@ def normalise_proposal(plan: Plan, raw: dict, model: str) -> dict:
             continue
         s = plan.suggestions[j]
         out["add"].append({"source": s.source, "section": s.section, "text": s.row.criteria,
-                           "reason": a.get("reason", "")})
+                           "reason": why(a)})
     for d in raw.get("drafts", []):
         if d.get("section") not in SECTIONS or d.get("answer_type") not in ANSWER_TYPES \
                 or not str(d.get("criteria", "")).strip():
             out["ignored"].append(f"malformed draft {str(d)[:80]}")
             continue
-        out["drafts"].append({k: d[k] for k in ("section", "criteria", "answer_type", "options", "reason")})
+        out["drafts"].append({**{k: d[k] for k in ("section", "criteria", "answer_type", "options")},
+                              "reason": why(d)})
     return out
 
 

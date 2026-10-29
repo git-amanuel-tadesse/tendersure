@@ -1,6 +1,8 @@
 /** The few building blocks every page uses; Tailwind only, no component library. */
 import { ApiError } from "@tendersure/api-client";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type {
+  ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes,
+} from "react";
 
 export const cx = (...xs: (string | false | null | undefined)[]) => xs.filter(Boolean).join(" ");
 
@@ -92,6 +94,10 @@ const control =
 
 export const Input = (props: InputHTMLAttributes<HTMLInputElement>) => (
   <input {...props} className={cx(control, props.className)} />
+);
+
+export const Textarea = (props: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
+  <textarea {...props} className={cx(control, props.className)} />
 );
 
 export const Select = (props: SelectHTMLAttributes<HTMLSelectElement>) => (

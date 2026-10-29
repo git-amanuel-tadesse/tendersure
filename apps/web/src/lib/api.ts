@@ -21,6 +21,7 @@ export const keys = {
   bank: ["bank"] as const,
   exercises: ["exercises"] as const,
   exercise: (id: string) => ["exercise", id] as const,
+  brief: (id: string) => ["brief", id] as const,
   refine: (id: string) => ["refine", id] as const,
   categories: (id: string) => ["categories", id] as const,
   runs: (id: string) => ["runs", id] as const,
@@ -44,6 +45,18 @@ export const useExercises = () =>
 
 export const useExercise = (id: string) =>
   useQuery({ queryKey: keys.exercise(id), queryFn: () => unwrap(api.GET("/api/exercises/{exercise_id}", path(id))) });
+
+/** The client's brief: one per exercise, read first by every model step (spec 07 B). */
+export const useBrief = (id: string) =>
+  useQuery({ queryKey: keys.brief(id), queryFn: () => unwrap(api.GET("/api/exercises/{exercise_id}/brief", path(id))) });
+
+export function useSetBrief(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => unwrap(api.PUT("/api/exercises/{exercise_id}/brief", { ...path(id), body: { text } })),
+    onSuccess: (b) => qc.setQueryData(keys.brief(id), b),
+  });
+}
 
 export function useCreateExercise() {
   const qc = useQueryClient();

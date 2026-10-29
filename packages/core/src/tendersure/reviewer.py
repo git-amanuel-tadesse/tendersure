@@ -25,6 +25,7 @@ the QA report is an audit trail, not a to-do list. Marks are never touched.
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
+from . import brief as cb
 from .evaluate import _in_sheet
 from .generate import Generator, Plan
 from .llm import make_llm
@@ -44,7 +45,7 @@ SYSTEM = """You review a supplier prequalification questionnaire that was adapte
 - edit: the change is right in spirit but the wording should be different; give the corrected question text
 - remove (REWORD decisions only): rewording cannot save it; the question's whole purpose does not apply to this category
 
-Judge each on its own. Use the evidence given: if past questionnaires on similar topics ask a question, removing it is probably wrong; if none do, removing it is probably right. Added questions must test something this category genuinely needs. Rewordings must keep the question's meaning and only change what ties it to the old category; a question no past questionnaire on a similar topic asks is often better removed than reworded. Keep each reason to one short sentence."""
+Judge each on its own. Use the evidence given: if past questionnaires on similar topics ask a question, removing it is probably wrong; if none do, removing it is probably right. Added questions must test something this category genuinely needs. Rewordings must keep the question's meaning and only change what ties it to the old category; a question no past questionnaire on a similar topic asks is often better removed than reworded. When the client's brief is given, a change it asks for is right unless it breaks a rule it lists. Keep each reason to one short sentence."""
 
 SCHEMA = {
     "type": "object",
@@ -111,7 +112,8 @@ def decisions_for(plan: Plan, items: List[Item], gen: Generator) -> List[dict]:
 
 def build_prompt(plan: Plan, decisions: List[dict]) -> str:
     t = plan.target
-    lines = [f"NEW CATEGORY: {t.description}", f"Group in the client's notice: {t.group or 'unknown'}"]
+    lines = cb.prompt_lines(t.brief) + [f"NEW CATEGORY: {t.description}",
+                                        f"Group in the client's notice: {t.group or 'unknown'}"]
     if t.requirements:
         lines.append(f"The client's requirements for this category: {t.requirements}")
     lines += [f"Adapted from the past category: {plan.skeleton.sheet.description}", "", "DECISIONS:"]

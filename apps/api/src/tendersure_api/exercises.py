@@ -50,6 +50,12 @@ class ExercisePath(BaseModel):
     exercise_id: str
 
 
+class Brief(BaseModel):
+    """What the client says it is looking for: read first by every model step (above past
+    questionnaires; the template rules still apply). Empty when there is none."""
+    text: str = ""
+
+
 class FilePath(BaseModel):
     exercise_id: str
     path: str
@@ -87,6 +93,17 @@ def create_exercise(body: NewExercise):
 @bp.get("/<exercise_id>", responses={200: ExerciseDetail})
 def get_exercise(path: ExercisePath):
     return _detail(path.exercise_id)
+
+
+@bp.get("/<exercise_id>/brief", responses={200: Brief})
+def get_brief(path: ExercisePath):
+    return Brief(text=_call(store().brief, path.exercise_id)).model_dump()
+
+
+@bp.put("/<exercise_id>/brief", responses={200: Brief})
+def set_brief(path: ExercisePath, body: Brief):
+    """Saved for the exercise's next refinement and generation runs; empty text removes it."""
+    return Brief(text=_call(store().set_brief, path.exercise_id, body.text)).model_dump()
 
 
 @bp.post("/<exercise_id>/files", responses={201: StoredFile})

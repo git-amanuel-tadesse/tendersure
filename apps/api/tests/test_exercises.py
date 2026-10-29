@@ -102,3 +102,16 @@ def test_the_default_store_is_in_the_project_home():
 def test_exercise_ids_are_readable_slugs(name, eid):
     from tendersure_api.workspaces import slug
     assert slug(name) == eid
+
+
+def test_the_brief_is_kept_with_the_exercise_until_cleared(client, workspaces):
+    eid = _create(client)["id"]
+    assert client.get(f"/api/exercises/{eid}/brief").json == {"text": ""}
+    r = client.put(f"/api/exercises/{eid}/brief", json={"text": "  Works need G5 contractors.  "}, headers=W)
+    assert r.status_code == 200 and r.json == {"text": "Works need G5 contractors."}
+    assert (workspaces / eid / "brief.txt").read_text() == "Works need G5 contractors."
+    assert client.get(f"/api/exercises/{eid}/brief").json["text"] == "Works need G5 contractors."
+    assert client.put(f"/api/exercises/{eid}/brief", json={"text": "x"}).status_code == 403     # no header
+    assert client.put(f"/api/exercises/{eid}/brief", json={"text": "x" * 20001}, headers=W).status_code == 400
+    client.put(f"/api/exercises/{eid}/brief", json={"text": ""}, headers=W)
+    assert not (workspaces / eid / "brief.txt").exists()

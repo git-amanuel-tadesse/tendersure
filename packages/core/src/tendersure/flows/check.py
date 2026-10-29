@@ -36,7 +36,7 @@ class CheckResult:
 
 def check(workbook: str, client: Optional[str] = None, categories: Optional[str] = None,
           against: Optional[str] = None, yes_no: Optional[str] = None, out: Optional[str] = None,
-          model: Model = Model()) -> CheckResult:
+          model: Model = Model(), brief: str = "") -> CheckResult:
     from .. import check as ck
     cats = cat.load(categories) if categories else None
     yes_is = None
@@ -48,7 +48,7 @@ def check(workbook: str, client: Optional[str] = None, categories: Optional[str]
     findings = ck.check_workbook(workbook, client, cats, against, yes_is)
     if model.wanted()[0]:
         from .. import check_ai
-        findings += check_ai.read(workbook, model.name, client=client)
+        findings += check_ai.read(workbook, model.name, client=client, brief=brief)
     out = out or os.path.join(current().reports, os.path.splitext(os.path.basename(workbook))[0] + "_check.xlsx")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     write_report(findings, out)

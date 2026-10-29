@@ -30,6 +30,7 @@ from typing import Dict, List, Optional, Tuple
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
+from . import brief as cb
 from .categories import Category, category_kind
 from .llm import LLMError, make_llm
 from .schema import BUSINESS_TYPES, INDIVIDUAL
@@ -394,7 +395,10 @@ For each line also give, where they apply:
   translation, professional services).
 
 Under "additional", suggest categories common in comparable past exercises (listed below) that this
-client's draft lacks, each with its reason and the group it belongs to. Suggest few, only clear gaps."""
+client's draft lacks, each with its reason and the group it belongs to. Suggest few, only clear gaps.
+
+When the client's brief is given, it comes first. Set from_brief on a line or addition you made because of
+it; never remove a category for it either."""
 
 SCHEMA = {"type": "object", "required": ["lines", "additional"], "properties": {
     "lines": {"type": "array", "items": {"type": "object", "required": ["from", "status", "description"],
@@ -404,16 +408,18 @@ SCHEMA = {"type": "object", "required": ["lines", "additional"], "properties": {
         "description": {"type": "string"}, "reason": {"type": "string"}, "question": {"type": "string"},
         "sub_categories": {"type": "array", "items": {"type": "string"}},
         "eligibility": {"type": "array", "items": {"type": "string"}},
-        "applies_to": {"type": "array", "items": {"type": "string", "enum": BUSINESS_TYPES}}}}},
+        "applies_to": {"type": "array", "items": {"type": "string", "enum": BUSINESS_TYPES}},
+        "from_brief": {"type": "boolean"}}}},
     "additional": {"type": "array", "items": {"type": "object", "required": ["description", "reason"],
                                               "properties": {"description": {"type": "string"},
                                                              "group": {"type": "string"},
-                                                             "reason": {"type": "string"}}}}}}
+                                                             "reason": {"type": "string"},
+                                                             "from_brief": {"type": "boolean"}}}}}}
 
 
-def build_prompt(drafts: List[Draft], past: List[str], target: Optional[Tuple[int, int]]) -> str:
+def build_prompt(drafts: List[Draft], past: List[str], target: Optional[Tuple[int, int]], brief: str = "") -> str:
     dups = duplicates(drafts)
-    lines = [f"DRAFT ({len(drafts)} rows; id | group | description):"]
+    lines = cb.prompt_lines(brief) + [f"DRAFT ({len(drafts)} rows; id | group | description):"]
     lines += [f"  {d.id} | {d.group or '-'} | {d.description}" for d in drafts]
     lines += ["", "FOUND BY CODE (check them):"]
     lines += [f"  {a} looks like a duplicate of {b}" for a, b in dups.items()]
@@ -430,9 +436,9 @@ class ModelRefiner:
         self.llm = llm or make_llm(model=model)
 
     def propose(self, drafts: List[Draft], client: str, past: List[str],
-                target: Optional[Tuple[int, int]]) -> Optional[dict]:
+                target: Optional[Tuple[int, int]], brief: str = "") -> Optional[dict]:
         try:
-            return self.llm.complete_json(SYSTEM, build_prompt(drafts, past, target), SCHEMA,
+            return self.llm.complete_json(SYSTEM, build_prompt(drafts, past, target, brief), SCHEMA,
                                           "category_refinement", client=client, max_tokens=32000)
         except LLMError as e:
             log.info(f"refine: no model proposal ({e}); proposing by rules")
@@ -468,7 +474,7 @@ def _line_from_model(raw: dict, by_id: Dict[str, Draft], dups: Dict[str, str]) -
     ids = [i for i in dict.fromkeys(str(x) for x in raw.get("from", [])) if i in by_id]
     if not ids:
         return []
-    status, reason = raw["status"], (raw.get("reason") or "").strip()
+    status, reason = raw["status"], cb.labelled(raw.get("reason"), raw.get("from_brief"))
     d0 = by_id[ids[0]]
     line = Line(" ".join(raw["description"].split()) or d0.description, status, ids, d0.group, reason,
                 (raw.get("question") or "").strip(), _clean(raw.get("sub_categories")), [],
@@ -550,7 +556,7 @@ def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[
             if desc and desc.lower() not in known and \
                     max((_same_text(desc, d.description) for d in drafts), default=0) < 0.8:
                 lines.append(Line(desc, ADDITIONAL, [], names.get((a.get("group") or "").lower()),
-                                  a["reason"].strip()))
+                                  cb.labelled(a["reason"], a.get("from_brief"))))
     for ln in lines:
         new = title_case(ln.description)
         if new != ln.description and ln.status == KEPT:
@@ -617,7 +623,7 @@ def _write_lines(ws, lines: List[Line], headers: List[str], values, widths: List
 
 
 def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str,
-                  target: Optional[Tuple[int, int]] = None):
+                  target: Optional[Tuple[int, int]] = None, brief: str = "", brief_applied: bool = False):
     problems = traceability(lines, drafts)
     if problems:
         raise ValueError("revised list not written: " + "; ".join(problems))
@@ -650,6 +656,9 @@ def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str
     rows = [["Client", client], ["Draft rows", len(drafts)], ["Proposed categories", len(kept)]]
     if target:
         rows.append(["Target", f"{target[0]}-{target[1]}"])
+    if brief:
+        rows += [["Client's brief", brief],
+                 ["", "read first by the model" if brief_applied else cb.NOT_APPLIED]]
     rows += [[], ["Status", "Lines"]] + [[s, n] for s, n in Counter(ln.status for ln in lines).most_common()]
     rows += [[], ["Group", "Draft rows", "Proposed"]]
     for g in groups_of(drafts) + ([None] if any(ln.group is None for ln in lines) else []):

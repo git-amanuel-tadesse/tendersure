@@ -2,6 +2,7 @@
 import { fileUrl } from "@tendersure/api-client";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { BriefBox } from "../components/BriefBox";
 import { JobPanel } from "../components/JobPanel";
 import {
   Badge, Button, Card, Check, cx, Empty, ErrorNotice, Field, Input, linkButton, Notice, Select, Stat,
@@ -92,6 +93,7 @@ function BuildCard({ exerciseId, onStarted }: { exerciseId: string; onStarted: (
       {table && table.errors > 0 && (
         <div className="mb-3"><Notice tone="warn">The categories table has {table.errors} problem(s): those sheets will be listed as NOT WRITTEN.</Notice></div>
       )}
+      <div className="mb-3"><BriefBox exerciseId={exerciseId} /></div>
       <div className="flex flex-wrap items-end gap-4">
         <Field label="Categories" hint={`all ${table?.categories.length ?? ""}, or numbers e.g. 3, 13, 31`}>
           <Input className="w-48" placeholder="all" value={only} onChange={(e) => setOnly(e.target.value)} />
@@ -158,6 +160,9 @@ function RunView({ exerciseId, n, onApplied }: { exerciseId: string; n: number; 
           <Stat label="Decisions" value={res.items.length} />
           <Stat label="Open" value={Object.values(res.open).reduce((a, b) => a + b, 0)} />
         </div>
+        {r.settings.brief && (
+          <p className="mt-3 text-xs text-zinc-500"><span className="font-medium">Brief this run read:</span> {r.settings.brief}</p>
+        )}
         {res.failed.length > 0 && (
           <div className="mt-4"><Notice tone="bad" title="NOT WRITTEN">
             <ul className="list-disc pl-5">{res.failed.map((f) => <li key={f.code}><b>{f.code}</b>: {f.reason}</li>)}</ul>

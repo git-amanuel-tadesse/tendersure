@@ -68,6 +68,7 @@ class Target:
     licence: List[str] = field(default_factory=list)        # the draft's requirement columns (spec 07)
     hr: List[str] = field(default_factory=list)
     technical: List[str] = field(default_factory=list)
+    brief: str = ""                 # the client's brief for the run (spec 07 B), read first by the model
 
     @property
     def name_in_text(self) -> str:

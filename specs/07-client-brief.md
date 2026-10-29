@@ -146,3 +146,23 @@ On synthetic data (`tendersure.testing`):
 On PSI's draft, run by the team: the engineering categories 65–77 carry
 their licence, HR and technical rows, and category 62 is gated with
 Individual Consultant.
+
+## As built (2026-10-29)
+
+- **Storage:** the brief is kept per exercise, in `workspaces/<id>/brief.txt`
+  (`GET`/`PUT /api/exercises/<id>/brief`). The Refinement and Generation
+  pages share one box, and each generation run keeps the brief it read in
+  `settings.json`.
+- **Conflicts with the rules (B3):** the proposer lists what it cannot
+  propose under `brief_not_applied`, for example marks or a rule. These go
+  into the sheet's notes as "the client's brief asked: …". Code does not
+  detect conflicts on its own.
+- **Limits on changes:** the proposer still rewords or removes only flagged
+  rows. The brief does not widen that.
+- **Offline note (B5):** the note "Client's brief not applied: no model"
+  appears at the top of the QA report's Decisions tab, as there is no Summary
+  tab. In refinement it is in the Revised workbook's Summary tab.
+- **Schema:** `from_brief` and `brief_not_applied` are required fields,
+  because the provider runs in strict schema mode. The proposer prompt
+  version is now 3, so earlier cached proposals are not reused.
+

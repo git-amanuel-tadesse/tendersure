@@ -118,3 +118,11 @@ def test_an_answer_that_cannot_apply_says_why(client, ex):
     second = client.get(f"/api/exercises/{ex}/generate/runs/{job.result['run']}").json
     status = _items(second)[m["id"]]["status"]
     assert status.startswith("NOT APPLIED on 4: ") and "section 'technical' is not in this sheet" in status
+
+
+def test_a_run_keeps_the_brief_it_read(client, ex):
+    client.put(f"/api/exercises/{ex}/brief", json={"text": "Ask for site engineers."}, headers=W)
+    job = _run(client, client.post(f"/api/exercises/{ex}/generate", json={"use_model": False, "only": [1]}, headers=W))
+    run = client.get(f"/api/exercises/{ex}/generate/runs/{job.result['run']}").json
+    assert run["settings"]["brief"] == "Ask for site engineers."
+    assert any("client's brief not applied: no model" in x for x in job.lines)

@@ -4,6 +4,7 @@ import { createColumnHelper } from "@tanstack/react-table";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { DataTable } from "../components/DataTable";
+import { BriefBox } from "../components/BriefBox";
 import { JobPanel } from "../components/JobPanel";
 import {
   Badge, Button, Card, Check, cx, Empty, ErrorNotice, Field, Input, linkButton, Notice, Select, Stat,
@@ -108,6 +109,7 @@ function ProposeStep({ exerciseId, hasRevised, target: used }: {
   const target = low && high ? [Number(low), Number(high)] : null;
   return (
     <Card title="2 · Propose the revised list">
+      <div className="mb-3"><BriefBox exerciseId={exerciseId} /></div>
       <div className="flex flex-wrap items-end gap-3">
         <Field label="Target count" hint="reported against, never forced">
           <div className="flex items-center gap-1">

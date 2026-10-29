@@ -11,7 +11,7 @@
 
 import json
 from collections import Counter, defaultdict
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -222,9 +222,10 @@ def load_decisions(path: str) -> Dict[tuple, str]:
 
 # --- generation QA -----------------------------------------------------------
 
-def write_qa_report(plans: List[Plan], path: str, items=None):
+def write_qa_report(plans: List[Plan], path: str, items=None, brief_note: Optional[str] = None):
     """`items`: decisions with answers attached (from review.apply_answers);
-    computed fresh from the plans when absent."""
+    computed fresh from the plans when absent. `brief_note`: what became of
+    the client's brief (spec 07 B5), shown first under the decisions."""
     from .review import decision_items, number_of
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -240,6 +241,9 @@ def write_qa_report(plans: List[Plan], path: str, items=None):
         if str(ws.cell(r, 6).value).startswith(("NOT", "PROBLEM")):
             ws.cell(r, 6).font = Font(bold=True, color="FFC00000")
     ws.append([])
+    if brief_note:
+        ws.append([brief_note])
+        ws.cell(ws.max_row, 1).font = Font(bold=True)
     for line in (
         "This tab is the whole review. Leave 'Your answer' blank to accept the proposal (including model proposals).",
         "Q- rows: 'remove all', 'remove: 3, 7', 'keep: 1, 2', 'reword: 9' (use the proposed wording) or "

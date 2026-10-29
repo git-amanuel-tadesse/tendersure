@@ -230,10 +230,12 @@ def propose(path: ExercisePath, body: Propose):
     if target and not 0 < target[0] <= target[1]:
         abort(400, description=f"target {list(target)}: give [low, high] with 0 < low <= high")
 
+    brief = current_app.config["WORKSPACES"].brief(eid)
+
     def step():
         p = flows.current()
         lines = flows.propose(drafts, ex.client, target, p.bank, p.learned("research"), body.country,
-                              _model(body.use_model))
+                              _model(body.use_model), brief)
         if os.path.exists(_file(folder, "final.json")):
             os.remove(_file(folder, "final.json"))     # applied to a proposal that is no longer there
         _save_revised(folder, lines, target)

@@ -7,6 +7,7 @@ PrivacyError when a model step stops). Draft, Line, Category and Item are the
 steps' inputs and outputs, so they are part of this API too.
 """
 
+from ..brief import load as load_brief
 from ..categories import Category
 from ..llm import LLMError
 from ..paths import Paths, current, use
@@ -29,7 +30,7 @@ from .research import ResearchResult, apply_review as apply_research_review, res
 __all__ = [
     "FlowError", "LLMError", "PrivacyError", "Model", "Paths", "current", "use", "log",
     "Draft", "Line", "Category", "Item",
-    "load_corpus", "load_source",
+    "load_corpus", "load_source", "load_brief",
     "ingest", "IngestResult", "bank_status", "BankStatus", "model_status", "ModelStatus",
     "extract_categories", "CategoriesResult", "ENGINES",
     "check_table", "gate_problem", "normalise_category", "RowProblem",

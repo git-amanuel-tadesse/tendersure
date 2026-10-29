@@ -13,6 +13,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from .. import brief as cb
 from .. import categories as cat
 from .. import gating
 from .. import glossary as gl
@@ -57,6 +58,7 @@ class Settings:
     model: Model = Model()
     proposals: Optional[Dict[str, dict]] = None   # by sheet code: replayed when applying a review
     answers: Optional[Dict[str, str]] = None      # by Decisions item ID; None: a first build
+    brief: str = ""                         # the client's brief (spec 07 B), read first by the model steps
 
     def __post_init__(self):
         p = current()
@@ -116,7 +118,7 @@ def generate(s: Settings) -> Result:
         exclude = {sh.name for sh in sheets if sh.code == code} if s.rebuild_existing else None
         target = Target(code, c.description, s.client, c.group, s.client_name, c.sub_categories,
                         c.requirements or stated_requirements(c), c.eligibility, c.gate_question,
-                        business_types(c.applies_to), c.licence, c.hr, c.technical)
+                        business_types(c.applies_to), c.licence, c.hr, c.technical, s.brief)
         try:
             plan = gen.plan(target, exclude=exclude, marks=marks.get(code))
             check_total(plan)
@@ -133,7 +135,7 @@ def generate(s: Settings) -> Result:
             p.proposal = stored.get(p.target.code)
     use_model, why_not = s.model.wanted()
     if not use_model:
-        log.info(f"building without AI: {why_not}")
+        log.info(f"building without AI: {why_not}" + (f"; {cb.NOT_APPLIED}" if s.brief else ""))
     ai_cache, save_ai_cache = {}, None
     if use_model:
         from ..selectors import PROMPT_VERSION, ModelSelector, build_prompt
@@ -173,6 +175,9 @@ def generate(s: Settings) -> Result:
                      f"{len(prop['add'])} addition(s), {len(prop['drafts'])} new question(s)"
                      + (f"; ignored {len(prop['ignored'])} invalid" if prop["ignored"] else ""))
         log.info(f"model proposals: {asked} new, {reused} reused from earlier runs")
+        for p in plans:
+            for x in (p.proposal or {}).get("brief_not_applied", []):
+                p.notes.append(f"the client's brief asked: {x} (not applied: the template rules come first)")
 
     items, review_log, review_problems = None, [], []
     if use_model and not s.reviewing:
@@ -288,7 +293,9 @@ def generate(s: Settings) -> Result:
         log.info(f"wrote {len(plans)} sheets -> {s.out}")
     from ..review import decision_items
     items = items if items is not None else decision_items(plans)
-    qa = write_qa_report(plans, base + "_qa.xlsx", items)
+    brief_note = None if not s.brief else \
+        f"Client's brief (read first by the model): {s.brief}" if use_model else f"{cb.NOT_APPLIED[0].upper()}{cb.NOT_APPLIED[1:]}."
+    qa = write_qa_report(plans, base + "_qa.xlsx", items, brief_note)
     r = Result(plans, items, failed, files, qa, learned if n or y else None, review_log, review_problems)
     kinds = Counter(i.id[0] for i in r.open_items)
     log.info(f"wrote {qa}")

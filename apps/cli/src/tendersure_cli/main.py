@@ -66,7 +66,8 @@ def cmd_refine(a):
     if not a.draft:
         sys.exit("give a draft category list, or --apply <reviewed revised list>")
     target = tuple(int(x) for x in a.target.split("-")) if a.target else None
-    flows.propose_file(a.draft, a.client, a.sheet, target, a.out, a.bank, a.research, a.country or "", _model(a))
+    flows.propose_file(a.draft, a.client, a.sheet, target, a.out, a.bank, a.research, a.country or "", _model(a),
+                       flows.load_brief(a.brief))
 
 
 def cmd_refine_evaluate(a):
@@ -110,12 +111,13 @@ def cmd_generate(a):
     flows.generate(flows.GenerateSettings(
         a.categories, a.client, a.prefix, a.out, a.source, a.bank, a.client_name, _only(a), a.decisions, a.marks,
         a.rulings, a.research, a.audience, a.yes_no, a.glossary, a.country, a.rebuild_existing, a.formulas,
-        a.split_files, not a.no_ai_review, _model(a), proposals, answers))
+        a.split_files, not a.no_ai_review, _model(a), proposals, answers, flows.load_brief(a.brief)))
 
 
 def cmd_check(a):
     """Spec 03: check a workbook after hand edits; never writes to it. Exit 1 on errors."""
-    if flows.check(a.workbook, a.client, a.categories, a.against, a.yes_no, a.out, _model(a)).errors:
+    if flows.check(a.workbook, a.client, a.categories, a.against, a.yes_no, a.out, _model(a),
+                   flows.load_brief(a.brief)).errors:
         sys.exit(1)
 
 
@@ -186,6 +188,8 @@ def main(argv=None):
     p.add_argument("--no-model", action="store_true", help="propose by rules only")
     p.add_argument("--country", help="ISO country code for researched licences, e.g. ET, KE")
     p.add_argument("--research", default=P.learned("research"), help="the research table (default data/)")
+    p.add_argument("--brief", help="what the client is looking for, as text or a .txt file: read first by the model "
+                                   "(above past sheets; the template rules still apply)")
     p.set_defaults(fn=cmd_refine)
 
     p = sub.add_parser("refine-evaluate", help="compare a refinement with the list a team settled on")
@@ -208,6 +212,8 @@ def main(argv=None):
     p.add_argument("--out", help="the report workbook (default reports/<name>_check.xlsx)")
     p.add_argument("--model", nargs="?", const="", help="model id for the AI read (default: TENDERSURE_MODEL)")
     p.add_argument("--no-model", action="store_true", help="skip the AI read")
+    p.add_argument("--brief", help="what the client is looking for, as text or a .txt file: read first by the model "
+                                   "(above past sheets; the template rules still apply)")
     p.set_defaults(fn=cmd_check)
 
     p = sub.add_parser("research", help="research technical names, licences, questions: bank first, then the web")
@@ -277,6 +283,8 @@ def main(argv=None):
     p.add_argument("--glossary", default=P.learned("glossary"),
                    help="short names and acronyms (default data/glossary.csv; seeded from the bank if absent)")
     p.add_argument("--out", required=True)
+    p.add_argument("--brief", help="what the client is looking for, as text or a .txt file: read first by the model "
+                                   "(above past sheets; the template rules still apply)")
     p.set_defaults(fn=cmd_generate)
 
     p = sub.add_parser("privacy-check", help="show what model calls would send (anonymised); sends nothing")

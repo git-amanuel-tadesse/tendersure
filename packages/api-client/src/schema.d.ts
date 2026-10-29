@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/exercises/{exercise_id}/brief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exercises_get_brief__exercise_id__brief_get"];
+        /** Saved for the exercise's next refinement and generation runs; empty text removes it. */
+        put: operations["exercises_set_brief__exercise_id__brief_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/exercises/{exercise_id}/categories": {
         parameters: {
             query?: never;
@@ -522,6 +539,18 @@ export interface components {
             sheets: number;
             /** Workbooks */
             workbooks: number;
+        };
+        /**
+         * Brief
+         * @description What the client says it is looking for: read first by every model step (above past
+         *     questionnaires; the template rules still apply). Empty when there is none.
+         */
+        Brief: {
+            /**
+             * Text
+             * @default
+             */
+            text?: string;
         };
         /**
          * Category
@@ -1356,6 +1385,12 @@ export interface components {
              */
             ai_review?: boolean;
             /**
+             * Brief
+             * @description the exercise's brief when the run started (spec 07 B)
+             * @default
+             */
+            brief?: string;
+            /**
              * Formulas
              * @default false
              */
@@ -1689,6 +1724,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExerciseDetail"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    exercises_get_brief__exercise_id__brief_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Brief"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    exercises_set_brief__exercise_id__brief_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Brief"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Brief"];
                 };
             };
             /** @description Unprocessable Content */

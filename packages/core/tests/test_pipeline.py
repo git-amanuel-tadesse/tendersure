@@ -419,11 +419,21 @@ def test_writer_refuses_off_total(corpus, tmp_path):
 
 # --- model access (no network) -----------------------------------------------
 
+def _no_brief(payload):
+    """A canned sheet proposal answers as a model does without a client's
+    brief (spec 07): nothing from the brief, nothing left unapplied."""
+    if isinstance(payload, dict) and {"drop", "reword", "add", "drafts"} <= set(payload):
+        payload = {**payload, "brief_not_applied": payload.get("brief_not_applied", [])}
+        for k in ("drop", "reword", "add", "drafts"):
+            payload[k] = [{"from_brief": False, **x} for x in payload[k]]
+    return payload
+
+
 class FakeTransport:
     """Stands in for OpenRouter: records requests, replies with a canned payload."""
 
     def __init__(self, payload, model_used=None, finish="stop", raw=None):
-        self.payload, self.model_used, self.finish, self.raw = payload, model_used, finish, raw
+        self.payload, self.model_used, self.finish, self.raw = _no_brief(payload), model_used, finish, raw
         self.calls = []
 
     def __call__(self, url, headers, body):
@@ -2407,3 +2417,81 @@ def test_a_category_with_requirement_columns_is_written_and_passes_the_check(cor
     assert "Please attach evidence of ownership or rent agreement for: Dump Truck, Mixer" in texts
     errors, _ = _check(tmp_path / "gen.xlsx", tmp_path, str(tmp_path / "cats.csv"))
     assert errors == 0
+
+
+# --- the client's brief (spec 07 B) -------------------------------------------------------
+
+BRIEF = "Works contractors must own a dump truck; ask for site engineers with 5 years' experience."
+
+
+class _Recorder:
+    """A model that records each prompt and answers with an empty reply of the asked shape."""
+
+    def __init__(self, reply):
+        self.reply, self.prompts, self.last_model = reply, [], "fake"
+
+    def complete_json(self, system, prompt, schema, name, client=None, **kw):
+        self.prompts.append(prompt)
+        return json.loads(json.dumps(self.reply))
+
+
+def test_the_brief_comes_first_in_the_four_model_steps(corpus, tmp_path):
+    from tendersure import brief as cb, check_ai, refine as rf, reviewer, selectors
+    drafts = rf.read_draft(_draft_book(tmp_path / "rc.xlsx", RC))
+    m = _Recorder({"lines": [], "additional": []})
+    rf.ModelRefiner(llm=m).propose(drafts, "AAA", [], None, BRIEF)
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    plan = g.plan(Target(src.code, "Provision of Minor Construction Works", src.client, brief=BRIEF))
+    gen, _, _ = _generated(corpus, tmp_path)
+    c = _Recorder({"problems": []})
+    check_ai.read(str(gen), llm=c, brief=BRIEF)
+    prompts = [m.prompts[0], selectors.build_prompt(plan), reviewer.build_prompt(plan, []), c.prompts[0]]
+    for p in prompts:
+        assert p.startswith(cb.HEAD + "\n" + BRIEF + "\n")
+    plan.target.brief = ""
+    assert BRIEF not in selectors.build_prompt(plan)                     # no brief, no block
+
+
+def test_what_the_brief_led_to_is_labelled(corpus):
+    from tendersure import brief as cb
+    from tendersure.selectors import normalise_proposal
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    plan = g.plan(Target(src.code, "Provision of Minor Construction Works", src.client, brief=BRIEF))
+    raw = {"drop": [], "reword": [], "add": [], "brief_not_applied": [{"request": "60 marks for HR",
+                                                                      "why": "marks are the team's"}],
+           "drafts": [{"section": "technical", "criteria": "Do you own a dump truck?", "answer_type": 4,
+                       "options": "", "reason": "the client asks for it", "from_brief": True},
+                      {"section": "technical", "criteria": "Attach your fleet list", "answer_type": 5,
+                       "options": "", "reason": "works need vehicles", "from_brief": False}]}
+    prop = normalise_proposal(plan, raw, "fake")
+    assert [d["reason"] for d in prop["drafts"]] == [f"{cb.FROM_BRIEF}: the client asks for it", "works need vehicles"]
+    assert prop["brief_not_applied"] == ["60 marks for HR: marks are the team's"]
+
+    from tendersure import refine as rf
+    drafts = [rf.Draft("1", "Supply of Stationery")]
+    lines = rf.check({"lines": [{"from": ["1"], "status": "Renamed", "description": "Supply of Office Stationery",
+                                 "reason": "the client's wording", "from_brief": True}], "additional": []},
+                     drafts, rf.groups_of(drafts))
+    assert lines[0].reason.startswith(f"{cb.FROM_BRIEF}: the client's wording")
+
+
+def test_without_a_model_the_qa_report_says_the_brief_was_not_applied(corpus, tmp_path):
+    from tendersure import categories as cat, flows
+    cat.save([cat.Category(1, "Supply of Office Stationery and Toners", "GENERAL", client="AAA")],
+             str(tmp_path / "cats.csv"))
+    r = flows.generate(flows.GenerateSettings(
+        str(tmp_path / "cats.csv"), "AAA", "AAA-ET-2026-", str(tmp_path / "gen.xlsx"), source=str(corpus),
+        audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
+        model=flows.Model(off=True), brief=BRIEF))
+    texts = [c.value for c in openpyxl.load_workbook(r.qa)["Decisions"]["A"] if c.value]
+    assert "Client's brief not applied: no model." in texts
+
+
+def test_a_brief_is_read_from_a_file_or_taken_as_text(tmp_path):
+    from tendersure import flows
+    f = tmp_path / "brief.txt"
+    f.write_text(BRIEF + "\n")
+    assert flows.load_brief(str(f)) == BRIEF == flows.load_brief(f"  {BRIEF} ")
+    assert flows.load_brief(None) == ""

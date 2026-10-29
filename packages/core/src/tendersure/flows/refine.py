@@ -10,6 +10,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from .. import brief as cb
 from .. import categories as cat
 from .. import refine as rf
 from .. import research as rs
@@ -53,15 +54,17 @@ class ApplyResult:
 
 
 def propose(drafts: List[rf.Draft], client: str, target: Target = None, bank: Optional[str] = None,
-            research: Optional[str] = None, country: str = "", model: Model = Model()) -> List[rf.Line]:
+            research: Optional[str] = None, country: str = "", model: Model = Model(),
+            brief: str = "") -> List[rf.Line]:
     """The revised list: one line per proposed category, every draft row accounted for."""
     bank = bank or current().bank
     research = research or current().learned(rs.RESEARCH)
     register_clients([client])
     use_model, why_not = model.wanted()
     if not use_model:
-        log.info(f"refine: without a model ({why_not}): duplicates folded, overlaps raised as questions")
-    raw = rf.ModelRefiner(model=model.name).propose(drafts, client, past_categories(bank), target) \
+        log.info(f"refine: without a model ({why_not}): duplicates folded, overlaps raised as questions"
+                 + (f"; {cb.NOT_APPLIED}" if brief else ""))
+    raw = rf.ModelRefiner(model=model.name).propose(drafts, client, past_categories(bank), target, brief) \
         if use_model else None
     lines = rf.check(raw, drafts, rf.groups_of(drafts))
     table, kb, web = research_tools(research, load_source(None, bank)[0] if os.path.exists(bank) else [], model)
@@ -74,13 +77,13 @@ def propose(drafts: List[rf.Draft], client: str, target: Target = None, bank: Op
 
 def propose_file(draft: str, client: str, sheet: Optional[str] = None, target: Target = None,
                  out: Optional[str] = None, bank: Optional[str] = None, research: Optional[str] = None,
-                 country: str = "", model: Model = Model()) -> ProposeResult:
+                 country: str = "", model: Model = Model(), brief: str = "") -> ProposeResult:
     """Step A from a draft workbook (or CSV) to `<draft> - Revised.xlsx`."""
     drafts = rf.read_draft(draft, sheet)
-    lines = propose(drafts, client, target, bank, research, country, model)
+    lines = propose(drafts, client, target, bank, research, country, model, brief)
     out = out or os.path.join(current().reports, os.path.splitext(os.path.basename(draft))[0] + " - Revised.xlsx")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
-    rf.write_revised(out, drafts, lines, client, target)
+    rf.write_revised(out, drafts, lines, client, target, brief, model.wanted()[0])
     r = ProposeResult(drafts, lines, target, out)
     log.info(f"refine: {len(drafts)} draft rows -> {r.proposed} proposed categories"
              + (f" (target {target[0]}-{target[1]})" if target else "") + "; "

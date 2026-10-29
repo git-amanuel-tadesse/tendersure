@@ -2,6 +2,7 @@
 
     workspaces/<exercise-id>/
       exercise.json      what the exercise is: client, client name, sheet code prefix
+      brief.txt          the client's brief, read first by every model step (spec 07 B)
       uploads/           files the team uploaded (drafts, answered workbooks, categories)
       ...                what the steps write (refine/, runs/<n>/), added by later tasks
 
@@ -24,6 +25,8 @@ from tendersure import flows
 ALLOWED = (".xlsx", ".csv", ".pdf")
 EXERCISE_FILE = "exercise.json"
 UPLOADS = "uploads"
+BRIEF_FILE = "brief.txt"
+MAX_BRIEF = 20000                   # characters: a page or two, not a document
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 _CLIENT = re.compile(r"^[A-Za-z0-9]{1,20}$")
 _NAME_CHARS = re.compile(r"^[\w .,()&+'-]+$")
@@ -138,6 +141,27 @@ class Workspaces:
             except (NotFound, ValueError, TypeError):
                 continue                                     # not an exercise folder
         return sorted(out, key=lambda e: e.created, reverse=True)
+
+    def brief(self, exercise_id: str) -> str:
+        p = os.path.join(self.folder(exercise_id), BRIEF_FILE)
+        if not os.path.exists(p):
+            return ""
+        with open(p, encoding="utf-8") as fh:
+            return fh.read()
+
+    def set_brief(self, exercise_id: str, text: str) -> str:
+        """The brief for the exercise's next runs; empty text removes it."""
+        text = (text or "").strip()
+        if len(text) > MAX_BRIEF:
+            raise Invalid(f"the brief has {len(text)} characters; keep it under {MAX_BRIEF}")
+        p = os.path.join(self.folder(exercise_id), BRIEF_FILE)
+        if not text:
+            if os.path.exists(p):
+                os.remove(p)
+            return ""
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        return text
 
     # --- files ---------------------------------------------------------------------
 

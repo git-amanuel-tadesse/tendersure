@@ -143,6 +143,18 @@
         "title": "BankStatus",
         "type": "object"
       },
+      "Brief": {
+        "description": "What the client says it is looking for: read first by every model step (above past\nquestionnaires; the template rules still apply). Empty when there is none.",
+        "properties": {
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "title": "Brief",
+        "type": "object"
+      },
       "Category": {
         "description": "A row of the categories table generation reads.",
         "properties": {
@@ -1762,6 +1774,12 @@
             "title": "Ai Review",
             "type": "boolean"
           },
+          "brief": {
+            "default": "",
+            "description": "the exercise's brief when the run started (spec 07 B)",
+            "title": "Brief",
+            "type": "string"
+          },
           "formulas": {
             "default": false,
             "title": "Formulas",
@@ -2306,6 +2324,103 @@
             "description": "Unprocessable Content"
           }
         },
+        "tags": [
+          "exercises"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/brief": {
+      "get": {
+        "operationId": "exercises_get_brief__exercise_id__brief_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Brief"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "exercises"
+        ]
+      },
+      "put": {
+        "operationId": "exercises_set_brief__exercise_id__brief_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Brief"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Brief"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Saved for the exercise's next refinement and generation runs; empty text removes it.",
         "tags": [
           "exercises"
         ]

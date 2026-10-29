@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Tuple
 
 import openpyxl
 
+from . import brief as cb
 from .llm import LLMError, make_llm
 from .parser import parse_sheet
 from .paths import current
@@ -53,7 +54,8 @@ def _describe(sig: Tuple, categories: List[str]) -> str:
     return f"{text} | type {at} | marks {marks:g}{extra}{where}"
 
 
-def read(path: str, model: Optional[str] = None, llm=None, client: Optional[str] = None) -> List[Finding]:
+def read(path: str, model: Optional[str] = None, llm=None, client: Optional[str] = None,
+         brief: str = "") -> List[Finding]:
     """Model findings for every distinct question in the workbook."""
     seen: Dict[Tuple, List[Tuple[str, int, str]]] = defaultdict(list)
     for ws in openpyxl.load_workbook(path, data_only=True).worksheets:
@@ -67,11 +69,13 @@ def read(path: str, model: Optional[str] = None, llm=None, client: Optional[str]
     if os.path.exists(cache_path):
         with open(cache_path) as fh:
             cache = json.load(fh)
-    key = lambda sig: hashlib.sha1(_describe(sig, sorted({c for _, _, c in seen[sig]})).encode()).hexdigest()[:16]
+    key = lambda sig: hashlib.sha1((brief + _describe(sig, sorted({c for _, _, c in seen[sig]}))).encode()
+                                   ).hexdigest()[:16]
     todo = [sig for sig in seen if key(sig) not in cache]
     llm = llm or (make_llm(model=model) if todo else None)
     for part in (todo[i:i + CHUNK] for i in range(0, len(todo), CHUNK)):
-        prompt = "QUESTIONS (id | question | answer type | marks | options | categories):\n" + "\n".join(
+        prompt = "\n".join(cb.prompt_lines(brief)) + \
+            "QUESTIONS (id | question | answer type | marks | options | categories):\n" + "\n".join(
             f"  {i} | {_describe(sig, sorted({c for _, _, c in seen[sig]}))}" for i, sig in enumerate(part))
         try:
             raw = llm.complete_json(SYSTEM, prompt, SCHEMA, "check_read", client=client, max_tokens=8000)
