@@ -6,7 +6,6 @@ a review is the same build with `proposals` (exactly what the reviewer saw,
 no new model call) and `answers` (the Decisions tab, by item ID) given.
 """
 
-import hashlib
 import json
 import os
 from collections import Counter
@@ -21,7 +20,7 @@ from .. import naming
 from .. import research as rs
 from .. import trust
 from .. import yesno
-from ..generate import Generator, MarksError, Target, check_total, finalise, to_sheet
+from ..generate import Generator, MarksError, Target, ai_cache_key, check_total, finalise, to_sheet
 from ..generate import apply_research as generate_research
 from ..paths import current
 from ..reports import load_decisions, write_qa_report
@@ -163,7 +162,7 @@ def generate(s: Settings) -> Result:
         for p in plans:
             if p.same_category or p.proposal is not None:
                 continue
-            key = f"{p.target.code}|{hashlib.sha1(build_prompt(p).encode()).hexdigest()[:12]}"
+            key = ai_cache_key(p, build_prompt(p))
             if key in ai_cache:
                 p.proposal = json.loads(json.dumps(ai_cache[key]))
                 reused += 1

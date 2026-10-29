@@ -22,6 +22,7 @@ suggested rows and draft new ones. It never sets answer types, options,
 scores or upload flags on rows that came from the bank.
 """
 
+import hashlib
 import re
 from collections import Counter, defaultdict
 from copy import deepcopy
@@ -539,6 +540,14 @@ def finalise(plan: Plan):
     n = sum(fix_marks_columns(p.row) for p in plan.questions)
     if n:
         plan.notes.append(f"marks repeated in System or Compliance on {n} rows (template rule)")
+
+
+def ai_cache_key(plan: Plan, prompt: str, step: str = "") -> str:
+    """A model answer's key in the build cache: the prompt with the sheet code
+    taken out (it names the category and holds everything the answer depends
+    on), so renaming the prefix, or fixing one, reuses every answer paid for."""
+    text = prompt.replace(plan.target.code, "<code>")
+    return f"{step}|{hashlib.sha1(text.encode()).hexdigest()[:16]}"
 
 
 def check_total(plan: Plan):

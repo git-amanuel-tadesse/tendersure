@@ -2818,3 +2818,21 @@ def test_when_the_draft_marks_individual_consultants_only_those_categories_inclu
     assert not next(ln for ln in final if ln.from_draft == ["2"]).gate_question   # back to the draft: still companies
     unmarked = [rf.Draft("2", "Provision of Translation and Interpretation Services", "COMMUNICATION")]
     assert rf.check(None, unmarked, rf.groups_of(unmarked))[0].gate_question       # no marks: the rules decide
+
+
+def test_a_prefix_without_a_separator_still_gives_clean_codes():
+    assert Category(46, "x").code("PSI-ET-2026") == "PSI-ET-2026-046"
+    assert Category(46, "x").code("PSI-ET-2026-") == "PSI-ET-2026-046"
+    assert Category(46, "x").code("NRC_2027_28_") == "NRC_2027_28_046"
+
+
+def test_model_answers_stay_cached_when_the_prefix_changes(corpus):
+    from tendersure.generate import ai_cache_key
+    from tendersure.selectors import build_prompt
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    a = g.plan(Target("AAA-ET-2026046", "Provision of Catering Services", "AAA"))
+    b = g.plan(Target("AAA-ET-2026-046", "Provision of Catering Services", "AAA"))
+    assert ai_cache_key(a, build_prompt(a)) == ai_cache_key(b, build_prompt(b))
+    c = g.plan(Target("AAA-ET-2026-047", "Provision of Security and Guarding Services", "AAA"))
+    assert ai_cache_key(c, build_prompt(c)) != ai_cache_key(b, build_prompt(b))   # another category: its own

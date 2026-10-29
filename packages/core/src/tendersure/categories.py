@@ -49,8 +49,11 @@ class Category:
     technical: List[str] = field(default_factory=list)     # documents and equipment -> Technical Specifications
 
     def code(self, prefix: str) -> str:
-        """Sheet code for this category, e.g. prefix 'ERCS-ET-2026-' -> 'ERCS-ET-2026-019'."""
-        return f"{prefix}{self.number:03d}"
+        """Sheet code for this category, e.g. prefix 'ERCS-ET-2026-' -> 'ERCS-ET-2026-019'. A
+        prefix ending in a letter or digit gets a hyphen: 'PSI-ET-2026' -> 'PSI-ET-2026-046',
+        never 'PSI-ET-2026046'."""
+        sep = "-" if prefix and prefix[-1].isalnum() else ""
+        return f"{prefix}{sep}{self.number:03d}"
 
     @property
     def kind(self) -> str:

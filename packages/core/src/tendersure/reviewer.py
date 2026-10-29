@@ -27,7 +27,7 @@ from typing import Dict, List, Optional, Tuple
 
 from . import brief as cb
 from .evaluate import _in_sheet
-from .generate import Generator, Plan
+from .generate import Generator, Plan, ai_cache_key
 from .llm import make_llm
 from .parser import normalise, section_key
 from .review import ADD, QUESTION, Item, decision_items, number_of, qkey
@@ -229,7 +229,6 @@ def ai_review(gen: Generator, plans: List[Plan], reviewer: ModelReviewer, progre
     `cache`/`save` keep each verdict as soon as it arrives, so a rerun after
     a crash does not pay for the same review twice.
     Returns (items with AI answers and statuses, summary counts)."""
-    import hashlib
     from .generate import MarksError, rebalance_to_100
     from .review import apply_answers
     items = decision_items(plans)
@@ -238,7 +237,7 @@ def ai_review(gen: Generator, plans: List[Plan], reviewer: ModelReviewer, progre
         if not p.proposal:
             continue
         decisions = decisions_for(p, items, gen)
-        key = f"{p.target.code}#review|{hashlib.sha1(build_prompt(p, decisions).encode()).hexdigest()[:12]}"
+        key = ai_cache_key(p, build_prompt(p, decisions), "#review")
         try:
             if cache is not None and key in cache:
                 verdicts = cache[key]
