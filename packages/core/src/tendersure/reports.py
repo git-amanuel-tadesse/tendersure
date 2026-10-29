@@ -252,10 +252,13 @@ def _benchmark_tabs(wb, plans: List[Plan]):
            {"Code": 18, "Client's tab": 22, "Asked": 22, "Question": 70})
 
 
-def write_qa_report(plans: List[Plan], path: str, items=None, brief_note: Optional[str] = None):
+def write_qa_report(plans: List[Plan], path: str, items=None, brief_note: Optional[str] = None,
+                    proposals: Optional[Dict[str, dict]] = None):
     """`items`: decisions with answers attached (from review.apply_answers);
     computed fresh from the plans when absent. `brief_note`: what became of
-    the client's brief (spec 07 B5), shown first under the decisions."""
+    the client's brief (spec 07 B5), shown first under the decisions.
+    `proposals`: the model's proposals by sheet code, NOT WRITTEN sheets
+    included, so applying the answers asks the model nothing again."""
     from .review import decision_items, number_of
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -290,9 +293,9 @@ def write_qa_report(plans: List[Plan], path: str, items=None, brief_note: Option
     # Model proposals, kept so applying the review replays exactly what was shown.
     hidden = wb.create_sheet("_proposals")
     hidden.append(["code", "proposal"])
-    for p in plans:
-        if p.proposal:
-            hidden.append([p.target.code, json.dumps(p.proposal, ensure_ascii=False)])
+    for code, proposal in (proposals if proposals is not None else {p.target.code: p.proposal for p in plans}).items():
+        if proposal:
+            hidden.append([code, json.dumps(proposal, ensure_ascii=False)])
     hidden.sheet_state = "hidden"
 
     ws = wb.create_sheet("Detail - overview")

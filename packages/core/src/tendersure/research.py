@@ -240,8 +240,10 @@ _SCHEMAS = {
         "usually_split_as": {"type": "array", "items": {"type": "string"}}}},
     "licences": {"type": "array", "items": {"type": "object", "required": ["name"], "properties": {
         "name": {"type": "string"}, "issuer": {"type": "string"}, "required": {"type": "boolean"}}}},
-    "questions": {"type": "array", "items": {"type": "object", "required": ["question", "answer_type"], "properties": {
-        "question": {"type": "string"}, "answer_type": {"type": "integer", "enum": [1, 2, 3, 4, 5]}}}},
+    "questions": {"type": "array", "items": {"type": "object", "required": ["question", "answer_type", "options"],
+                                             "properties": {
+        "question": {"type": "string"}, "answer_type": {"type": "integer", "enum": [1, 2, 3, 4, 5]},
+        "options": {"type": "string"}}}},
     "documents": {"type": "array", "items": {"type": "object", "required": ["abbreviation", "official_name"],
                                              "properties": {"abbreviation": {"type": "string"},
                                                             "official_name": {"type": "string"},
@@ -255,7 +257,8 @@ _ASK = {
                 "supplier in the country must or usually holds, with the issuing body (issuer) and whether the law "
                 "requires it (required); none when only the documents every supplier gives apply",
     "questions": "questions: up to 8 technical questions a buyer should ask a supplier of this category, each "
-                 "with an answer type (1 text, 2 single choice, 3 multiple choice, 4 yes/no, 5 document upload)",
+                 "with an answer type (1 text, 2 single choice, 3 multiple choice, 4 yes/no, 5 document upload) "
+                 "and, for types 2 and 3, the options separated by commas (empty otherwise)",
     "documents": "documents: for each abbreviation listed, the document's official name in the country and a "
                  "short name of at most four words",
 }

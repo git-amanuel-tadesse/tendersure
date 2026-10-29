@@ -257,6 +257,7 @@ def generate(s: Settings) -> Result:
                  f"the rest given or drafted by the model; acronyms by the letter rule), saved as drafts in "
                  f"{s.glossary}: confirm or change them there")
 
+    every_proposal = {p.target.code: p.proposal for p in plans}      # kept for NOT WRITTEN sheets too
     # Spec 02 G11: every sheet passes the check's content rules before it is
     # written; a sheet with an error is listed, not written.
     from .. import check as ck
@@ -300,7 +301,7 @@ def generate(s: Settings) -> Result:
     items = items if items is not None else decision_items(plans)
     brief_note = None if not s.brief else \
         f"Client's brief (read first by the model): {s.brief}" if use_model else f"{cb.NOT_APPLIED[0].upper()}{cb.NOT_APPLIED[1:]}."
-    qa = write_qa_report(plans, base + "_qa.xlsx", items, brief_note)
+    qa = write_qa_report(plans, base + "_qa.xlsx", items, brief_note, every_proposal)
     r = Result(plans, items, failed, files, qa, learned if n or y else None, review_log, review_problems)
     kinds = Counter(i.id[0] for i in r.open_items)
     log.info(f"wrote {qa}")

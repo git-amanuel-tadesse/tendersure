@@ -261,7 +261,7 @@ def ai_review(gen: Generator, plans: List[Plan], reviewer: ModelReviewer, progre
         if it.id in answers:
             it.answer = answers[it.id]
             it.status = f"AI: {it.status}" + (f" | {'; '.join(notes[it.id])}" if notes.get(it.id) else "")
-        elif it.type == "marks" and not it.id.startswith("M-FREED-"):
+        elif it.type == "marks" and not it.id.startswith(("M-FREED-", "M-BENCH-")):   # the client's split: the team's call
             it.status = "AI: kept the client's marks (marks are the client's decision)"
         elif it.type == "marks":
             it.status = "AI: accepted the proportional spread of the emptied section's marks"

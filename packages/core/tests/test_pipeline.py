@@ -2836,3 +2836,24 @@ def test_model_answers_stay_cached_when_the_prefix_changes(corpus):
     assert ai_cache_key(a, build_prompt(a)) == ai_cache_key(b, build_prompt(b))
     c = g.plan(Target("AAA-ET-2026-047", "Provision of Security and Guarding Services", "AAA"))
     assert ai_cache_key(c, build_prompt(c)) != ai_cache_key(b, build_prompt(b))   # another category: its own
+
+
+def test_another_client_s_sheet_with_the_same_description_is_adapted_not_copied(corpus):
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    own = g.plan(Target("AAA-ET-2026-077", src.description, "AAA"))
+    other = g.plan(Target("ZZZ-ET-2026-077", src.description, "ZZZ"))
+    assert own.same_category and not other.same_category          # the other client gets proposals and suggestions
+
+
+@pytest.mark.parametrize("text,at,new", [
+    ("Does the company have any litigation pending?", 2, 4),
+    ("Which programming languages do you use?", 3, 1),
+])
+def test_a_choice_with_no_options_becomes_answerable(text, at, new):
+    from tendersure.generate import fix_missing_options
+    from tendersure.parser import Row
+    r = Row("", "", 0, criteria=text, answer_type=at, marks=0.0)
+    assert fix_missing_options(r).startswith(f"answer type {at} -> {new}") and r.answer_type == new
+    r = Row("", "", 0, criteria=text, answer_type=2, marks=0.0, options="A, B", option_scores="0,0")
+    assert fix_missing_options(r) is None                         # options listed: left alone

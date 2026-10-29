@@ -534,9 +534,10 @@ def finalise(plan: Plan):
     place_eligibility(plan)
     _relabel_sections(plan)
     for p in plan.questions:
-        note = fix_option_scores(p.row)
+        note = fix_missing_options(p.row) or fix_option_scores(p.row)
         if note:
             p.note(note)
+            p.needs_reading = p.needs_reading or note.startswith("answer type")
     n = sum(fix_marks_columns(p.row) for p in plan.questions)
     if n:
         plan.notes.append(f"marks repeated in System or Compliance on {n} rows (template rule)")
@@ -548,6 +549,20 @@ def ai_cache_key(plan: Plan, prompt: str, step: str = "") -> str:
     on), so renaming the prefix, or fixing one, reuses every answer paid for."""
     text = prompt.replace(plan.target.code, "<code>")
     return f"{step}|{hashlib.sha1(text.encode()).hexdigest()[:16]}"
+
+
+_YES_NO_WORDING = re.compile(r"^(do|does|did|is|are|was|were|has|have|had|can|will|would)\b|\byes\s*/\s*no\b", re.I)
+
+
+def fix_missing_options(r: Row) -> Optional[str]:
+    """A single or multi select with no options cannot be answered (AT-NO-OPTIONS):
+    a question worded for Yes/No becomes Yes/No, any other is answered in words.
+    The row is flagged for the team either way."""
+    if r.answer_type not in (2, 3) or r.option_list():
+        return None
+    old = r.answer_type
+    r.answer_type, r.options, r.option_scores = (4 if _YES_NO_WORDING.search(r.criteria.strip()) else 1), None, None
+    return f"answer type {old} -> {r.answer_type}: a choice with no options listed; add options to keep it a choice"
 
 
 def check_total(plan: Plan):
@@ -639,7 +654,9 @@ class Generator:
         sk = skeleton.sheet
         same_code = bool(sk.code) and sk.code == target.code
         same_desc = normalise(sk.description or "") == normalise(target.description)
-        same_category = same_code or same_desc
+        # The client's own sheet for this category; another client's sheet with the same description
+        # is a close match to adapt, not the answer (its questions are that client's choices).
+        same_category = same_code or (same_desc and sk.client == target.client)
         freq, n_own = self._freq(sk.client)
         name = target.name_in_text
 
@@ -860,10 +877,18 @@ def apply_research(plan: Plan, table, country: str):
         q = table.lookup("questions", t, country)
         if q:
             asked = {normalise(p.row.criteria) for p in plan.questions}
-            rows = [Row(source_file="", sheet="", excel_row=0, criteria=x["question"].strip(),
-                        answer_type=int(x.get("answer_type") or 1), marks=0.0,
-                        attachment=int(x.get("answer_type") or 1) == 5)
-                    for x in q.proposal.get("questions", []) if normalise(x["question"]) not in asked]
+            rows = []
+            for x in q.proposal.get("questions", []):
+                if normalise(x["question"]) in asked:
+                    continue
+                at = int(x.get("answer_type") or 1)
+                opts = ", ".join(o.strip() for o in str(x.get("options") or "").split(",") if o.strip())
+                if at in (2, 3) and not opts:
+                    at = 1                          # a choice with nothing to choose from: answered in words
+                rows.append(Row(source_file="", sheet="", excel_row=0, criteria=x["question"].strip(), marks=0.0,
+                                answer_type=at, options=opts if at in (2, 3) else None,
+                                option_scores=",".join("0" for _ in opts.split(",")) if at in (2, 3) else None,
+                                attachment=at == 5))
             if rows:
                 insert_rows(plan, "technical", rows[:RESEARCHED_QUESTIONS], NEW, "research",
                             "researched: no past sheet covers this category. Sources: " + sources_text(q))
