@@ -394,19 +394,30 @@ def test_sheet_without_trade_license_gets_the_standard_row(corpus):
     assert elig[0].row.compliance == 0 and elig[0].source == "standard Trade License row"
 
 
-def test_trade_license_with_marks_stays_and_is_flagged(corpus):
-    from tendersure.generate import PlannedRow, finalise
+def test_a_scored_trade_license_moves_and_its_marks_stay_in_its_section(corpus):
+    """Agreed 2026-10-30: an ILRI-style Trade License with marks in another
+    section becomes the 0-mark Eligibility upload; the section keeps its marks."""
+    from tendersure.generate import PlannedRow, check_total, finalise, to_sheet
+    from tendersure.validate import check_template
     sheets, g = _gen(corpus)
     src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
     p = g.plan(Target(src.code, src.description, src.client))
+    for q in [q for q in p.questions if section_key(q.row.section) == "eligibility" or "Trade" in q.row.criteria]:
+        p.rows.remove(q)                                     # a source with no Trade License row of its own
     tl = PlannedRow(kind="question", row=_trade_license(marks=0.0, section="Technical Specifications-TECH"))
-    tl.row.marks = 2.0                                       # an ILRI-style scored Trade License
-    tech = next(i for i, q in enumerate(p.rows) if q.kind == "question" and q.row.section.startswith("Technical"))
-    p.rows.insert(tech, tl)
+    tl.row.criteria = "Does your company have a valid Trade license or business permit? If yes attach"
+    tech = [q for q in p.questions if section_key(q.row.section) == "technical"]
+    tech[0].row.marks -= 2                                   # the 2 marks it carries come from the section
+    tech[0].row.system = tech[0].row.marks
+    tl.row.marks, tl.row.system = 2.0, 2.0
+    p.rows.insert(p.rows.index(tech[0]), tl)
+    before = p.section_marks()["technical"][0]
     finalise(p)
-    assert tl.row.section == "Technical Specifications-TECH" and not tl.row.eligibility
-    assert tl.needs_reading and "not moved to Eligibility" in tl.notes[-1]
-    assert not any(q.row.eligibility for q in p.questions)
+    assert section_key(tl.row.section) == "eligibility" and tl.row.eligibility and tl.row.marks == 0
+    assert tl.row.criteria == "Please attach a valid Trade license" and "was: Does your company" in tl.notes[0]
+    assert p.section_marks()["technical"][0] == before       # the marks stayed in Technical
+    check_total(p)
+    assert [f.rule for f in check_template(to_sheet(p)) if f.rule.startswith("ELIG")] == []
 
 
 def test_writer_refuses_off_total(corpus, tmp_path):

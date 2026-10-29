@@ -90,6 +90,7 @@ class PlannedRow:
     contested: List[Tuple[str, dict]] = field(default_factory=list)  # (field, values seen) without a convention
     weight_hint: float = 0.0        # donor marks for an inserted row; used when a split is applied
     scores_hint: Optional[str] = None  # donor option scores for an inserted row
+    freed: Optional[Tuple[str, float]] = None  # (section, its marks before) when the row's marks moved off it
 
     def note(self, msg: str, adapted: bool = True):
         self.notes.append(msg)
@@ -384,20 +385,43 @@ def _relabel_sections(plan: Plan):
 
 
 def _trade_license_to_move(plan: Plan, in_section: List[PlannedRow]) -> List[PlannedRow]:
-    """Trade License questions outside Eligibility with no marks; a standard
-    one if the sheet has none. One that carries marks stays where it is:
-    moving it would change that section's marks."""
+    """Trade License questions outside Eligibility; a standard one if the
+    sheet has none. One that carries marks moves too, as the 0-mark
+    mandatory upload, and its marks stay in the section it left (spread over
+    that section's other scored questions; else over the sheet) - agreed
+    2026-10-30, so a past sheet scoring the licence in ESG is still written."""
     found = [p for p in plan.questions if TRADE_LICENSE.search(p.row.criteria) and p not in in_section]
     for p in found:
         if p.row.marks:
-            p.note(f"Trade License question carries {p.row.marks:g} marks in '{p.row.section}', so it was "
-                   f"not moved to Eligibility; move it by hand if the marks can go", adapted=False)
+            key, marks = section_key(p.row.section), p.row.marks
+            before = plan.section_marks()[key][0]
+            std = _standard_trade_license()
+            p.note(f"Trade License moved to Eligibility as the 0-mark mandatory upload; its {marks:g} marks "
+                   f"stay in '{p.row.section}'; was: {p.row.criteria}")
             p.needs_reading = True
+            r = p.row
+            r.criteria, r.marks, r.system, r.compliance = std.criteria, 0.0, None, 0.0
+            r.option_scores = None
+            p.freed = (key, before)
     if not found and not in_section:
         return [PlannedRow(kind="question", row=_standard_trade_license(), origin=ADAPTED,
                            source="standard Trade License row",
                            notes=["Trade License added: the source sheet had none"])]
-    return [p for p in found if not p.row.marks]
+    return found
+
+
+def _keep_freed_marks(plan: Plan, moved: List[PlannedRow]):
+    """The marks a moved Trade License carried stay in its old section; with
+    no other scored question there, they are spread over the sheet."""
+    for p in moved:
+        if not p.freed:
+            continue
+        key, before = p.freed
+        problems = keep_section_totals(plan, {key: before}, "the Trade License moved to Eligibility") \
+            if any(section_key(q.row.section) == key for q in plan.questions) else [f"section '{key}' is empty"]
+        if problems:
+            rebalance_to_100(plan, "the Trade License moved to Eligibility")
+        p.freed = None
 
 
 def _eligibility_documents(plan: Plan, in_section: List[PlannedRow]) -> List[PlannedRow]:
@@ -464,6 +488,7 @@ def place_eligibility(plan: Plan):
         p.row.sub_section = in_section[-1].row.sub_section if in_section else "N/A"
     at = _eligibility_position(plan, in_section)
     plan.rows[at:at] = moving
+    _keep_freed_marks(plan, moving)
     _flag_eligibility(plan)
     _relabel_sections(plan)
 

@@ -237,3 +237,17 @@ as a sheet not totalling 100 is today.
 - The NRC sheets ingest with the right fields (Eligibility read as
   Eligibility, not System).
 - Existing tests pass; each rule G3–G10 has a test on synthetic data.
+
+## Amended 2026-10-30: a scored Trade License moves too (G3)
+
+Past sheets from some clients ask "Do you have a valid Trade license or
+business permit? If yes attach" with 2–5 marks inside ESG or Registration.
+The Trade License used to stay where it was, so those sheets had no Trade
+License in Eligibility and were not written (26 of PSI's first 84).
+
+It now moves to Eligibility as the standard 0-mark mandatory upload ("Please
+attach a valid Trade license"). The original wording is kept in the note,
+and the row is flagged for review. The marks it carried stay in the section
+it left, spread over that section's other scored questions. With none there,
+they are spread over the sheet in proportion. A sheet keeps one Trade
+License.
