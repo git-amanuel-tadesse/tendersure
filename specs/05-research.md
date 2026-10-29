@@ -65,7 +65,7 @@ rule). Bank first: the glossary and past sheets.
 - **Country.** Research needs the client's country: `--country` (ISO code,
   e.g. ET, KE), defaulting to the country in the sheet code prefix
   (ERCS-ET-2026- -> ET) where there is one.
-- **Command.** `python -m tendersure research <draft list or categories
+- **Command.** `tendersure research <draft list or categories
   table> --client X --country ET [--kinds names,questions,licences]` fills
   the research table and writes a review workbook of the new findings.
   `refine` and `generate` read the table; with a model configured they

@@ -22,7 +22,7 @@ That works for one batch, but not for history at scale:
 
 ## The step
 
-`python -m tendersure learn`, run after `ingest` (or `ingest --learn`).
+`tendersure learn`, run after `ingest` (or `ingest --learn`).
 It reads the bank's usable sheets only (graded clean or correctable) and
 handles only questions it has not seen before, so a re-run after adding a
 year of history costs only that year's new questions.

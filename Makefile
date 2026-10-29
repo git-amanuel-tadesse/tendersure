@@ -5,7 +5,7 @@ PY ?= .venv/bin/python
 
 install:
 	test -x $(PY) || python3 -m venv .venv
-	$(PY) -m pip install -e "packages/core[test]"
+	$(PY) -m pip install -e "packages/core[test]" -e "apps/cli[test]"
 
 test:
 	$(PY) -m pytest

@@ -101,7 +101,7 @@ def load_source(source: Optional[str], bank: str) -> Tuple[List[Sheet], Optional
         return load_corpus(source), None
     path = source or bank
     if not os.path.exists(path):
-        raise FlowError(f"no bank at {path}\n  build it first: python -m tendersure ingest \"<folder of workbooks>\"")
+        raise FlowError(f"no bank at {path}\n  build it first: tendersure ingest \"<folder of workbooks>\"")
     store = BankStore(path)
     sheets = store.load_sheets()
     if not sheets:

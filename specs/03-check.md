@@ -6,7 +6,7 @@ reaches the platform.
 
 ## Command
 
-    python -m tendersure check <edited.xlsx> [--against <generated.xlsx>]
+    tendersure check <edited.xlsx> [--against <generated.xlsx>]
         [--categories data/<client>_categories.csv] [--no-model] [--out report.xlsx]
 
 - Reads the edited workbook only. **It never changes it.**
@@ -85,7 +85,7 @@ row and a reason. It cannot raise an error.
 
 ## After the check
 
-A workbook that passes can be ingested (`python -m tendersure ingest`), so
+A workbook that passes can be ingested (`tendersure ingest`), so
 the team's edits become history and later batches learn from them.
 
 ## Acceptance

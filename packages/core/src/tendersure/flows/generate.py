@@ -298,3 +298,9 @@ def generate(s: Settings) -> Result:
     for code, msg in failed:
         log.info(f"NOT WRITTEN {code}: {msg}")
     return r
+
+
+def read_review(qa: str) -> Tuple[Dict[str, dict], Dict[str, str]]:
+    """(proposals, answers) from an answered QA workbook: what the reviewer saw, and what they said."""
+    from ..review import read_answers, read_proposals
+    return read_proposals(qa), read_answers(qa)

@@ -47,7 +47,6 @@ def test_refine_flows_report_through_the_logger_and_return_the_lines(tmp_path, c
 
 
 def test_generate_takes_the_review_in_memory_exactly_as_from_the_qa_file(corpus, tmp_path_factory):
-    from tendersure.cli import main
     from tendersure.review import read_proposals
     out = tmp_path_factory.mktemp("out")
     cat.save([cat.Category(1, "Supply of Office Stationery and Toners", "GENERAL", client="AAA"),
@@ -64,11 +63,9 @@ def test_generate_takes_the_review_in_memory_exactly_as_from_the_qa_file(corpus,
     ws.cell(row, head.index("Your answer") + 1, "technical 30, experience 10")
     wb.save(first.qa)
 
-    main(["generate", str(corpus), "--categories", str(out / "cats.csv"), "--client", "AAA",
-          "--prefix", "AAA-ET-2026-", "--out", str(out / "from_file.xlsx"), "--no-model",
-          "--audience", str(out / "aud.csv"), "--glossary", str(out / "g.csv"),
-          "--yes-no", str(out / "yn.csv"), "--rulings", str(out / "rulings.csv"),
-          "--research", str(out / "research.csv"), "--review", first.qa])
+    proposals, answers = flows.read_review(first.qa)
+    assert answers == {m.id: "technical 30, experience 10"}
+    flows.generate(_settings(corpus, out, "from_file.xlsx", proposals=proposals, answers=answers))
     in_memory = flows.generate(_settings(corpus, out, "in_memory.xlsx",
                                          proposals=read_proposals(first.qa), answers={m.id: "technical 30, experience 10"}))
     assert _cells(out / "from_file.xlsx") == _cells(out / "in_memory.xlsx")

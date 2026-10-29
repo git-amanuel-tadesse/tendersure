@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tendersure-cli"
+version = "0.1.0"
+description = "TenderSure command line: arguments in, tendersure.flows out"
+requires-python = ">=3.11"
+dependencies = ["tendersure"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+tendersure = "tendersure_cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

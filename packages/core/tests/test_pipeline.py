@@ -17,7 +17,7 @@ from tendersure.similarity import Retriever
 from tendersure.validate import validate_sheet
 from tendersure.writer import Writer
 
-from conftest import GENERIC, TAIL, tech, write_sheet
+from tendersure.testing import GENERIC, TAIL, tech, write_sheet
 
 
 def _gen(corpus):
@@ -1063,17 +1063,15 @@ def test_remove_instead_of_reword_needs_the_bank_too(corpus):
 
 
 def test_ai_runs_by_default_when_configured(monkeypatch):
-    from types import SimpleNamespace
-    from tendersure.cli import _model_wanted
-    a = SimpleNamespace(model=None, no_model=False)
+    from tendersure.flows import Model
     monkeypatch.setenv("TENDERSURE_PROVIDER", "gemini")
     monkeypatch.setenv("GEMINI_API_KEY", "k")
     monkeypatch.setenv("GEMINI_PAID_TIER", "yes")
-    assert _model_wanted(a)[0]
+    assert Model().wanted()[0]
     monkeypatch.setenv("GEMINI_PAID_TIER", "no")
-    assert not _model_wanted(a)[0]                       # unpaid key: never used automatically
+    assert not Model().wanted()[0]                       # unpaid key: never used automatically
     monkeypatch.setenv("GEMINI_PAID_TIER", "yes")
-    assert not _model_wanted(SimpleNamespace(model=None, no_model=True))[0]
+    assert not Model(off=True).wanted()[0]
 
 
 def test_nothing_left_open_after_ai_review(corpus):
@@ -1476,11 +1474,11 @@ def test_model_calls_go_in_chunks_and_a_failed_chunk_falls_back_alone():
            [("good", yesno.RULE_DRAFTED)] * 2 + [("bad", yesno.DRAFTED)]
 
 
-def test_learn_names_and_judges_the_history_and_applies_the_review(corpus, tmp_path, capsys):
-    from tendersure import glossary as gl, yesno
-    from tendersure.cli import main
+def test_learn_names_and_judges_the_history_and_applies_the_review(corpus, tmp_path, caplog):
+    from tendersure import flows, glossary as gl, yesno
+    caplog.set_level("INFO", logger="tendersure")
     store, review = tmp_path / "learned", tmp_path / "review.xlsx"
-    main(["learn", str(corpus), "--store", str(store), "--out", str(review), "--no-model"])
+    flows.learn(str(store), str(review), source=str(corpus), model=flows.Model(off=True))
 
     entries = gl.load(str(store / "glossary.csv"))
     assert entries and all(e.short_name and e.acronym for e in entries)
@@ -1498,15 +1496,16 @@ def test_learn_names_and_judges_the_history_and_applies_the_review(corpus, tmp_p
     names.cell(row_of["Attach evidence of trained service staff"], 8, "ok")
     yn.cell(2, 6, "bad")
     wb.save(review)
-    main(["learn", "--review", str(review), "--store", str(store), "--out", str(tmp_path / "r2.xlsx")])
+    applied = flows.apply_learned_review(str(review), str(store), str(tmp_path / "r2.xlsx")).applied
 
     food = next(e for e in gl.load(str(store / "glossary.csv")) if e.question_key == food.question_key)
     assert (food.short_name, food.acronym, food.status) == ("Food Safety Procedures", "FSP", gl.CONFIRMED)
     assert sum(v.status == yesno.CONFIRMED for v in yesno.load(str(store / "yesno_polarity.csv")).verdicts) == 1
-    assert "applied 3 answered lines" in capsys.readouterr().out
+    assert applied == 3
+    caplog.clear()
 
-    main(["learn", str(corpus), "--store", str(store), "--out", str(tmp_path / "r3.xlsx"), "--no-model"])
-    out = capsys.readouterr().out
+    flows.learn(str(store), str(tmp_path / "r3.xlsx"), source=str(corpus), model=flows.Model(off=True))
+    out = caplog.text
     assert "0 questions newly named" in out and "0 questions judged" in out     # nothing new: nothing asked
 
 
@@ -1615,12 +1614,11 @@ def test_model_proposals_are_checked_before_they_are_kept(tmp_path):
     assert rf.traceability(lines, drafts) == []
 
 
-def test_refine_review_loop_ends_in_a_categories_table(tmp_path, capsys):
-    from tendersure import categories as cat, refine as rf
-    from tendersure.cli import main
+def test_refine_review_loop_ends_in_a_categories_table(tmp_path):
+    from tendersure import categories as cat, flows, refine as rf
     draft = _draft_book(tmp_path / "rc.xlsx", RC)
     revised = tmp_path / "revised.xlsx"
-    main(["refine", draft, "--client", "AAA", "--no-model", "--out", str(revised), "--bank", str(tmp_path / "none")])
+    flows.propose_file(draft, "AAA", out=str(revised), bank=str(tmp_path / "none"), model=flows.Model(off=True))
     wb = openpyxl.load_workbook(revised)
     ws = wb["Revised"]
     col = {c.value: c.column for c in ws[1]}
@@ -1633,9 +1631,8 @@ def test_refine_review_loop_ends_in_a_categories_table(tmp_path, capsys):
     ws.cell(rows["4"], col["Category Code"], "G0005")
     wb.save(revised)
     out, table = tmp_path / "final.xlsx", tmp_path / "cats.csv"
-    main(["refine", "--client", "AAA", "--apply", str(revised), "--out", str(out), "--categories-out", str(table),
-          "--no-model"])
-    assert "7 draft rows -> 5 final categories" in capsys.readouterr().out
+    done = flows.apply_file(str(revised), "AAA", str(out), str(table), model=flows.Model(off=True))
+    assert (len(done.drafts), len(done.final)) == (7, 5)
 
     cats = cat.load(str(table))
     assert [c.description for c in cats][:2] == ["Supply of Stationery and Toners",
@@ -1775,62 +1772,56 @@ def test_without_a_gate_the_columns_and_individual_questions_go(corpus):
     assert check_gate(to_sheet(p), False, []) == []
 
 
-def test_a_category_whose_gate_disagrees_with_applies_to_is_not_written(corpus, tmp_path, capsys):
-    from tendersure import categories as cat
-    from tendersure.cli import main
+def test_a_category_whose_gate_disagrees_with_applies_to_is_not_written(corpus, tmp_path):
+    from tendersure import categories as cat, flows
     cats = [cat.Category(1, "Supply of Office Stationery", "GENERAL", client="AAA"),
             cat.Category(2, "Provision of Consultancy Services", "CONSULTANCY", client="AAA", gate_question=True,
                          applies_to=["Sole Proprietor", "Share Company"])]               # no Individual Consultant
     cat.save(cats, str(tmp_path / "cats.csv"))
-    main(["generate", str(corpus), "--categories", str(tmp_path / "cats.csv"), "--client", "AAA",
-          "--prefix", "AAA-ET-2026-", "--out", str(tmp_path / "o.xlsx"), "--no-model",
-          "--audience", str(tmp_path / "aud.csv"), "--glossary", str(tmp_path / "g.csv"),
-          "--yes-no", str(tmp_path / "yn.csv")])
-    out = capsys.readouterr().out
-    assert "NOT WRITTEN AAA-ET-2026-002: categories table: Gate Question is TRUE" in out
+    r = flows.generate(flows.GenerateSettings(
+        str(tmp_path / "cats.csv"), "AAA", "AAA-ET-2026-", str(tmp_path / "o.xlsx"), source=str(corpus),
+        audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
+        model=flows.Model(off=True)))
+    assert [c for c, _ in r.failed] == ["AAA-ET-2026-002"]
+    assert r.failed[0][1].startswith("categories table: Gate Question is TRUE")
     assert [s for s in openpyxl.load_workbook(tmp_path / "o.xlsx").sheetnames] == ["AAA-ET-2026-001"]
 
 
 # --- check after hand edits ------------------------------------------------------------
 
 def _generated(corpus, tmp_path):
-    """A workbook generate wrote from the synthetic history, and its categories table."""
-    from tendersure import categories as cat
-    from tendersure.cli import main
+    """A workbook generate wrote from the synthetic history, its categories table and the result."""
+    from tendersure import categories as cat, flows
     cats = [cat.Category(1, "Supply of Office Stationery and Toners", "GENERAL", client="AAA"),
             cat.Category(2, "Provision of Security and Guarding Services", "GENERAL", client="AAA")]
     cat.save(cats, str(tmp_path / "cats.csv"))
-    main(["generate", str(corpus), "--categories", str(tmp_path / "cats.csv"), "--client", "AAA",
-          "--prefix", "AAA-ET-2026-", "--out", str(tmp_path / "gen.xlsx"), "--no-model",
-          "--audience", str(tmp_path / "aud.csv"), "--glossary", str(tmp_path / "g.csv"),
-          "--yes-no", str(tmp_path / "yn.csv")])
-    return tmp_path / "gen.xlsx", tmp_path / "cats.csv"
+    r = flows.generate(flows.GenerateSettings(
+        str(tmp_path / "cats.csv"), "AAA", "AAA-ET-2026-", str(tmp_path / "gen.xlsx"), source=str(corpus),
+        audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
+        model=flows.Model(off=True)))
+    return tmp_path / "gen.xlsx", tmp_path / "cats.csv", r
 
 
-def _check(path, tmp_path, *extra):
-    from tendersure.cli import main
+def _check(path, tmp_path, categories=None, against=None):
+    """(errors found, the report's rows)."""
+    from tendersure import flows
     out = tmp_path / "report.xlsx"
-    code = 0
-    try:
-        main(["check", str(path), "--client", "AAA", "--no-model", "--out", str(out),
-              "--yes-no", str(tmp_path / "yn.csv"), *extra])
-    except SystemExit as e:
-        code = e.code
+    r = flows.check(str(path), "AAA", categories, against, str(tmp_path / "yn.csv"), str(out), flows.Model(off=True))
     rows = list(openpyxl.load_workbook(out)["Findings"].iter_rows(min_row=2, values_only=True))
-    return code, rows
+    return r.errors, rows
 
 
 def test_a_generated_workbook_passes_the_check(corpus, tmp_path):
-    gen, cats = _generated(corpus, tmp_path)
+    gen, cats, _ = _generated(corpus, tmp_path)
     before = gen.read_bytes()
-    code, rows = _check(gen, tmp_path, "--categories", str(cats))
-    assert code == 0 and [r for r in rows if r[3] == "error"] == []
+    errors, rows = _check(gen, tmp_path, str(cats))
+    assert errors == 0 and [r for r in rows if r[3] == "error"] == []
     assert gen.read_bytes() == before                                   # the check never writes
 
 
 def test_hand_edits_are_found(corpus, tmp_path):
     import shutil
-    gen, cats = _generated(corpus, tmp_path)
+    gen, cats, _ = _generated(corpus, tmp_path)
     edited = tmp_path / "edited.xlsx"
     shutil.copy(gen, edited)
     wb = openpyxl.load_workbook(edited)
@@ -1842,9 +1833,9 @@ def test_hand_edits_are_found(corpus, tmp_path):
     ws.cell(find("Organization type"), 9, "x")                                 # Kenya-only column (Evaluation)
     ws.title = "AAA-ET-2026-01"                                               # tab renamed
     wb.save(edited)
-    code, rows = _check(edited, tmp_path, "--categories", str(cats), "--against", str(gen))
+    errors, rows = _check(edited, tmp_path, str(cats), str(gen))
     rules = {r[2] for r in rows if r[0] == "AAA-ET-2026-01"}                  # findings carry the tab's name
-    assert code == 1
+    assert errors > 0                               # the CLI exits 1 on this
     assert {"SUM-ROWS", "MARKS-SPLIT", "AT-ASKS-TEXT", "OTHER-CLIENT", "KENYA-COLUMN", "CODE-TAB",
             "EDIT-CHANGED"} <= rules
 
@@ -1865,7 +1856,7 @@ def test_incomplete_reference_blocks_and_missing_sections_are_found():
 
 def test_the_ai_read_asks_once_per_distinct_question_and_only_warns(corpus, tmp_path, monkeypatch):
     from tendersure import check_ai
-    gen, _ = _generated(corpus, tmp_path)
+    gen, _, _ = _generated(corpus, tmp_path)
     from tendersure import paths
     monkeypatch.setattr(paths, "_current", paths.Paths(str(tmp_path)))
     t = FakeTransport({"problems": [{"id": 0, "kind": "wording", "reason": "unclear"}]})
@@ -1876,16 +1867,15 @@ def test_the_ai_read_asks_once_per_distinct_question_and_only_warns(corpus, tmp_
     assert len(t.calls) == 1                                 # cached: nothing asked again
 
 
-def test_generate_refuses_a_sheet_the_check_finds_errors_in(corpus, tmp_path, capsys, monkeypatch):
+def test_generate_refuses_a_sheet_the_check_finds_errors_in(corpus, tmp_path, monkeypatch):
     # History with errors is quarantined and never copied, so plant one where generation checks.
     from tendersure import check as ck
     from tendersure.validate import Finding
     real = ck.check_other_clients
     monkeypatch.setattr(ck, "check_other_clients", lambda s, c: real(s, c) + (
         [Finding(s.name, 9, "OTHER-CLIENT", "silent", "error", "names 'SNV'")] if s.name.endswith("002") else []))
-    _generated(corpus, tmp_path)
-    out = capsys.readouterr().out
-    assert "NOT WRITTEN AAA-ET-2026-002: 1 check error(s): OTHER-CLIENT 1 (first: names 'SNV')" in out
+    _, _, r = _generated(corpus, tmp_path)
+    assert ("AAA-ET-2026-002", "1 check error(s): OTHER-CLIENT 1 (first: names 'SNV')") in r.failed
     assert openpyxl.load_workbook(tmp_path / "gen.xlsx").sheetnames == ["AAA-ET-2026-001"]
 
 
@@ -2060,13 +2050,12 @@ def _findings(*items):
                      for kind, topic, proposal, src in items])
 
 
-def test_refine_shows_research_with_sources_and_keeps_proposals(tmp_path, capsys):
-    from tendersure import refine as rf, research as rs
-    from tendersure.cli import main
+def test_refine_shows_research_with_sources_and_keeps_proposals(tmp_path):
+    from tendersure import flows, refine as rf, research as rs
     draft = _draft_book(tmp_path / "rc.xlsx", RC)
     revised = tmp_path / "revised.xlsx"
-    main(["refine", draft, "--client", "AAA", "--no-model", "--out", str(revised), "--bank", str(tmp_path / "none"),
-          "--research", str(tmp_path / "r.csv")])
+    flows.propose_file(draft, "AAA", out=str(revised), bank=str(tmp_path / "none"), research=str(tmp_path / "r.csv"),
+                       model=flows.Model(off=True))
     _, before = rf.read_revised(str(revised))
     wb = openpyxl.load_workbook(revised)                    # the team has started answering
     ws = wb["Revised"]
@@ -2081,8 +2070,8 @@ def test_refine_shows_research_with_sources_and_keeps_proposals(tmp_path, capsys
                        "Stationery | https://example.org/s"),
                       ("licences", office, {"licences": [{"name": "Trade Licence for Wholesale"}]},
                        "Licences | https://example.org/l")), str(tmp_path / "r.csv"))
-    main(["research", str(revised), "--client", "AAA", "--country", "ET", "--no-model",
-          "--research", str(tmp_path / "r.csv"), "--bank", str(tmp_path / "none"), "--out", str(tmp_path / "rv.xlsx")])
+    flows.research(str(revised), "AAA", ["names", "licences"], country="ET", out=str(tmp_path / "rv.xlsx"),
+                   bank=str(tmp_path / "none"), table_path=str(tmp_path / "r.csv"), model=flows.Model(off=True))
     _, after = rf.read_revised(str(revised))
     line = next(ln for ln in after if ln.description == office)
     assert line.technical_name == "Supply of Office Stationery and Consumables"

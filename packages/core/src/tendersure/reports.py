@@ -248,7 +248,7 @@ def write_qa_report(plans: List[Plan], path: str, items=None):
         "N- rows: no source in the corpus; questions need writing (--model drafts them).",
         "M- rows: only the sections to change, e.g. 'technical 10, trade_reference 35'. Each sheet must still total 100.",
         "T- rows: decided once for the whole batch.",
-        "Then run: python -m tendersure generate ... --review <this file>. Answers are applied and carried forward.",
+        "Then run: tendersure generate ... --review <this file>. Answers are applied and carried forward.",
         "The Detail tabs are optional background.",
     ):
         ws.append([line])

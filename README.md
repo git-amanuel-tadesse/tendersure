@@ -13,13 +13,14 @@ category refinement, the check command, learning from the bank).
 
 ## Install
 
-    make install                    # .venv at the root, core installed editable
-    source .venv/bin/activate
+    make install                    # .venv at the root; core and the CLI installed editable
+    source .venv/bin/activate       # puts the `tendersure` command on the PATH
 
-The repo is a monorepo (spec 06): `packages/core` is the `tendersure`
-package (every rule, the bank, the CLI for now). `apps/` (API, CLI, web)
-arrive with the web app. Commands run from the repo root, where `.env` and
-`data/` live (or wherever `$TENDERSURE_HOME` points).
+The repo is a monorepo (spec 06). `packages/core` is the `tendersure`
+package: every rule, the bank, and `tendersure.flows`, the steps every app
+calls. `apps/cli` is the `tendersure` command: arguments in, flows out. The
+API and the web app follow in `apps/`. `.env` and `data/` live at the repo
+root (or wherever `$TENDERSURE_HOME` points), so commands work from any folder.
 
 ## Run
 
@@ -29,12 +30,12 @@ any folder works, with subfolders (e.g. one per year).
 
     # 1. Put the history in the bank (data/bank.sqlite) and write the reports.
     #    Run it again whenever workbooks are added: only new or changed files are read.
-    python -m tendersure ingest "sample file" --out reports
+    tendersure ingest "sample file" --out reports
     #    -> reports/validation_report.xlsx   findings by rule, by sheet
     #    -> reports/bank.xlsx                answer-type reference, bank, conflicts
 
     # 2. Category table from the client's notice
-    python -m tendersure categories "sample file/ERCS Supplier Prequalification 2026-2029 Invitation.pdf" --client ERCS --version 2026-09-ext \
+    tendersure categories "sample file/ERCS Supplier Prequalification 2026-2029 Invitation.pdf" --client ERCS --version 2026-09-ext \
         --out data/ercs_categories.csv [--diff data/ercs_categories_old.csv] \
         [--engine layout|llm|both]
     #    layout: table geometry, no network (fits the ERCS notice)
@@ -46,29 +47,29 @@ any folder works, with subfolders (e.g. one per year).
     #      applies_to     organization types accepted, comma-separated
 
     # 2b. Refine a draft category list before it goes to the client (spec 01)
-    python -m tendersure refine "Red Cross Categories 1st Draft.xlsx" --client ERCS --target 50-60
+    tendersure refine "Red Cross Categories 1st Draft.xlsx" --client ERCS --target 50-60
     #    -> reports/<draft> - Revised.xlsx   every draft row with a status (Kept, Renamed, Merged,
     #       Separated, Repeated, Additional (suggested)), reasons, questions for the client and the
     #       proposed Eligibility / Gate Question / Applies To. Answer its Decision column
     #       (accept, reject, remove, edit + Client comment), then:
-    python -m tendersure refine --client ERCS --apply "reports/<draft> - Revised.xlsx" \
+    tendersure refine --client ERCS --apply "reports/<draft> - Revised.xlsx" \
         --categories-out data/ercs_categories.csv
     #    -> the final list, and the categories table step 3 reads
 
     # 2c. After ingesting history: learn names and Yes/No verdicts for every question (spec 04)
-    python -m tendersure learn            # only questions not seen before go to the model
+    tendersure learn            # only questions not seen before go to the model
     #    -> reports/learned_review.xlsx   answer it, then: learn --review reports/learned_review.xlsx
     #    The learned files (data/glossary.csv, data/yesno_polarity.csv) are client data, kept out of git.
 
     # 3. Generate all categories in one pass
-    python -m tendersure generate --categories data/ercs_categories.csv \
+    tendersure generate --categories data/ercs_categories.csv \
         --client ERCS --prefix ERCS-ET-2026- --out out/ERCS-2026-2029.xlsx
     #    -> out/ERCS-2026-2029.xlsx      one sheet per category, upload format
     #    -> out/ERCS-2026-2029_qa.xlsx   the review: one Decisions tab (~30 lines
     #                                    for 58 sheets) plus optional Detail tabs
 
     # 3b. Review: answer the Decisions tab of the QA report, then apply it
-    python -m tendersure generate --categories data/ercs_categories.csv \
+    tendersure generate --categories data/ercs_categories.csv \
         --client ERCS --prefix ERCS-ET-2026- --out out/ERCS-2026-2029.xlsx \
         --review out/ERCS-2026-2029_qa.xlsx
 
@@ -78,13 +79,13 @@ any folder works, with subfolders (e.g. one per year).
     #       for this batch, to confirm (learn --review)
 
     # 3c. After the team edits a workbook by hand: check it before upload
-    python -m tendersure check "out/ERCS-2026-2029.xlsx" --client ERCS \
+    tendersure check "out/ERCS-2026-2029.xlsx" --client ERCS \
         --categories data/ercs_categories.csv [--against <generated workbook>] [--no-model]
     #    -> reports/<name>_check.xlsx   every problem by sheet and row; exit code 1 on errors.
     #    Never changes the workbook. --against lists what changed since generation.
 
     # 4. How good is it? Leave-one-out against existing sheets
-    python -m tendersure evaluate --client ERCS --categories data/ercs_categories.csv
+    tendersure evaluate --client ERCS --categories data/ercs_categories.csv
 
     make test                       # synthetic data; corpus tests run if "sample file/" exists
 
@@ -123,7 +124,7 @@ inside the model client (`privacy.py`), so no step can skip it:
 
 See what would be sent, without sending anything:
 
-    python -m tendersure privacy-check --categories data/ercs_categories.csv \
+    tendersure privacy-check --categories data/ercs_categories.csv \
         --client ERCS --prefix ERCS-ET-2026- --notice "sample file/<notice>.pdf"
 
 Anonymisation hides *who*; the question wording itself is still the clients'
@@ -251,7 +252,13 @@ removals and additions in the QA file; write the prequalification workbook.
     pyproject.toml   monorepo root: shared tool settings, marks where .env and data/ live
     Makefile         make install | test
     packages/core/   the tendersure package: pyproject.toml, src/tendersure/, tests/
+    apps/cli/        the tendersure command (tendersure_cli): pyproject.toml, src/, tests/
     data/            the bank and learned files (client data, git-ignored)
+
+    packages/core/src/tendersure/flows/   the steps: one function per step, plain inputs, a result
+                     back, report lines through the "tendersure" logger; never prints or exits
+      ingest.py categories.py refine.py research.py learn.py generate.py check.py evaluate.py
+      common.py      where the sheets come from, which model runs (Model), the learned files
 
     packages/core/src/tendersure/
       paths.py       where .env and data/ live ($TENDERSURE_HOME, else the repo root)
@@ -281,7 +288,7 @@ removals and additions in the QA file; write the prequalification workbook.
       check.py       check a workbook after hand edits
       check_ai.py    the AI read of a checked workbook (warnings only)
       evaluate.py    leave-one-out evaluation
-      cli.py         python -m tendersure ...
+      testing.py     synthetic workbooks for every party's tests (no client data)
     packages/core/tests/   pytest, synthetic workbooks
 
 ## Rules to keep

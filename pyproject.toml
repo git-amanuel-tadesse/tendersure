@@ -6,4 +6,4 @@
 [tool.tendersure]
 
 [tool.pytest.ini_options]
-testpaths = ["packages/core/tests"]
+testpaths = ["packages/core/tests", "apps/cli/tests"]

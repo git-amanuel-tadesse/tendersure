@@ -39,7 +39,7 @@ reason.
 
 ## Step A: propose a revised list
 
-Command: `python -m tendersure refine <draft> --client X [--target a-b] --out revised.xlsx`
+Command: `tendersure refine <draft> --client X [--target a-b] --out revised.xlsx`
 
 ### Rules
 
@@ -105,7 +105,7 @@ Command: `python -m tendersure refine <draft> --client X [--target a-b] --out re
 
 ## Step B: apply the review
 
-Command: `python -m tendersure refine --apply revised.xlsx --out final.xlsx --categories-out data/<client>_categories.csv`
+Command: `tendersure refine --apply revised.xlsx --out final.xlsx --categories-out data/<client>_categories.csv`
 
 - Each Revised row's Decision is `accept` (default when blank), `reject`
   (revert to the draft form), `remove`, or `edit` with the new wording in

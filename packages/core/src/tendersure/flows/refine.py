@@ -118,3 +118,28 @@ def apply_file(revised: str, client: str, out: Optional[str] = None, categories_
     for p in r.problems:
         log.info(f"REVIEW PROBLEM: {p}")
     return r
+
+
+def evaluate(workbook: str, draft_tab: str, final_tab: str, client: str, out: Optional[str] = None,
+             bank: Optional[str] = None, model: Model = Model()) -> Dict:
+    """Compare a proposal with the list a team and client settled on (spec 01, NRC history)."""
+    bank = bank or current().bank
+    register_clients([client])
+    drafts = rf.read_draft(workbook, draft_tab)
+    team = [d.description for d in rf.read_draft(workbook, final_tab)]
+    use_model, why_not = model.wanted()
+    raw = rf.ModelRefiner(model=model.name).propose(drafts, client, past_categories(bank), None) \
+        if use_model else None
+    lines = rf.check(raw, drafts, rf.groups_of(drafts))
+    if out:
+        rf.write_revised(out, drafts, lines, client)
+    log.info(f"refine-evaluate ({'model' if use_model else 'rules: ' + why_not}):")
+    report = rf.evaluate(drafts, lines, team)
+    for k, v in report.items():
+        if isinstance(v, list):
+            log.info(f"  {k}: {len(v)}")
+            for x in v:
+                log.info(f"      {x}")
+        else:
+            log.info(f"  {k}: {v}")
+    return report
