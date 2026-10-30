@@ -16,6 +16,9 @@ data/glossary.csv
 data/yesno_polarity.csv
 data/audience.csv
 data/research.csv
+data/rulings.csv
+data/client_rules.csv
+data/backup-*/
 
 # monorepo build output
 *.egg-info/
