@@ -39,7 +39,16 @@ describe("triage", () => {
 
 describe("as proposed", () => {
   it("is a blank, except on a freed-marks line, where the split itself is written so it sticks", () => {
-    expect(asProposed({ id: "Q-1", proposed: "remove: 3" })).toBe("");
+    expect(asProposed({ id: "Q-1", proposed: "remove: 3", status: "AI: applied: removed from 1" })).toBe("");
     expect(asProposed({ id: "M-FREED-sla-d63c27", proposed: "integrity 10, technical 32" })).toBe("integrity 10, technical 32");
+  });
+});
+
+describe("accepting an open card", () => {
+  it("writes the proposal so the card is answered; a decided card keeps the blank", () => {
+    expect(asProposed({ id: "Q-1", proposed: "keep in all" })).toBe("keep in all");                     // open
+    expect(asProposed({ id: "Q-1", proposed: "keep in all", status: "accepted as proposed" })).toBe("");
+    expect(asProposed({ id: "M-BENCH-X", proposed: "technical 10, hr 5" })).toBe("technical 10, hr 5");
+    expect(asProposed({ id: "C-1", proposed: "as copied (majority: 2)" })).toBe("");                    // not an answer
   });
 });

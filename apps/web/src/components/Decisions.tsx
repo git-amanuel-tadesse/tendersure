@@ -146,7 +146,7 @@ export function Decisions({ exerciseId, run, onApplied }: { exerciseId: string; 
                 <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => bulk((i) => (isBench(i) ? "client" : undefined))}>
                   Take the client's split ({benchShown.length})
                 </Button>
-                <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => bulk((i) => (isBench(i) ? "" : undefined))}>
+                <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => bulk((i) => (isBench(i) ? asProposed(i) : undefined))}>
                   Keep ours ({benchShown.length})
                 </Button>
               </>
@@ -293,7 +293,8 @@ function BenchControl({ item, value, onChange }: { item: Item; value: string; on
         </tbody>
       </table>
       <div className="flex flex-wrap gap-1.5">
-        <Button variant={!value ? "primary" : "secondary"} className="px-2 py-1 text-xs" onClick={() => { setEditing(false); onChange(""); }}>Keep ours</Button>
+        <Button variant={!value || value === asProposed(item) ? "primary" : "secondary"} className="px-2 py-1 text-xs"
+                onClick={() => { setEditing(false); onChange(asProposed(item)); }}>Keep ours</Button>
         <Button variant={takes ? "primary" : "secondary"} className="px-2 py-1 text-xs" onClick={() => { setEditing(false); onChange("client"); }}>Take client's</Button>
         <Button variant={custom || editing ? "primary" : "secondary"} className="px-2 py-1 text-xs" onClick={() => setEditing((e) => !e)}>Edit</Button>
       </div>
@@ -337,7 +338,7 @@ function QControl({ item, value, onChange }: { item: Item; value: string; onChan
           );
         })}
         <Button variant="ghost" className="px-2 py-0.5 text-xs" onClick={() => set({ remove: [...item.codes], reword: {} })}>remove all</Button>
-        <Button variant="ghost" className="px-2 py-0.5 text-xs" onClick={() => onChange("")}>as proposed</Button>
+        <Button variant="ghost" className="px-2 py-0.5 text-xs" onClick={() => onChange(asProposed(item))}>as proposed</Button>
       </div>
       {Object.keys(wording).length > 0 && (
         <div className="space-y-1 text-xs">

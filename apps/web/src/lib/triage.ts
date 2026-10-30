@@ -24,10 +24,17 @@ export const TAB_LABEL: Record<Tab, string> = {
 
 export const isBench = (d: Pick<Decision, "id">) => d.id.startsWith("M-BENCH-");
 
-/** What "as proposed" is written as. A blank accepts a proposal - except on a freed-marks line,
- * which every apply makes again and treats as unseen while blank: there the split itself is
- * written, so the answer sticks and the line closes (review.apply_answers). */
-export const asProposed = (d: Pick<Decision, "id" | "proposed">) => (d.id.startsWith("M-FREED-") ? d.proposed : "");
+/** A proposal written in the answer grammar, so it can be given as the answer itself. */
+const writable = (d: Pick<Decision, "id" | "proposed">) =>
+  /^(keep|remove|reword|add|skip|yes|no)\b/i.test(d.proposed.trim())
+  || /^[a-z_]+\s+\d+(\.\d+)?(\s*,\s*[a-z_]+\s+\d+(\.\d+)?)*$/i.test(d.proposed.trim());   // a whole split, nothing else
+
+/** What "as proposed" is written as. A blank accepts a proposal - but a blank on an open card
+ * (no answer, no status: nothing decided yet, as after a build without AI) or on a freed-marks
+ * line (made again on every apply) changes nothing and leaves it open; there the proposal itself
+ * is written, so the card is answered, Apply has something to apply and the run can finish. */
+export const asProposed = (d: Pick<Decision, "id" | "proposed"> & { status?: string }) =>
+  (d.id.startsWith("M-FREED-") || !d.status) && writable(d) ? d.proposed : "";
 
 /** The reviewer's notes in an AI status: "AI: applied: removed from 1 | 22: removal not applied, reviewer: …". */
 export function aiNotes(status = ""): string {
