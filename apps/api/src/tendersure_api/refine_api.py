@@ -358,6 +358,28 @@ def apply(path: ExercisePath, body: RefineApply):
     return Job.of(job).model_dump(), 202
 
 
+@bp.get("/revised-client.xlsx")
+def download_revised_for_client(path: ExercisePath):
+    """The proposed list as the client sees it: descriptions and sub-categories only, in its draft's layout."""
+    eid = path.exercise_id
+    folder = _folder(eid)
+    _, lines, _, _ = _revised(folder)
+    name = os.path.splitext(os.path.basename(_read(folder, "draft.json")["file"]))[0] + " - for the client.xlsx"
+    out = _file(folder, name)
+    flows.export_for_client(out, lines)
+    return send_file(out, as_attachment=True, download_name=name)
+
+
+@bp.get("/final-client.xlsx")
+def download_final_for_client(path: ExercisePath):
+    """The final list as the client sees it."""
+    folder = _folder(path.exercise_id)
+    final = ApplyResult.model_validate(_need(folder, "final.json", "the review has not been applied yet"))
+    out = _file(folder, "Final Categories - for the client.xlsx")
+    flows.export_for_client(out, [ln.core() for ln in final.final], "Final Categories")
+    return send_file(out, as_attachment=True, download_name="Final Categories - for the client.xlsx")
+
+
 @bp.get("/final.xlsx")
 def download_final(path: ExercisePath):
     eid = path.exercise_id

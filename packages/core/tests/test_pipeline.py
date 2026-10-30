@@ -3093,3 +3093,18 @@ def test_organization_type_and_the_fayda_id(corpus):
     elig = {q.row.criteria: q.row.applies_to for q in gated.questions if section_key(q.row.section) == "eligibility"}
     assert elig == {"Please attach a valid Trade license": ", ".join(FIRMS),
                     "Please attach a copy of your Fayda ID (national ID)": "Individual Consultant"}
+
+
+def test_the_client_s_copy_shows_only_descriptions_and_sub_categories(tmp_path):
+    from tendersure import refine as rf
+    lines = [rf.Line("Supply of Relief Items", rf.KEPT, ["1"], "RELIEF", "x", "a question?", ["Soaps", "Blankets"],
+                     ["IATA Registration Certificate"], ["Share Company"], licence=["min G5"]),
+             rf.Line("Supply of Stationery", rf.REPEATED, ["2"], "RELIEF"),
+             rf.Line("Provision of Cleaning Services", rf.RENAMED, ["3"], "GENERAL", "capitalisation")]
+    rf.write_client_list(str(tmp_path / "c.xlsx"), lines)
+    ws = openpyxl.load_workbook(tmp_path / "c.xlsx").active
+    values = [[c for c in row] for row in ws.iter_rows(values_only=True)]
+    assert values == [["#", "Category Description", "Sub-Category"], [None, "RELIEF", None],
+                      [1, "Supply of Relief Items", "Soaps"], [None, None, "Blankets"],
+                      [None, "GENERAL", None], [2, "Provision of Cleaning Services", None]]
+    assert "A3:A4" in [str(m) for m in ws.merged_cells.ranges]                 # one block per category

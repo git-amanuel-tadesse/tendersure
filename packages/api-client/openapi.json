@@ -3916,6 +3916,41 @@
         ]
       }
     },
+    "/api/exercises/{exercise_id}/refine/final-client.xlsx": {
+      "get": {
+        "operationId": "refine_download_final_for_client_final_client_xlsx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "The final list as the client sees it.",
+        "tags": [
+          "refine"
+        ]
+      }
+    },
     "/api/exercises/{exercise_id}/refine/final.xlsx": {
       "get": {
         "operationId": "refine_download_final_final_xlsx_get",
@@ -4111,6 +4146,41 @@
           }
         },
         "summary": "Propose the revised list, as a job; its result is the proposal, also kept as the revised list.",
+        "tags": [
+          "refine"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/revised-client.xlsx": {
+      "get": {
+        "operationId": "refine_download_revised_for_client_revised_client_xlsx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "The proposed list as the client sees it: descriptions and sub-categories only, in its draft's layout.",
         "tags": [
           "refine"
         ]

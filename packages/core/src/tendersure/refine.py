@@ -1003,6 +1003,43 @@ def write_final(path: str, final: List[Line], notes: List[Tuple[Line, str, str]]
     wb.save(path)
 
 
+def write_client_list(path: str, lines: List[Line], title: str = "Categories"):
+    """The list as the client sees it - the layout of its own draft: group headings, then each
+    category's number and description, its sub-categories one per row beside it. Nothing the team
+    works with (status, reasons, eligibility, Applies To, licence, HR, technical) is shown.
+    Repeated and removed lines are left out."""
+    from openpyxl.styles import Border, Side
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = title[:31]
+    thin = Side(style="thin", color="FF999999")
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ws.append(["#", "Category Description", "Sub-Category"])
+    for c, w in zip(ws[1], (6, 100, 55)):
+        c.font, c.fill, c.border = Font(bold=True), HEAD, box
+        ws.column_dimensions[c.column_letter].width = w
+    shown = [ln for ln in lines if ln.status not in (REPEATED, REMOVED)]
+    group, n = object(), 0
+    for ln in shown:
+        if ln.group != group:
+            group = ln.group
+            ws.append(["", group or "OTHER", ""])
+            for c in ws[ws.max_row]:
+                c.font, c.fill, c.border = Font(bold=True), GROUP, box
+        n += 1
+        subs = ln.sub_categories or [""]
+        first = ws.max_row + 1
+        for i, sub in enumerate(subs):
+            ws.append([n if i == 0 else None, ln.description if i == 0 else None, sub])
+            for c in ws[ws.max_row]:
+                c.alignment, c.border = Alignment(wrap_text=True, vertical="top"), box
+        if len(subs) > 1:
+            for col in (1, 2):
+                ws.merge_cells(start_row=first, start_column=col, end_row=ws.max_row, end_column=col)
+    ws.freeze_panes = "A2"
+    wb.save(path)
+
+
 def to_categories(final: List[Line], client: str, version: Optional[str] = None) -> List[Category]:
     return [Category(i, ln.description, ln.group, ln.sub_categories, client, version, "", ln.eligibility,
                      ln.gate_question, ln.applies_to, ln.licence, ln.hr, ln.technical)

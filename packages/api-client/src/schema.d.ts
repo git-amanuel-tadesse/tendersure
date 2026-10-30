@@ -426,6 +426,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/exercises/{exercise_id}/refine/final-client.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The final list as the client sees it. */
+        get: operations["refine_download_final_for_client_final_client_xlsx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/exercises/{exercise_id}/refine/final.xlsx": {
         parameters: {
             query?: never;
@@ -490,6 +507,23 @@ export interface paths {
         put?: never;
         /** Propose the revised list, as a job; its result is the proposal, also kept as the revised list. */
         post: operations["refine_propose_propose_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exercises/{exercise_id}/refine/revised-client.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The proposed list as the client sees it: descriptions and sub-categories only, in its draft's layout. */
+        get: operations["refine_download_revised_for_client_revised_client_xlsx_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2826,6 +2860,28 @@ export interface operations {
             };
         };
     };
+    refine_download_final_for_client_final_client_xlsx_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
     refine_download_final_final_xlsx_get: {
         parameters: {
             query?: never;
@@ -2942,6 +2998,28 @@ export interface operations {
                     "application/json": components["schemas"]["Job"];
                 };
             };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    refine_download_revised_for_client_revised_client_xlsx_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
             /** @description Unprocessable Content */
             422: {
                 headers: {

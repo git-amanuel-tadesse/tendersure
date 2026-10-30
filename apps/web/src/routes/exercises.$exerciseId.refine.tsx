@@ -305,7 +305,10 @@ function ReviewStep({ exerciseId, revised, draft }: {
       title="3 · Review"
       actions={
         <>
-          <a className={linkButton()} href={links.revised(exerciseId)}>Download for the client (.xlsx)</a>
+          <a className={linkButton()} href={links.revised(exerciseId)}
+             title="every column: statuses, reasons, eligibility, the answer columns">Internal review (.xlsx)</a>
+          <a className={linkButton()} href={links.revisedForClient(exerciseId)}
+             title="as the client's draft: descriptions and sub-categories only">For the client (.xlsx)</a>
           {dirty > 0 && <Button variant="ghost" onClick={() => setEdits({})}>Discard</Button>}
           <Button disabled={!dirty} busy={changeLines.isPending}
                   onClick={() => changeLines.mutate(Object.entries(edits).map(([i, e]) => ({ index: Number(i), ...e })),
@@ -405,7 +408,8 @@ function ApplyStep({ exerciseId, final }: { exerciseId: string; final: Schemas["
   return (
     <Card title="4 · Apply the review" actions={final && (
       <>
-        <a className={linkButton()} href={links.final(exerciseId)}>Final list (.xlsx)</a>
+        <a className={linkButton()} href={links.final(exerciseId)}>Final list, internal (.xlsx)</a>
+        <a className={linkButton()} href={links.finalForClient(exerciseId)}>Final list for the client (.xlsx)</a>
         <Link to="/exercises/$exerciseId/categories" params={{ exerciseId }} className={linkButton("primary")}>
           Categories table →
         </Link>

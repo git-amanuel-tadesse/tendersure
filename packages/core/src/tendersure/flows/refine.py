@@ -189,6 +189,11 @@ def import_revised(path: str) -> Tuple[List[rf.Draft], List[rf.Line]]:
         raise FlowError(f"{os.path.basename(path)} is not a revised list (no {e} tab or column)")
 
 
+def export_for_client(path: str, lines: List[rf.Line], title: str = "Categories"):
+    """The categories as the client sees them: descriptions and sub-categories only, in its draft's layout."""
+    rf.write_client_list(path, lines, title)
+
+
 def export_final(path: str, result: ApplyResult):
     rf.write_final(path, result.final, result.notes)
 
