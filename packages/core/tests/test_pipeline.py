@@ -3034,3 +3034,22 @@ def test_a_replaced_term_keeps_its_case():
     assert pat.sub(lambda m: _keep_case(m.group(0), "trade license"), text) == \
         "Does your company have a valid trade license? Trade license number"
     assert not Rule("AAA", "replace", "PO", "x").pattern().search("POLICY and SPO")   # whole words only
+
+
+def test_sheets_from_the_client_s_country_come_first(corpus):
+    """Spec 12 S: PSI (Ethiopia) was built mostly from NRC's Kenyan sheets."""
+    from copy import deepcopy
+    sheets = load_corpus(str(corpus))
+    et = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    ke = deepcopy(et)
+    ke.name = ke.code = "KKK-KE-2026-003"
+    ke.client = "KKK"
+    for r in ke.rows:
+        r.sheet = ke.name
+    sheets.append(ke)
+    g = Generator(sheets, Retriever(sheets))
+    for country, want in (("ET", "AAA-ET-2026-003"), ("KE", "KKK-KE-2026-003")):
+        p = g.plan(Target("ZZZ-ET-2026-009", et.description, "ZZZ", country=country))
+        assert p.skeleton.sheet.name == want
+    p = g.plan(Target("ZZZ-UG-2026-009", et.description, "ZZZ", country="UG"))      # none from Uganda: noted
+    assert any("no past sheet from UG" in n for n in p.notes)

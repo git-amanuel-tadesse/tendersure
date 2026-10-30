@@ -71,6 +71,7 @@ class Target:
     technical: List[str] = field(default_factory=list)
     brief: str = ""                 # the client's brief for the run (spec 07 B), read first by the model
     client_rules: list = field(default_factory=list)   # spec 12 C: applied first among the template rules
+    country: str = ""               # ISO code (ET, KE): past sheets from this country come first (spec 12 S)
 
     @property
     def name_in_text(self) -> str:
@@ -741,10 +742,16 @@ class Generator:
     def plan(self, target: Target, exclude: Optional[set] = None,
              marks: Optional[Dict[str, float]] = None, k: int = 5) -> Plan:
         ranked = self.retriever.rank(target.description, target.client, target.group,
-                                     exclude=exclude, k=max(k, 12))
+                                     exclude=exclude, k=max(k, 40 if target.country else 12))
         matches = [m for m in ranked if self._usable(m)]
         if not matches:
             raise ValueError("no usable past sheets to build from")
+        # The client's own sheets first, then sheets from its country (spec 12 S): an Ethiopian job
+        # starts from Ethiopian questions, never Kenyan ones when an Ethiopian sheet is there.
+        if target.country:
+            from .research import sheet_country
+            home = {m.sheet.name for m in matches if sheet_country(m.sheet) == target.country}
+            matches.sort(key=lambda m: (m.sheet.client != target.client, m.sheet.name not in home))
         skeleton = next((m for m in matches if m.sheet.client == target.client), matches[0])
         skipped = []
         for m in ranked:
@@ -794,6 +801,12 @@ class Generator:
         plan = Plan(target=target, skeleton=skeleton, matches=matches[:k], rows=rows,
                     n_columns=len(LAYOUT))
         plan.notes += skipped
+        if target.country and sk.client != target.client:
+            from .research import sheet_country
+            there = sheet_country(sk) or "unknown"
+            if there != target.country:
+                plan.notes.append(f"no past sheet from {target.country} fits this category: built from {sk.name} "
+                                  f"({there}); check its questions suit {target.country}")
         plan.same_category = same_category
         # Weak: neither the topic (text) nor the client's own grouping links
         # the source to this category - it was chosen by client and kind only.

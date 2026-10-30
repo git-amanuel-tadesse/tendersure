@@ -127,7 +127,8 @@ def generate(s: Settings) -> Result:
         exclude = {sh.name for sh in sheets if sh.code == code} if s.rebuild_existing else None
         target = Target(code, c.description, s.client, c.group, s.client_name, c.sub_categories,
                         c.requirements or stated_requirements(c), c.eligibility, c.gate_question,
-                        business_types(c.applies_to), c.licence, c.hr, c.technical, s.brief, rules)
+                        business_types(c.applies_to), c.licence, c.hr, c.technical, s.brief, rules,
+                        s.country or rs.country_of(s.prefix))
         try:
             plan = gen.plan(target, exclude=exclude, marks=marks.get(code))
             plan.benchmark = refs[0].get(c.number)
