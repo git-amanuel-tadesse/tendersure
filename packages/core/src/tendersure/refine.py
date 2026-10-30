@@ -550,7 +550,12 @@ def _carry_draft(ln: Line, by_id: Dict[str, Draft]):
     them (spec 07 R3)."""
     rows = [by_id[i] for i in ln.from_draft if i in by_id]
     union = lambda name: list(dict.fromkeys(x for d in rows for x in getattr(d, name)))
-    ln.sub_categories = union("sub_categories") or ln.sub_categories
+    # Sub-categories come from the client's draft only (spec 12 R1): the model's are shown, not applied.
+    proposed = [s for s in ln.sub_categories if s not in union("sub_categories")]
+    ln.sub_categories = union("sub_categories")
+    if proposed and rows:
+        hint = f"model suggests sub-categories (not applied): {' | '.join(proposed)}"
+        ln.reason = f"{ln.reason}; {hint}" if ln.reason else hint
     for name in ("licence", "hr", "technical"):
         setattr(ln, name, list(dict.fromkeys(getattr(ln, name) + union(name))))
     if any(d.individual for d in rows) and INDIVIDUAL not in ln.applies_to:

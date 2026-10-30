@@ -3053,3 +3053,17 @@ def test_sheets_from_the_client_s_country_come_first(corpus):
         assert p.skeleton.sheet.name == want
     p = g.plan(Target("ZZZ-UG-2026-009", et.description, "ZZZ", country="UG"))      # none from Uganda: noted
     assert any("no past sheet from UG" in n for n in p.notes)
+
+
+def test_sub_categories_come_from_the_draft_only():
+    """Spec 12 R1 (PSI: a sub-category question on a category the client gave none)."""
+    from tendersure import refine as rf
+    drafts = [rf.Draft("1", "Provision of Goods Transport Services", "TRANSPORT"),
+              rf.Draft("2", "Supply of Relief Items", "RELIEF", ["Soaps", "Blankets"])]
+    raw = {"lines": [{"from": ["1"], "status": "Kept", "description": "Provision of Goods Transport Services",
+                      "sub_categories": ["Cold-Chain Transport", "Dry Cargo"]},
+                     {"from": ["2"], "status": "Kept", "description": "Supply of Relief Items",
+                      "sub_categories": ["Soaps", "Blankets", "Kitchen Sets"]}], "additional": []}
+    lines = {ln.from_draft[0]: ln for ln in rf.check(raw, drafts, rf.groups_of(drafts))}
+    assert lines["1"].sub_categories == [] and "Cold-Chain Transport | Dry Cargo" in lines["1"].reason
+    assert lines["2"].sub_categories == ["Soaps", "Blankets"]
