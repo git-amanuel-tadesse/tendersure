@@ -10,7 +10,7 @@ steps' inputs and outputs, so they are part of this API too.
 from ..brief import load as load_brief
 from ..client_rules import ACTIONS as RULE_ACTIONS, Rule
 from ..client_rules import load as load_client_rules, save as save_client_rules
-from ..categories import Category
+from ..categories import Category, keep_team_edits
 from ..llm import LLMError
 from ..paths import Paths, current, use
 from ..privacy import PrivacyError
@@ -32,7 +32,7 @@ from .research import ResearchResult, apply_review as apply_research_review, res
 
 __all__ = [
     "FlowError", "LLMError", "PrivacyError", "Model", "Paths", "current", "use", "log",
-    "Draft", "Line", "Category", "Item", "DECISIONS",
+    "Draft", "Line", "Category", "Item", "DECISIONS", "keep_team_edits",
     "load_corpus", "load_source", "load_brief", "Rule", "RULE_ACTIONS", "load_client_rules", "save_client_rules",
     "ingest", "IngestResult", "bank_status", "BankStatus", "model_status", "ModelStatus",
     "extract_categories", "CategoriesResult", "ENGINES",

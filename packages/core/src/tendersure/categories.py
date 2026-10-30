@@ -232,6 +232,28 @@ def diff(old: List[Category], new: List[Category]) -> List[str]:
     return out
 
 
+TEAM_FIELDS = ("sub_categories", "requirements", "eligibility", "gate_question", "applies_to", "licence", "hr", "technical")
+
+
+def keep_team_edits(new: List[Category], applied: List[Category], table: List[Category]) -> List[str]:
+    """Re-applying a refinement must not undo what the team set on the categories table since
+    the last apply (PSI: a re-apply dropped a gate and four categories' technical items). An
+    edit is a field where the table differs from what that apply produced; it is carried onto
+    the category with the same description in `new`. Returns what was kept, one line each."""
+    key = lambda c: " ".join(c.description.lower().split())
+    before, now = {key(c): c for c in applied}, {key(c): c for c in table}
+    kept = []
+    for c in new:
+        b, t = before.get(key(c)), now.get(key(c))
+        if b is None or t is None:
+            continue
+        for f in TEAM_FIELDS:
+            if getattr(t, f) != getattr(b, f) and getattr(c, f) != getattr(t, f):
+                setattr(c, f, getattr(t, f))
+                kept.append(f"{c.number} {c.description[:50]}: {f} kept as the team set it")
+    return kept
+
+
 def save(cats: List[Category], path: str):
     if path.endswith(".json"):
         with open(path, "w") as fh:

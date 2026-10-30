@@ -3128,3 +3128,18 @@ def test_the_client_s_copy_shows_only_descriptions_and_sub_categories(tmp_path):
                       [1, "Supply of Relief Items", "Soaps"], [None, None, "Blankets"],
                       [None, "GENERAL", None], [2, "Provision of Cleaning Services", None]]
     assert "A3:A4" in [str(m) for m in ws.merged_cells.ranges]                 # one block per category
+
+
+def test_a_batch_spells_each_section_one_way(corpus):
+    from tendersure.generate import finalise, one_label_per_section
+    sheets, g = _gen(corpus)
+    plans = [g.plan(Target(s.code, s.description, s.client)) for s in sheets if s.client == "AAA"]
+    for p in plans:
+        finalise(p)
+    odd = next(q for q in plans[0].questions if section_key(q.row.section) == "technical")
+    for q in plans[0].questions:
+        if q.row.section == odd.row.section:
+            q.row.section = "Technical Specification- TECH"                 # one sheet spells it its own way
+    assert one_label_per_section(plans) > 0
+    labels = {q.row.section for p in plans for q in p.questions if section_key(q.row.section) == "technical"}
+    assert labels == {"Technical Specifications-TECH"}

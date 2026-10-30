@@ -13,6 +13,7 @@ it on download, and an answered one can come back in:
 
 import json
 import os
+import shutil
 import tempfile
 import time
 from typing import Dict, List, Optional, Tuple
@@ -25,7 +26,7 @@ from tendersure import flows
 
 from .exercises import ExercisePath
 from .jobs_api import Job
-from .schemas import ApplyResult, Draft, Line, ProposeResult
+from .schemas import ApplyResult, Category, Draft, Line, ProposeResult
 from .workspaces import NotFound
 
 bp = APIBlueprint("refine", __name__, url_prefix="/api/exercises/<exercise_id>/refine",
@@ -346,7 +347,15 @@ def apply(path: ExercisePath, body: RefineApply):
     def step():
         r = flows.apply(drafts, lines, ex.client, body.version, _model(body.use_model))
         r.categories_out = CATEGORIES
-        flows.save_categories(r.categories, os.path.join(folder, CATEGORIES))
+        table = os.path.join(folder, CATEGORIES)
+        before = _read(folder, "final.json")
+        if before and os.path.exists(table):            # the team's edits since the last apply stay
+            applied = [Category(**c).core() for c in before.get("categories", [])]
+            for line in flows.keep_team_edits(r.categories, applied, flows.load_categories(table)):
+                flows.log.info(f"categories table: {line}")
+            os.makedirs(os.path.join(folder, "history"), exist_ok=True)
+            shutil.copy(table, os.path.join(folder, "history", f"categories {time.strftime('%Y%m%d-%H%M%S')}.csv"))
+        flows.save_categories(r.categories, table)
         for p in r.problems:
             flows.log.info(f"REVIEW PROBLEM: {p}")
         flows.log.info(f"refine: {len(drafts)} draft rows -> {len(r.final)} final categories "

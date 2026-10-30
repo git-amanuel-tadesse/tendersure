@@ -731,6 +731,28 @@ def complete_blocks(plan: Plan):
                 at += 1
 
 
+def one_label_per_section(plans: List[Plan]) -> int:
+    """Every sheet of a batch spells a section the same way: the label most of the batch's rows
+    already use ("Technical Specifications-TECH", not also "...- TECH", "Technical Specification-TECH"
+    or "Technical"). Returns how many rows changed."""
+    keys = {k for _, k in SECTION_KEYS}
+    seen: Dict[str, Counter] = defaultdict(Counter)
+    for p in plans:
+        for q in p.questions:
+            if section_key(q.row.section) in keys:
+                seen[section_key(q.row.section)][q.row.section] += 1
+    best = {k: c.most_common(1)[0][0] for k, c in seen.items()}
+    changed = 0
+    for p in plans:
+        for q in p.questions:
+            label = best.get(section_key(q.row.section))
+            if label and q.row.section != label:
+                q.row.section = label
+                changed += 1
+        _relabel_sections(p)
+    return changed
+
+
 def check_total(plan: Plan):
     t = plan.total()
     if abs(t - TOTAL_MARKS) > 1e-6:

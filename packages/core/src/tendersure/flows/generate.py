@@ -21,7 +21,8 @@ from .. import naming
 from .. import research as rs
 from .. import trust
 from .. import yesno
-from ..generate import Generator, MarksError, Target, ai_cache_key, check_total, finalise, to_sheet
+from ..generate import (Generator, MarksError, Target, ai_cache_key, check_total, finalise, one_label_per_section,
+                        to_sheet)
 from ..generate import apply_research as generate_research
 from ..paths import current
 from ..reports import load_decisions, write_qa_report
@@ -245,6 +246,9 @@ def generate(s: Settings) -> Result:
         gating.apply(p, book_audience, donor_rows)
     for p in plans:
         finalise(p)
+    n = one_label_per_section(plans)
+    if n:
+        log.info(f"sections: {n} row(s) relabelled so every sheet spells each section the same way")
     book = yesno.load(s.yes_no)
     judge = yesno.ModelJudge(model=s.model.name) if use_model else yesno.RuleJudge()
     judged = yesno.settle(plans, book, judge)

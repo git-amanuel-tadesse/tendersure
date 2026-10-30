@@ -200,3 +200,21 @@ def test_a_split_and_a_merge_answered_in_the_browser(client, ex):
     final = [c["description"] for c in client.get(f"/api/exercises/{ex}/refine").json["final"]["categories"]]
     assert "Supply of ICT Equipment" in final
     assert {"Provision of Translation Services", "Provision of Interpretation Services"} <= set(final)
+
+
+def test_re_applying_keeps_the_team_s_table_edits(client, ex):
+    """PSI: a second apply dropped a gate and the technical items set on the categories page."""
+    _proposed(client, ex)
+    _job(client, client.post(f"/api/exercises/{ex}/refine/apply", json={}, headers=W))
+    table = client.get(f"/api/exercises/{ex}/categories").json["categories"]
+    first = table[0]
+    r = client.patch(f"/api/exercises/{ex}/categories/{first['number']}", json={"technical": ["MAF/DAF"],
+                     "gate_question": True, "applies_to": ["Share Company", "Individual Consultant"]}, headers=W)
+    assert r.status_code == 200
+    job = _job(client, client.post(f"/api/exercises/{ex}/refine/apply", json={}, headers=W))
+    again = client.get(f"/api/exercises/{ex}/categories").json["categories"][0]
+    assert (again["technical"], again["gate_question"], again["applies_to"]) == \
+        (["MAF/DAF"], True, ["Share Company", "Individual Consultant"])
+    assert any("kept as the team set it" in x for x in job.lines)
+    folder = client.application.config["WORKSPACES"].folder(ex)
+    assert os.listdir(os.path.join(folder, "history"))                      # the table before is kept
