@@ -513,6 +513,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/exercises/{exercise_id}/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["rules_get_rules_get"];
+        /**
+         * This client's rules, as a whole; other clients' rules are kept. A rule with a problem is
+         * @description kept and shown with it, and is not applied until fixed.
+         */
+        put: operations["rules_set_rules_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -801,6 +821,53 @@ export interface components {
             /** Comment */
             comment: string;
             line: components["schemas"]["Line"];
+        };
+        /** ClientRule */
+        ClientRule: {
+            /**
+             * Action
+             * @description remove, replace, reword or limit
+             */
+            action: string;
+            /**
+             * Groups
+             * @description '' for all groups; words of group names, '!words' to skip them; comma-separated
+             * @default
+             */
+            groups?: string;
+            /**
+             * Match
+             * @description the phrase (remove, reword), the term (replace) or the section (limit)
+             */
+            match: string;
+            /**
+             * Note
+             * @description why, in the team's words
+             * @default
+             */
+            note?: string;
+            /**
+             * Problem
+             * @description read only: why the rule cannot be applied, if it cannot
+             * @default
+             */
+            problem?: string;
+            /**
+             * Value
+             * @description replace: the new term; reword: the new wording; limit: how many
+             * @default
+             */
+            value?: string;
+        };
+        /** ClientRules */
+        ClientRules: {
+            /**
+             * Client
+             * @default
+             */
+            client?: string;
+            /** Rules */
+            rules: components["schemas"]["ClientRule"][];
         };
         /**
          * Draft
@@ -2897,6 +2964,72 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    rules_get_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientRules"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    rules_set_rules_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientRules"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClientRules"];
+                };
+            };
             /** @description Unprocessable Content */
             422: {
                 headers: {

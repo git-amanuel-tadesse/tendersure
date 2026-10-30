@@ -212,3 +212,17 @@ def test_a_finished_run_is_marked_final_checked_and_added_to_the_bank(client, ex
     again = _run(client, client.post(f"/api/exercises/{ex}/generate/runs/{n}/bank",
                                      json={"file": "uploads/edited.xlsx"}, headers=W)).result
     assert again["unchanged"] == 1 and again["added"] == 0
+
+
+def test_client_rules_are_kept_for_the_client_and_applied(client, ex):
+    assert client.get(f"/api/exercises/{ex}/rules").json == {"client": "AAA", "rules": []}
+    r = client.put(f"/api/exercises/{ex}/rules", json={"rules": [
+        {"action": "remove", "match": "current supplier", "note": "not asked"},
+        {"action": "limit", "match": "technical", "value": "many"}]}, headers=W)
+    assert r.status_code == 200
+    assert [x["problem"] for x in r.json["rules"]] == ["", "limit needs a number as value"]
+    job = _run(client, client.post(f"/api/exercises/{ex}/generate", json={"use_model": False, "only": [1]}, headers=W))
+    assert any("client rules: 1 for AAA" in x for x in job.lines)
+    run = client.get(f"/api/exercises/{ex}/generate/runs/{job.result['run']}").json
+    cells = _sheet(client, ex, run, "AAA-ET-2026-001")
+    assert not any("current supplier" in v for v in cells) and any("Years in business" in v for v in cells)

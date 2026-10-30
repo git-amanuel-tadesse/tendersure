@@ -4,6 +4,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { BenchmarkCard } from "../components/BenchmarkCard";
 import { BriefBox } from "../components/BriefBox";
+import { ClientRulesCard } from "../components/ClientRulesCard";
 import { Decisions } from "../components/Decisions";
 import { FinishCard } from "../components/FinishCard";
 import { JobPanel } from "../components/JobPanel";
@@ -26,6 +27,7 @@ function GeneratePage() {
   return (
     <div className="space-y-6">
       <BenchmarkCard exerciseId={exerciseId} />
+      <ClientRulesCard exerciseId={exerciseId} />
       <BuildCard exerciseId={exerciseId} onStarted={() => navigate({ search: {} })} />
       {runs.length > 0 && (
         <div className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">

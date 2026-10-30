@@ -451,6 +451,71 @@
         "title": "ClientNote",
         "type": "object"
       },
+      "ClientRule": {
+        "properties": {
+          "action": {
+            "description": "remove, replace, reword or limit",
+            "title": "Action",
+            "type": "string"
+          },
+          "groups": {
+            "default": "",
+            "description": "'' for all groups; words of group names, '!words' to skip them; comma-separated",
+            "title": "Groups",
+            "type": "string"
+          },
+          "match": {
+            "description": "the phrase (remove, reword), the term (replace) or the section (limit)",
+            "title": "Match",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "description": "why, in the team's words",
+            "title": "Note",
+            "type": "string"
+          },
+          "problem": {
+            "default": "",
+            "description": "read only: why the rule cannot be applied, if it cannot",
+            "title": "Problem",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "description": "replace: the new term; reword: the new wording; limit: how many",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "match"
+        ],
+        "title": "ClientRule",
+        "type": "object"
+      },
+      "ClientRules": {
+        "properties": {
+          "client": {
+            "default": "",
+            "title": "Client",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/ClientRule"
+            },
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rules"
+        ],
+        "title": "ClientRules",
+        "type": "object"
+      },
       "Draft": {
         "description": "A row of a client's draft category list.",
         "properties": {
@@ -4086,6 +4151,104 @@
         ]
       }
     },
+    "/api/exercises/{exercise_id}/rules": {
+      "get": {
+        "operationId": "rules_get_rules_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientRules"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "rules"
+        ]
+      },
+      "put": {
+        "description": "kept and shown with it, and is not applied until fixed.",
+        "operationId": "rules_set_rules_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientRules"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClientRules"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "This client's rules, as a whole; other clients' rules are kept. A rule with a problem is",
+        "tags": [
+          "rules"
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "health_api_health_get",
@@ -4283,6 +4446,9 @@
     },
     {
       "name": "benchmark"
+    },
+    {
+      "name": "rules"
     }
   ]
 }

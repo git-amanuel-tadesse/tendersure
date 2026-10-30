@@ -23,6 +23,7 @@ export const keys = {
   exercise: (id: string) => ["exercise", id] as const,
   brief: (id: string) => ["brief", id] as const,
   benchmark: (id: string) => ["benchmark", id] as const,
+  rules: (id: string) => ["rules", id] as const,
   refine: (id: string) => ["refine", id] as const,
   categories: (id: string) => ["categories", id] as const,
   runs: (id: string) => ["runs", id] as const,
@@ -226,6 +227,18 @@ export function useBenchmarkActions(id: string) {
       onSuccess: set,
     }),
   };
+}
+
+/** The client's rules (spec 12 C): read and saved as a whole. */
+export type ClientRule = Schemas["ClientRule"];
+export const useClientRules = (id: string) =>
+  useQuery({ queryKey: keys.rules(id), queryFn: () => unwrap(api.GET("/api/exercises/{exercise_id}/rules", path(id))) });
+export function useSaveClientRules(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rules: ClientRule[]) => unwrap(api.PUT("/api/exercises/{exercise_id}/rules", { ...path(id), body: { rules } })),
+    onSuccess: (data) => qc.setQueryData(keys.rules(id), data),
+  });
 }
 
 /** After the review (spec 11): mark the final run, check an edited copy, add it to the bank. */
