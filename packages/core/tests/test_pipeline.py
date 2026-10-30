@@ -2942,3 +2942,46 @@ def test_an_eligibility_upload_stays_compliance_flagged():
             attachment=True, compliance_attach=True, eligibility=True)
     fix_upload_flags(r)
     assert (r.attachment, r.compliance_attach) == (False, True)
+
+
+def test_registration_documents_leave_the_eligibility_section(corpus):
+    """Feedback 7: a past sheet's Eligibility block of registration documents (NRC's) moves to
+    Registration and Statutory Requirements; Eligibility keeps the Trade License."""
+    from tendersure.generate import PlannedRow, finalise, to_sheet
+    from tendersure.parser import Row
+    from tendersure.validate import check_template
+    sheets, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-003", "Provision of Security and Guarding Services", "AAA"))
+    for q in [q for q in p.questions if section_key(q.row.section) in ("registration", "eligibility")
+              or "Trade" in q.row.criteria]:
+        p.rows.remove(q)
+    company = max(i for i, q in enumerate(p.rows) if q.kind == "question" and section_key(q.row.section) == "company")
+    block = [Row("", "", 0, section="Eligibility", sub_section="N/A", criteria=t, answer_type=at, marks=0.0)
+             for t, at in [("Attach company registration certificate", 5), ("Insert PIN or tax identification number", 1),
+                           ("Does your company have a valid business permit? If yes attach a copy", 5)]]
+    p.rows[company + 1:company + 1] = [PlannedRow(kind="question", row=r) for r in block]
+    finalise(p)
+    where = {q.row.criteria: section_key(q.row.section) for q in p.questions}
+    assert where["Attach company registration certificate"] == "registration"
+    assert where["Insert PIN or tax identification number"] == "registration"
+    assert [q.row.criteria for q in p.questions if section_key(q.row.section) == "eligibility"] == \
+        ["Does your company have a valid business permit? If yes attach a copy"]
+    assert [f.rule for f in check_template(to_sheet(p)) if f.rule.startswith("ELIG")] == []
+
+
+@pytest.mark.parametrize("system,compliance,at,want", [
+    (0.0, 5.0, 5, (None, 5.0)), (5.0, 0.0, 1, (5.0, None)), (0.0, 0.0, 5, (None, 0.0)), (0.0, 0.0, 1, (0.0, None)),
+])
+def test_marks_sit_in_one_column(system, compliance, at, want):
+    from tendersure.parser import Row
+    from tendersure.validate import fix_marks_columns
+    r = Row("", "", 0, criteria="x", answer_type=at, marks=system + compliance, system=system, compliance=compliance)
+    fix_marks_columns(r)
+    assert (r.system, r.compliance) == want
+
+
+def test_the_model_s_own_sub_category_question_is_the_standard_one():
+    from tendersure.validate import SUB_CATEGORY
+    assert SUB_CATEGORY.search("Select the product sub-categories your company is able to supply")
+    assert SUB_CATEGORY.search("Please select the subcategory you would like to participate in")
+    assert not SUB_CATEGORY.search("Attach a letter that specifies your experience for the given category/sub-category")

@@ -308,6 +308,19 @@ def fix_marks_columns(r: Row) -> bool:
     if r.system is None and r.compliance is None:
         setattr(r, marks_column(r), r.marks)
         changed = True
+    # One column only (feedback 3): a 0 beside the column that holds the marks is cleared; a
+    # 0-mark row keeps its 0 where marks_column puts it. Marks in both columns are left (MARKS-SPLIT).
+    if r.system is not None and r.compliance is not None:
+        if r.system and not r.compliance:
+            keep = "system"
+        elif r.compliance and not r.system:
+            keep = "compliance"
+        elif not r.system and not r.compliance:
+            keep = marks_column(r)
+        else:
+            return changed
+        setattr(r, "compliance" if keep == "system" else "system", None)
+        changed = True
     return changed
 
 
@@ -510,7 +523,7 @@ def check_names(sheet: Sheet) -> List[Finding]:
 TEMPLATE_CHECKS = [check_marks_columns, check_eligibility, check_names]
 
 SUB_CATEGORY_QUESTION = "Please select the subcategory you would like to participate in"
-SUB_CATEGORY = re.compile(r"select\s+the\s+sub-?\s*categor", re.I)
+SUB_CATEGORY = re.compile(r"\b(select|choose|indicate|tick)\b[^.?]{0,40}?\bsub-?\s*categor", re.I)
 
 
 def sub_category_options(sub_categories: List[str]) -> str:

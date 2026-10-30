@@ -90,9 +90,14 @@ def licence_rows(plan, in_section) -> list:
                 add(_new_row(f"Please attach a valid grade/competence certificate from the relevant authority {need}",
                              "Grade Certificate"), item)
     for item in documents:
-        if item.lower() not in asked:
+        there = next((p for p in plan.questions if item.lower() in p.row.criteria.lower()
+                      and asks_for_document(p.row) and not p.row.marks), None)
+        if there is None and item.lower() not in asked:
             add(_new_row(f"Please attach a valid {_lower_first(item)}",
                          item if len(item.split()) <= 4 else None), item)
+        elif there is not None and there not in in_section:      # asked elsewhere: an Eligibility document
+            there.note(f"from the category's licence column: {item}, asked in Eligibility")
+            out.append(there)
     return out
 
 

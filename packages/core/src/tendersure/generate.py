@@ -471,12 +471,50 @@ def _flag_eligibility(plan: Plan):
         r.eligibility, r.answer_type, r.mandatory, r.compliance_attach = True, 5, True, True
 
 
+REGISTRATION_LABEL = "Registration and Statutory Requirements"
+
+
+def _stays_in_eligibility(plan: Plan, p: PlannedRow) -> bool:
+    """Feedback 7: the Eligibility section holds the Trade License, the documents the draft
+    states (categories table) and the category's licence rows - nothing else."""
+    from .requirements import GRADE_ROW
+    text = p.row.criteria.lower()
+    return bool(TRADE_LICENSE.search(p.row.criteria) or GRADE_ROW.search(p.row.criteria)
+                or any(d.lower() in text for d in plan.target.eligibility + plan.target.licence)
+                or any("licence column" in n for n in p.notes))
+
+
+def _registration_out_of_eligibility(plan: Plan, in_section: List[PlannedRow]) -> List[PlannedRow]:
+    """A past sheet's Eligibility block often holds the registration documents (NRC's: company
+    registration, PIN, CR12, tax compliance). They move to Registration and Statutory
+    Requirements - the sheet's own, else one created right after Eligibility. Returns the rows
+    that stay."""
+    movers = [p for p in in_section if not _stays_in_eligibility(plan, p)]
+    if not movers:
+        return in_section
+    stays = [p for p in in_section if p not in movers]
+    reg = [p for p in plan.questions if section_key(p.row.section) == "registration"]
+    anchor = reg[-1] if reg else (stays[-1] if stays else None)
+    at = plan.rows.index(movers[0])
+    for p in movers:
+        plan.rows.remove(p)
+        p.row.section = reg[0].row.section if reg else REGISTRATION_LABEL
+        p.row.sub_section = reg[-1].row.sub_section if reg else "N/A"
+        p.note(f"moved from Eligibility to '{p.row.section}': Eligibility holds only the Trade License "
+               f"and the documents the client states")
+    if anchor is not None:
+        at = plan.rows.index(anchor) + 1
+    plan.rows[at:at] = movers
+    return stays
+
+
 def place_eligibility(plan: Plan):
     """An Eligibility section right after Company Information, holding the
     Trade License and the category's own eligibility documents (spec 02 G2,
     G3)."""
     from .requirements import licence_rows
     in_section = [p for p in plan.questions if section_key(p.row.section) == "eligibility"]
+    in_section = _registration_out_of_eligibility(plan, in_section)
     moving = _trade_license_to_move(plan, in_section)
     moving += _eligibility_documents(plan, in_section)
     moving += [p for p in licence_rows(plan, in_section) if p not in moving]
