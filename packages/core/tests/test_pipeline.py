@@ -2420,20 +2420,23 @@ def test_skeleton_roles_left_over_go_and_their_marks_stay_in_the_section(corpus)
     assert p.total() == 100
 
 
-def test_technical_items_replace_matching_rows_or_arrive_with_no_marks(corpus):
-    from tendersure.generate import finalise, to_sheet
-    from tendersure.validate import check_template
+def test_technical_items_are_the_whole_technical_section(corpus):
+    """Spec 12 R2: the client's items replace the section; equipment is one question per piece;
+    the section's marks are shared equally."""
+    from tendersure.generate import finalise
     sheets, g = _gen(corpus)
     src = next(s for s in sheets if s.name == "AAA-ET-2026-002")
     p = g.plan(Target(src.code, "Supply and Installation of Solar Equipment", src.client,
                       technical=["MAF/DAF", "(Mixer, Pick up, Dump Truck)"]))
+    before = p.section_marks()["technical"][0]
     finalise(p)
     tech = [(q.row.criteria, q.row.marks) for q in p.questions if section_key(q.row.section) == "technical"]
-    assert ("Please attach MAF/DAF", 10) in tech                          # the DAF row, its marks kept
-    assert ("Please attach evidence of ownership or rent agreement for: Mixer, Pick up, Dump Truck", 0) in tech
-    assert ("Do you offer extended warranty on goods sold Yes/No", 10) in tech       # not matched: kept
+    assert [t for t, _ in tech] == ["Please attach MAF/DAF",
+                                    "Please attach evidence of ownership or rent agreement for a Mixer",
+                                    "Please attach evidence of ownership or rent agreement for a Pick up",
+                                    "Please attach evidence of ownership or rent agreement for a Dump Truck"]
+    assert sum(m for _, m in tech) == before and len({m for _, m in tech}) == 1      # equal shares
     assert p.total() == 100 and _checked(p) == []
-
 
 def test_licence_items_are_asked_in_the_eligibility_section(corpus):
     from tendersure import glossary as gl, naming
@@ -2477,7 +2480,8 @@ def test_a_category_with_requirement_columns_is_written_and_passes_the_check(cor
     texts = [q.row.criteria for q in r.plans[0].questions]
     assert "Please specify your contractor grade/level" in texts
     assert "Attach evidence (CV, contract and education/experience) for Foreman" in texts
-    assert "Please attach evidence of ownership or rent agreement for: Dump Truck, Mixer" in texts
+    assert "Please attach evidence of ownership or rent agreement for a Dump Truck" in texts
+    assert "Please attach evidence of ownership or rent agreement for a Mixer" in texts
     errors, _ = _check(tmp_path / "gen.xlsx", tmp_path, str(tmp_path / "cats.csv"))
     assert errors == 0
 

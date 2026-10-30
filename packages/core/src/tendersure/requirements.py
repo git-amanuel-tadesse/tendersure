@@ -167,19 +167,35 @@ def place_hr(plan):
             plan.notes.append(f"HR marks: {problem}")
 
 
+def _technical_items(items: List[str]) -> List[str]:
+    """An equipment list in brackets is one question per piece (spec 12 R2): "(Dump Truck,
+    Pick up)" -> "(Dump Truck)", "(Pick up)"."""
+    out = []
+    for item in items:
+        if item.startswith("("):
+            out += [f"({x.strip()})" for x in item.strip("()").split(",") if x.strip()]
+        else:
+            out.append(item)
+    return out
+
+
 def _technical_text(item: str) -> str:
     if item.startswith("("):
-        return f"Please attach evidence of ownership or rent agreement for: {item.strip('()')}"
+        return f"Please attach evidence of ownership or rent agreement for a {item.strip('()').strip()}"
     return f"Please attach {_lower_first(item)}"
 
 
 def place_technical(plan):
-    from .generate import ADAPTED, insert_rows
-    items = plan.target.technical
+    """The category's technical items are its whole Technical section (spec 12 R2): a past
+    question matching an item is reworded to it, every other technical question goes, and
+    the section's marks are shared equally by the items."""
+    from .generate import ADAPTED, apply_section_marks, drop_row, insert_rows
+    items = _technical_items(plan.target.technical)
     if not items:
         return
+    before = plan.section_marks().get("technical", (0, 0, 0))[0]
     free = [p for _, p in _section_rows(plan, "technical")]
-    new = []
+    kept, new = [], []
     for item in items:
         if item.startswith("("):
             hit = next((p for p in free if OWNERSHIP_ROW.search(p.row.criteria)), None)
@@ -189,15 +205,22 @@ def place_technical(plan):
                         * 2 >= len(want)), None)
         if hit:
             free.remove(hit)
+            kept.append(hit)
             _set_upload(hit, _technical_text(item), f"from the category's technical column ({item})")
         else:
             r = _new_row(_technical_text(item), mandatory=False)
             r.section = TECH_LABEL
             new.append(r)
+    for p in free:                                   # not one of the client's items
+        drop_row(plan, plan.rows.index(p), "the category's technical column lists the whole Technical section")
     if new:
-        insert_rows(plan, "technical", new, ADAPTED, SOURCE,
-                    "from the category's technical column; 0 marks: give it marks if it should score",
+        insert_rows(plan, "technical", new, ADAPTED, SOURCE, "from the category's technical column",
                     section_label=TECH_LABEL)
+    if before:
+        for _, p in _section_rows(plan, "technical"):
+            p.row.marks, p.weight_hint = 0.0, 1.0           # equal shares of the section's marks
+            p.row.system = p.row.compliance = None
+        apply_section_marks(plan, {"technical": before}, "the category's technical column")
 
 
 def stated(category) -> str:
