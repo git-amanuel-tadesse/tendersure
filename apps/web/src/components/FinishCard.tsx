@@ -1,7 +1,7 @@
 /** Spec 11: a run that needs nothing moves on - download, mark final, check an edited copy, add to the bank. */
 import { fileUrl } from "@tendersure/api-client";
 import { useState } from "react";
-import { keys, type Run, useExercise, useFinishActions, useJob } from "../lib/api";
+import { keys, type Run, useExercise, useFinishActions, useGenerateActions, useJob } from "../lib/api";
 import { JobPanel } from "./JobPanel";
 import { UploadButton } from "./UploadButton";
 import { Badge, Button, Card, ErrorNotice, linkButton, Notice, Select } from "./ui";
@@ -12,6 +12,7 @@ type BankOut = { added: number; replaced: number; unchanged: number; sheets_adde
 export function FinishCard({ exerciseId, run, isFinal }: { exerciseId: string; run: Run; isFinal: boolean }) {
   const res = run.result!;
   const { final, check, bank } = useFinishActions(exerciseId);
+  const { apply } = useGenerateActions(exerciseId);
   const files = (useExercise(exerciseId).data?.files ?? []).filter((f) => f.path.startsWith("uploads/") && f.path.endsWith(".xlsx"));
   const [edited, setEdited] = useState("");
   const checkJob = useJob(check.data?.id).data;
@@ -31,6 +32,10 @@ export function FinishCard({ exerciseId, run, isFinal }: { exerciseId: string; r
             {[book, res.qa].filter(Boolean).map((f) => <a key={f} className={linkButton()} href={fileUrl(exerciseId, f!)}>{f!.split("/").pop()}</a>)}
             <Button variant={isFinal ? "secondary" : "primary"} busy={final.isPending} disabled={isFinal} onClick={() => final.mutate(run.number)}>
               {isFinal ? "This run is final" : "Mark as final"}
+            </Button>
+            <Button variant="ghost" busy={apply.isPending} title="the same answers and model proposals, built with the rules as they are now"
+                    onClick={() => apply.mutate(run.number)}>
+              Rebuild with the current rules
             </Button>
           </div>
         </li>
@@ -76,7 +81,8 @@ export function FinishCard({ exerciseId, run, isFinal }: { exerciseId: string; r
           )}
         </li>
       </ol>
-      <div className="mt-3"><ErrorNotice error={final.error ?? check.error ?? bank.error} /></div>
+      {apply.data && <div className="mt-3"><JobPanel jobId={apply.data.id} refresh={[keys.runs(exerciseId)]} /></div>}
+      <div className="mt-3"><ErrorNotice error={final.error ?? check.error ?? bank.error ?? apply.error} /></div>
     </Card>
   );
 }
