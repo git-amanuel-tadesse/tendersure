@@ -35,7 +35,7 @@ from .similarity import Match, Retriever
 from .trust import CLEAN, CORRECTABLE, FIELDS, Conventions, Grade, context_key, usable
 from .validate import (SUB_CATEGORY, SUB_CATEGORY_QUESTION, TRADE_LICENSE, Finding, asks_for_document,
                        fix_marks_columns,
-                       fix_option_scores, sub_category_options, validate_sheet)
+                       fix_option_scores, fix_stray_options, fix_upload_flags, sub_category_options, validate_sheet)
 
 REUSED = "reused unchanged"
 ADAPTED = "adapted"
@@ -567,6 +567,11 @@ def finalise(plan: Plan):
     n = sum(fix_marks_columns(p.row) for p in plan.questions)
     if n:
         plan.notes.append(f"marks repeated in System or Compliance on {n} rows (template rule)")
+    for p in plan.questions:                 # last: they read where the marks now sit
+        for fix in (fix_upload_flags, fix_stray_options):
+            note = fix(p.row)
+            if note:
+                p.note(note)
 
 
 def ai_cache_key(plan: Plan, prompt: str, step: str = "") -> str:

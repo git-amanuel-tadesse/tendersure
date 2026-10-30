@@ -311,6 +311,36 @@ def fix_marks_columns(r: Row) -> bool:
     return changed
 
 
+def fix_upload_flags(r: Row) -> Optional[str]:
+    """The fix for UP-BOTH-FLAGS and UP-COMP-NO-MARKS: where an upload's marks
+    sit decides its flag - M (Compliance) when they are compliance marks, L
+    (Attachment) otherwise. The marks themselves do not move, so no total
+    changes. An Eligibility upload is always M (spec 02 G3). Returns what changed."""
+    if r.eligibility:
+        if r.attachment or not r.compliance_attach:
+            r.attachment, r.compliance_attach = False, True
+            return "upload flag set to Compliance (M): an Eligibility document"
+        return None
+    if r.attachment and r.compliance_attach:
+        keep_m = bool(r.compliance)
+        r.attachment, r.compliance_attach = not keep_m, keep_m
+        return f"both upload flags set -> kept {'Compliance (M)' if keep_m else 'Attachment (L)'}: where its marks are"
+    if r.compliance_attach and r.compliance is None and (r.marks or 0) > 0:
+        r.attachment, r.compliance_attach = True, False
+        return "upload flag M -> L: its marks are System marks, not compliance marks"
+    return None
+
+
+def fix_stray_options(r: Row) -> Optional[str]:
+    """The fix for AT-STRAY-OPTIONS: an answer type that takes no options
+    (text, Yes/No, upload) keeps none."""
+    spec = ANSWER_TYPES.get(r.answer_type)
+    if not spec or spec["requires_options"] or not r.option_list():
+        return None
+    old, r.options, r.option_scores = r.options, None, None
+    return f"options '{old}' cleared: answer type {r.answer_type} takes none"
+
+
 def fix_option_scores(r: Row) -> Optional[str]:
     """Spec 02 G9, the fix for OPT-MAX-MARKS: scale a select row's option
     scores so its best option is worth the row's marks (0 marks and scores

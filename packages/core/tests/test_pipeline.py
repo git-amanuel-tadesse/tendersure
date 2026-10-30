@@ -2909,3 +2909,36 @@ def test_the_ai_review_leaves_the_client_s_split_to_the_team(corpus, tmp_path):
     items, _ = ai_review(g, [p], ModelReviewer(llm=OpenRouterLLM(model="m", transport=verdicts)), progress=lambda *_: None)
     bench = next(i for i in items if i.id.startswith("M-BENCH-"))
     assert (bench.answer, bench.status) == ("", "")                   # open: shown to the team, not settled
+
+
+@pytest.mark.parametrize("flags,system,compliance,want", [
+    ((True, True), None, 5.0, (False, True)),      # both, compliance marks: M
+    ((True, True), 5.0, None, (True, False)),      # both, system marks: L
+    ((False, True), 5.0, None, (True, False)),     # M but the marks are System marks: L
+    ((False, True), None, 0.0, (False, True)),     # a 0-mark compliance upload: left alone
+])
+def test_where_an_upload_s_marks_sit_decides_its_flag(flags, system, compliance, want):
+    from tendersure.parser import Row
+    from tendersure.validate import fix_upload_flags
+    r = Row("", "", 0, criteria="Attach x", answer_type=5, marks=(system or compliance or 0.0), system=system,
+            compliance=compliance, attachment=flags[0], compliance_attach=flags[1])
+    fix_upload_flags(r)
+    assert (r.attachment, r.compliance_attach) == want and (r.system, r.compliance) == (system, compliance)
+
+
+def test_options_on_a_question_that_takes_none_are_cleared():
+    from tendersure.parser import Row
+    from tendersure.validate import fix_stray_options
+    r = Row("", "", 0, criteria="Company name", answer_type=1, marks=0.0, options="A, B", option_scores="0,0")
+    assert fix_stray_options(r) and (r.options, r.option_scores) == (None, None)
+    s = Row("", "", 0, criteria="Pick one", answer_type=2, marks=0.0, options="A, B", option_scores="0,0")
+    assert fix_stray_options(s) is None and s.options == "A, B"
+
+
+def test_an_eligibility_upload_stays_compliance_flagged():
+    from tendersure.parser import Row
+    from tendersure.validate import fix_upload_flags
+    r = Row("", "", 0, criteria="Please attach a valid Trade license", answer_type=5, marks=2.0, system=2.0,
+            attachment=True, compliance_attach=True, eligibility=True)
+    fix_upload_flags(r)
+    assert (r.attachment, r.compliance_attach) == (False, True)
