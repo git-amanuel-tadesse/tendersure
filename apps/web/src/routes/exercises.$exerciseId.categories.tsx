@@ -10,7 +10,7 @@ import { type Category, useCategories, useCategoryActions, useExercise, useRefin
 
 export const Route = createFileRoute("/exercises/$exerciseId/categories")({ component: CategoriesPage });
 
-const TYPES = ["Sole Proprietor", "Private Limited Company", "Share Company", "Individual Consultant"];
+const TYPES = ["Sole Proprietor", "Partnership", "Private Limited Company", "Share Company", "Individual Consultant"];
 const split = (text: string) => text.split("|").map((s) => s.trim()).filter(Boolean);
 
 function CategoriesPage() {

@@ -139,8 +139,9 @@ TOTAL_MARKS = 100
 
 # Supplier business types: the options of the gate question (spec 02 G7) and
 # the values of Applies To. Clients write them several ways.
-BUSINESS_TYPES = ["Sole Proprietor", "Private Limited Company", "Share Company", "Individual Consultant"]
+BUSINESS_TYPES = ["Sole Proprietor", "Partnership", "Private Limited Company", "Share Company", "Individual Consultant"]
 INDIVIDUAL = "Individual Consultant"
+FIRMS = [b for b in BUSINESS_TYPES if b != INDIVIDUAL]
 _BUSINESS_ALIASES = {
     "sole proprietor": "Sole Proprietor", "sole proprietorship": "Sole Proprietor",
     "private limited company": "Private Limited Company", "plc": "Private Limited Company",

@@ -46,7 +46,7 @@ KEPT, RENAMED, MERGED, SEPARATED, REPEATED = "Kept", "Renamed", "Merged", "Separ
 ADDITIONAL, REMOVED = "Additional (suggested)", "Removed"
 STATUSES = [KEPT, RENAMED, MERGED, SEPARATED, REPEATED, ADDITIONAL, REMOVED]
 DECISIONS = ("", "accept", "reject", "remove", "edit", "split", "merge")
-COMPANIES = BUSINESS_TYPES[:3]
+COMPANIES = [b for b in BUSINESS_TYPES if b != INDIVIDUAL]
 OVERLAP = 0.2            # subject similarity above which two draft rows are worth a question
 OVERLAP_HEAD = 0.6       # the same for the subject outside brackets ("ICT Equipment (...)")
 DUPLICATE = 0.92         # text similarity above which two draft rows are the same category

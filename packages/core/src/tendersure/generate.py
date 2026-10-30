@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from .parser import Row, Sheet, StructuralRow, normalise, section_key
-from .schema import CLIENT_NAMES, LAYOUT, SECTION_KEYS, TOTAL_MARKS
+from .schema import CLIENT_NAMES, LAYOUT, SECTION_KEYS, TOTAL_MARKS, INDIVIDUAL
 from .similarity import Match, Retriever
 from .trust import CLEAN, CORRECTABLE, FIELDS, Conventions, Grade, context_key, usable
 from .validate import (SUB_CATEGORY, SUB_CATEGORY_QUESTION, TRADE_LICENSE, Finding, asks_for_document,
@@ -510,6 +510,52 @@ def _registration_out_of_eligibility(plan: Plan, in_section: List[PlannedRow]) -
     return stays
 
 
+_ID_ROW = re.compile(r"\b(national\s+id|id\b|passport|fayda)", re.I)
+
+
+def _national_id_text(country: str) -> Tuple[str, str]:
+    if country == "ET":
+        return "Please attach a copy of your Fayda ID (national ID)", "Fayda ID"
+    return "Please attach a copy of your national ID or passport", "National ID"
+
+
+def _national_id(plan: Plan, in_section: List[PlannedRow]) -> List[PlannedRow]:
+    """Spec 12 R4: a gated category's Eligibility asks individuals for their national ID (the
+    Fayda ID in Ethiopia). An ID upload the sheet already asks individuals moves in, worded so."""
+    t = plan.target
+    if not t.gate_question or INDIVIDUAL not in t.applies_to:
+        return []
+    text, short = _national_id_text(t.country)
+    there = next((p for p in plan.questions if _ID_ROW.search(p.row.criteria) and asks_for_document(p.row)
+                  and str(p.row.applies_to or "").strip() == INDIVIDUAL), None)
+    if there is not None:
+        if there.row.criteria != text:
+            there.note(f"national ID for individuals (spec 12 R4); was: {there.row.criteria}")
+            there.row.criteria, there.row.archive_short_name, there.row.acronym = text, short, None
+        there.row.marks, there.row.system, there.row.compliance = 0.0, None, 0.0
+        return [] if there in in_section else [there]
+    return [PlannedRow(kind="question", origin=ADAPTED, source="national ID for individuals",
+                       notes=["national ID for individuals on a gated category (spec 12 R4)"],
+                       row=Row(source_file="", sheet="", excel_row=0, criteria=text, marks=0.0,
+                               archive_short_name=short, answer_type=5, mandatory=True, compliance_attach=True,
+                               eligibility=True, applies_to=INDIVIDUAL))]
+
+
+def _eligibility_audiences(plan: Plan):
+    """On a gated sheet the Trade License is for firms and the national ID for individuals."""
+    t = plan.target
+    if not t.gate_question:
+        return
+    firms = [b for b in t.applies_to if b != INDIVIDUAL]
+    for p in plan.questions:
+        if section_key(p.row.section) != "eligibility":
+            continue
+        if TRADE_LICENSE.search(p.row.criteria) and firms:
+            p.row.applies_to = ", ".join(firms)
+        elif _ID_ROW.search(p.row.criteria):
+            p.row.applies_to = INDIVIDUAL
+
+
 def place_eligibility(plan: Plan):
     """An Eligibility section right after Company Information, holding the
     Trade License and the category's own eligibility documents (spec 02 G2,
@@ -520,6 +566,7 @@ def place_eligibility(plan: Plan):
     moving = _trade_license_to_move(plan, in_section)
     moving += _eligibility_documents(plan, in_section)
     moving += [p for p in licence_rows(plan, in_section) if p not in moving]
+    moving += [p for p in _national_id(plan, in_section) if p not in moving]
     for p in moving:
         if p in plan.rows:
             plan.rows.remove(p)
@@ -530,6 +577,7 @@ def place_eligibility(plan: Plan):
     plan.rows[at:at] = moving
     _keep_freed_marks(plan, moving)
     _flag_eligibility(plan)
+    _eligibility_audiences(plan)
     _relabel_sections(plan)
 
 
@@ -544,6 +592,20 @@ def _sub_category_anchor(plan: Plan) -> Optional[int]:
     if hit is None:
         hit = max((i for i, p in rows if section_key(p.row.section) == "company"), default=None)
     return hit
+
+
+def set_organization_types(plan: Plan):
+    """Spec 12 R3: Organization type offers the category's business types on every sheet - the
+    gate question sets them on a gated one (gating.apply), this does it on the others."""
+    types = plan.target.applies_to
+    if not types or plan.target.gate_question:
+        return
+    options = ", ".join(types)
+    for p in plan.questions:
+        r = p.row
+        if BUSINESS_TYPE.match(r.criteria.strip()) and r.options != options:
+            p.note(f"organization type: options set to the category's business types ({options})")
+            r.answer_type, r.options, r.option_scores = 2, options, ",".join("0" for _ in types)
 
 
 def place_sub_category_question(plan: Plan):
@@ -597,6 +659,7 @@ def finalise(plan: Plan):
     from .requirements import place_requirements
     client_rules.apply(plan, plan.target.client_rules)
     place_requirements(plan)
+    set_organization_types(plan)
     complete_blocks(plan)
     place_sub_category_question(plan)
     place_eligibility(plan)

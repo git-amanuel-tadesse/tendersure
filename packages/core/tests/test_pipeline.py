@@ -1845,8 +1845,10 @@ def test_a_gated_category_gets_its_business_types_and_audiences(corpus):
     assert rows["Attach TIN certificate"].row.applies_to == "Sole Proprietor, Private Limited Company"
     full = rows["Full name (as per National ID or passport)"].row
     assert (full.applies_to, full.section) == ("Individual Consultant", "Company Information")
-    valid_id = rows["Please attach Valid ID/Passport"]
-    assert (valid_id.row.applies_to, valid_id.row.answer_type) == ("Individual Consultant", 5)   # text box fixed
+    valid_id = rows["Please attach a copy of your national ID or passport"]        # spec 12 R4: in Eligibility
+    assert (valid_id.row.applies_to, valid_id.row.answer_type, section_key(valid_id.row.section), valid_id.row.eligibility) \
+        == ("Individual Consultant", 5, "eligibility", True)
+    assert rows["Please attach a valid Trade license"].row.applies_to == "Sole Proprietor, Private Limited Company"
     assert rows["Attach evidence e.g. PO or award letter"].row.applies_to is None          # everyone
     office = rows["Attach evidence of physically registered office"]
     assert office.row.applies_to is None and "no past sheet says who answers it" in office.notes[-1]
@@ -3071,3 +3073,23 @@ def test_sub_categories_come_from_the_draft_only():
     lines = {ln.from_draft[0]: ln for ln in rf.check(raw, drafts, rf.groups_of(drafts))}
     assert lines["1"].sub_categories == [] and "Cold-Chain Transport | Dry Cargo" in lines["1"].reason
     assert lines["2"].sub_categories == ["Soaps", "Blankets"]
+
+
+def test_organization_type_and_the_fayda_id(corpus):
+    """Spec 12 R3, R4 (PSI): Partnership offered; individuals give the Fayda ID in Ethiopia."""
+    from tendersure import gating
+    from tendersure.generate import finalise
+    from tendersure.schema import FIRMS
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+    plain = g.plan(Target(src.code, src.description, src.client, applies_to=FIRMS, country="ET"))
+    finalise(plain)
+    org = next(q.row for q in plain.questions if q.row.criteria == "Organization type")
+    assert org.options == "Sole Proprietor, Partnership, Private Limited Company, Share Company" and not org.gate_question
+    gated = g.plan(Target(src.code, src.description, src.client, gate_question=True,
+                          applies_to=FIRMS + ["Individual Consultant"], country="ET"))
+    gating.apply(gated, gating.Book([]), {})
+    finalise(gated)
+    elig = {q.row.criteria: q.row.applies_to for q in gated.questions if section_key(q.row.section) == "eligibility"}
+    assert elig == {"Please attach a valid Trade license": ", ".join(FIRMS),
+                    "Please attach a copy of your Fayda ID (national ID)": "Individual Consultant"}
