@@ -183,6 +183,17 @@ Suggested order: T77 -> T78 -> T79 (works from the CLI), then T80.
 | T83 | Workbook: Split into, Merge with #, Suggested split / merge columns written and read back; Decision takes split / merge; Summary explains them. | 09 S3 | T81 | S | Round trip keeps both; an answered workbook applies like the browser. |
 | T84 | API and web: line change takes split_into / merge_with; Review table shows #, split editor (pieces, add / remove, from the suggestion), merge input with the overlap button; `make contract`. | 09 S4 | T81-T83 | M | A split and a merge done in the browser give the same final list as the workbook. |
 
+## 12. Client rules, country-first sources, PSI's comments (spec 12)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T85 | `client_rules` learned table and the four actions (remove, replace, reword, limit) with group scope; applied first in finalise, marks kept in the section. | 12 C | - | M | The C acceptance cases pass. |
+| T86 | API + web: Client rules card on the Generation page (table, add / edit / delete). | 12 C4 | T85 | S | A rule added in the browser changes the next run. |
+| T87 | Country-first sources: skeleton and suggestions prefer the target country; a foreign source is noted. | 12 S | - | S | Ethiopian client starts from the Ethiopian sheet. |
+| T88 | Draft-only sub-categories at proposal and apply; the model's shown as a suggestion. | 12 R1 | - | S | A line with no draft sub-categories applies none. |
+| T89 | Technical items replace the Technical section; equipment one question per item. | 12 R2 | - | S | Exactly the items, marks kept. |
+| T90 | Partnership; Organization type options on every sheet; Fayda ID / national ID for individuals on gated sheets. | 12 R3, R4 | - | S | As in the acceptance. |
+
 ## Suggested first slice
 
 T01 → T02 → T03 → T06 → T07: the new template plus the two fixes the team
