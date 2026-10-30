@@ -163,3 +163,17 @@ def apply_marks(plan, rules: List[Rule]):
     if touched:
         plan.fixed_sections |= touched
         rebalance_others(plan, set(), "the client's sub-section marks")
+
+
+def fixed_sections(plan, rules: List[Rule]) -> dict:
+    """{section: marks} the `marks` rules settle on this plan (spec 16 D): a section whose scored
+    questions all sit in sub-sections the rules name carries the rules' total, whatever an
+    answer says."""
+    mine = {_name(r.match): float(r.value) for r in rules if r.action == "marks" and r.in_group(plan.target.group)}
+    out = {}
+    for key in {section_key(p.row.section) for p in plan.questions}:
+        rows = [p.row for p in plan.questions if section_key(p.row.section) == key]
+        named = {_name(r.sub_section) for r in rows} & set(mine)
+        if named and all(_name(r.sub_section) in named for r in rows if r.marks):
+            out[key] = sum(mine[n] for n in named)
+    return out

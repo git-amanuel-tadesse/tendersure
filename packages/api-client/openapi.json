@@ -451,6 +451,60 @@
         "title": "ClientNote",
         "type": "object"
       },
+      "ClientProfile": {
+        "properties": {
+          "licence_term": {
+            "default": "",
+            "description": "business permit is written as this, e.g. 'trade license'",
+            "title": "Licence Term",
+            "type": "string"
+          },
+          "local_suppliers": {
+            "default": false,
+            "description": "local suppliers only: no sort code, no IBAN",
+            "title": "Local Suppliers",
+            "type": "boolean"
+          },
+          "no_conflict_of_interest": {
+            "default": false,
+            "description": "no conflict-of-interest question",
+            "title": "No Conflict Of Interest",
+            "type": "boolean"
+          },
+          "office_evidence": {
+            "default": "",
+            "description": "the office evidence question's wording",
+            "title": "Office Evidence",
+            "type": "string"
+          },
+          "purchase_order": {
+            "default": "",
+            "description": "LPO is written as this, e.g. 'PO'",
+            "title": "Purchase Order",
+            "type": "string"
+          },
+          "purchase_order_except": {
+            "default": "",
+            "description": "groups where LPO stays, e.g. 'engineering'",
+            "title": "Purchase Order Except",
+            "type": "string"
+          },
+          "reference_marks": {
+            "default": "",
+            "description": "Ref 1, Ref 2, Ref 3 marks, e.g. '15, 15, 10'",
+            "title": "Reference Marks",
+            "type": "string"
+          },
+          "technical_limit": {
+            "default": "",
+            "description": "at most this many technical questions",
+            "title": "Technical Limit",
+            "type": "string"
+          }
+        },
+        "title": "ClientProfile",
+        "type": "object"
+      },
       "ClientRule": {
         "properties": {
           "action": {
@@ -507,6 +561,15 @@
               "$ref": "#/components/schemas/ClientRule"
             },
             "title": "Rules",
+            "type": "array"
+          },
+          "suggested": {
+            "default": [],
+            "description": "read only: rules proposed from the client's sample workbook (spec 16 C), none an existing rule covers",
+            "items": {
+              "$ref": "#/components/schemas/ClientRule"
+            },
+            "title": "Suggested",
             "type": "array"
           }
         },
@@ -850,6 +913,21 @@
             },
             "title": "Review Problems",
             "type": "array"
+          },
+          "rules_broken": {
+            "default": [],
+            "description": "'code: message' for each one a sheet breaks",
+            "items": {
+              "type": "string"
+            },
+            "title": "Rules Broken",
+            "type": "array"
+          },
+          "rules_checked": {
+            "default": 0,
+            "description": "client rules and category items checked on the sheets written (spec 16 A)",
+            "title": "Rules Checked",
+            "type": "integer"
           },
           "written": {
             "description": "the sheet codes written",
@@ -1617,6 +1695,93 @@
         "title": "Options",
         "type": "object"
       },
+      "PreviewRow": {
+        "properties": {
+          "answer_type": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Answer Type"
+          },
+          "applies_to": {
+            "default": "",
+            "title": "Applies To",
+            "type": "string"
+          },
+          "criteria": {
+            "title": "Criteria",
+            "type": "string"
+          },
+          "mandatory": {
+            "default": false,
+            "title": "Mandatory",
+            "type": "boolean"
+          },
+          "marks": {
+            "default": 0,
+            "title": "Marks",
+            "type": "number"
+          },
+          "options": {
+            "default": "",
+            "title": "Options",
+            "type": "string"
+          },
+          "section": {
+            "default": "",
+            "title": "Section",
+            "type": "string"
+          },
+          "sub_section": {
+            "default": "",
+            "title": "Sub Section",
+            "type": "string"
+          }
+        },
+        "required": [
+          "criteria"
+        ],
+        "title": "PreviewRow",
+        "type": "object"
+      },
+      "ProfileOut": {
+        "properties": {
+          "client": {
+            "title": "Client",
+            "type": "string"
+          },
+          "country": {
+            "title": "Country",
+            "type": "string"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/ClientProfile"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ClientProfile"
+          },
+          "saved": {
+            "description": "false: no rule of the profile's shapes yet - the form shows the country's defaults",
+            "title": "Saved",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "client",
+          "country",
+          "saved",
+          "profile",
+          "defaults"
+        ],
+        "title": "ProfileOut",
+        "type": "object"
+      },
       "Propose": {
         "properties": {
           "country": {
@@ -2267,6 +2432,46 @@
           "model"
         ],
         "title": "Settings",
+        "type": "object"
+      },
+      "SheetPreview": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "codes": {
+            "description": "every sheet of the run's workbook, in order",
+            "items": {
+              "type": "string"
+            },
+            "title": "Codes",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          }
+        },
+        "required": [
+          "codes",
+          "code",
+          "title",
+          "rows",
+          "total"
+        ],
+        "title": "SheetPreview",
         "type": "object"
       },
       "StoredFile": {
@@ -3758,6 +3963,169 @@
         "summary": "This run is the exercise's final version; marking another run moves the mark.",
         "tags": [
           "generate"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/generate/runs/{number}/sheets/{code}": {
+      "get": {
+        "description": "questions, marks and Applies To.",
+        "operationId": "generate_preview_runs__int_number__sheets__code__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "the sheet's code, e.g. PSI-ET-2026-001",
+            "in": "path",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "description": "the sheet's code, e.g. PSI-ET-2026-001",
+              "title": "Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SheetPreview"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "One sheet of the run's workbook, read back from the file as written: sections, sub-sections,",
+        "tags": [
+          "generate"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/profile": {
+      "get": {
+        "operationId": "profile_get_profile_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "tags": [
+          "rules"
+        ]
+      },
+      "put": {
+        "operationId": "profile_set_profile_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientProfile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Saved as this client's rules: those of the profile's shapes are replaced, every other rule kept.",
+        "tags": [
+          "rules"
         ]
       }
     },

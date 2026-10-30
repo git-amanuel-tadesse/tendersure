@@ -190,6 +190,8 @@ class GenerateResult(BaseModel):
     open: Dict[str, int] = Field(description="open decisions by kind: Q, A, M, C, N, T, F")
     review_log: List[str] = []
     review_problems: List[str] = []
+    rules_checked: int = Field(0, description="client rules and category items checked on the sheets written (spec 16 A)")
+    rules_broken: List[str] = Field([], description="'code: message' for each one a sheet breaks")
 
     @classmethod
     def of(cls, r: "flows.GenerateResult"):
@@ -197,4 +199,4 @@ class GenerateResult(BaseModel):
         return cls(written=r.written, failed=[NotWritten(code=c, reason=m) for c, m in r.failed], files=r.files,
                    qa=r.qa, learned_review=r.learned_review, items=[Item.of(i) for i in r.items],
                    open=dict(Counter(i.id[0] for i in r.open_items)), review_log=r.review_log,
-                   review_problems=r.review_problems)
+                   review_problems=r.review_problems, rules_checked=r.rules_checked, rules_broken=r.rules_broken)

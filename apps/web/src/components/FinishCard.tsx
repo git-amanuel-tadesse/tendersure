@@ -1,12 +1,13 @@
 /** Spec 11: a run that needs nothing moves on - download, mark final, check an edited copy, add to the bank. */
 import { fileUrl } from "@tendersure/api-client";
 import { useState } from "react";
-import { keys, type Run, useExercise, useFinishActions, useGenerateActions, useJob } from "../lib/api";
+import { type ClientRule, keys, type Run, useClientRules, useExercise, useFinishActions, useGenerateActions, useJob, useSaveClientRules } from "../lib/api";
+import { Suggested } from "./ClientRulesCard";
 import { JobPanel } from "./JobPanel";
 import { UploadButton } from "./UploadButton";
 import { Badge, Button, Card, ErrorNotice, linkButton, Notice, Select } from "./ui";
 
-type CheckOut = { errors: number; warnings: number; report: string; rules: Record<string, number> };
+type CheckOut = { errors: number; warnings: number; report: string; rules: Record<string, number>; suggested?: ClientRule[] };
 type BankOut = { added: number; replaced: number; unchanged: number; sheets_added: number; tiers: Record<string, number> };
 
 export function FinishCard({ exerciseId, run, isFinal }: { exerciseId: string; run: Run; isFinal: boolean }) {
@@ -20,11 +21,18 @@ export function FinishCard({ exerciseId, run, isFinal }: { exerciseId: string; r
   const checked = checkJob?.status === "done" ? (checkJob.result as CheckOut) : null;
   const banked = bankJob?.status === "done" ? (bankJob.result as BankOut) : null;
   const book = res.files[0];
+  const rules = useClientRules(exerciseId).data?.rules ?? [];
+  const saveRules = useSaveClientRules(exerciseId);
+  const added = new Set(rules.map((r) => `${r.action}|${r.match.toLowerCase()}`));
+  const suggested = (checked?.suggested ?? []).filter((r) => !added.has(`${r.action}|${r.match.toLowerCase()}`));
   return (
     <Card title={<span className="flex items-center gap-2">Ready to send {isFinal && <Badge tone="good">final</Badge>}</span>}>
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
         {res.written.length} sheets written · nothing needs you · no answer waiting. What comes next:
       </p>
+      {(res.rules_checked ?? 0) > 0 && (
+        <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-400">Client rules: all {res.rules_checked} hold on every sheet.</p>
+      )}
       <ol className="mt-4 space-y-4 text-sm">
         <li>
           <div className="font-medium">1 · The workbook</div>
@@ -57,6 +65,8 @@ export function FinishCard({ exerciseId, run, isFinal }: { exerciseId: string; r
                 {checked.warnings} warning(s){Object.keys(checked.rules).length > 0 && ": " + Object.entries(checked.rules).slice(0, 6).map(([r, n]) => `${r} ${n}`).join(", ")}
                 {" · "}<a className="underline" href={fileUrl(exerciseId, checked.report)}>the report</a>
               </Notice>
+              {suggested.length > 0 && <Suggested rules={suggested} from="the edits repeated on several sheets"
+                                                  onAdd={(r) => saveRules.mutate([...rules, r])} />}
             </div>
           )}
         </li>

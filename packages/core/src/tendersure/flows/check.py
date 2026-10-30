@@ -91,3 +91,30 @@ def write_report(findings: List, path: str):
     for sheet, c in sorted(per.items()):
         ws.append([sheet, c["error"], c["warning"]])
     wb.save(path)
+
+
+def suggest_from_edits(generated: str, edited: str, client: str, client_rules: Optional[str] = None) -> list:
+    """Client rules an edited copy suggests (spec 16 C): changes repeated on several sheets, none an
+    existing rule covers."""
+    import openpyxl
+    from .. import client_rules as cr, suggest_rules as sr
+    from ..parser import parse_sheet
+    read = lambda path: [s for s in (parse_sheet(ws, os.path.basename(path)) for ws in
+                                     openpyxl.load_workbook(path, data_only=True).worksheets) if s is not None]
+    before = {s.code: s for s in read(generated)}
+    rules_file = client_rules or current().learned("client_rules")
+    existing = cr.for_client(cr.load(rules_file), client) if os.path.exists(rules_file) else []
+    return sr.new_only(sr.from_edits(before, read(edited), client), existing)
+
+
+def preview_sheet(workbook: str, code: str):
+    """(every sheet name, the sheet asked for - or the first when code is '' or 'first' - parsed), or
+    None when there is no such sheet (spec 16 F)."""
+    import openpyxl
+    from ..parser import parse_sheet
+    wb = openpyxl.load_workbook(workbook, data_only=True)
+    names = wb.sheetnames
+    name = code if code in names else (names[0] if code in ("", "first") and names else None)
+    if name is None:
+        return None
+    return names, name, parse_sheet(wb[name], os.path.basename(workbook))

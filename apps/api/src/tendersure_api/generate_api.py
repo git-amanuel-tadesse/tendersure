@@ -292,11 +292,14 @@ def check_copy(path: RunPath, body: FinishStep):
 
     def step():
         from collections import Counter
-        r = flows.check(target, ex.client, os.path.join(folder, CATEGORIES),
-                        generated if os.path.abspath(target) != os.path.abspath(generated) else None,
+        edited = os.path.abspath(target) != os.path.abspath(generated)
+        r = flows.check(target, ex.client, os.path.join(folder, CATEGORIES), generated if edited else None,
                         None, report, flows.Model(off=True))
+        suggested = flows.suggest_from_edits(generated, target, ex.client) if edited else []
         return {"errors": r.errors, "warnings": r.warnings, "report": os.path.relpath(report, folder).replace(os.sep, "/"),
-                "rules": dict(Counter(f.rule for f in r.findings).most_common())}
+                "rules": dict(Counter(f.rule for f in r.findings).most_common()),
+                "suggested": [{"action": x.action, "match": x.match, "value": x.value, "groups": x.groups, "note": x.note,
+                               "problem": ""} for x in suggested]}
     job = current_app.config["JOBS"].submit("check", f"Check {os.path.basename(target)}", step, exercise_id=eid)
     return Job.of(job).model_dump(), 202
 
@@ -327,3 +330,45 @@ def add_to_bank(path: RunPath, body: FinishStep):
     job = current_app.config["JOBS"].submit("ingest", f"Add {os.path.basename(source)} to the bank", step, exercise_id=eid)
     return Job.of(job).model_dump(), 202
 
+
+
+# --- preview: a run's sheets as the client will see them (spec 16 F) ---------------------------
+
+class SheetPath(RunPath):
+    code: str = Field(description="the sheet's code, e.g. PSI-ET-2026-001")
+
+
+class PreviewRow(BaseModel):
+    section: str = ""
+    sub_section: str = ""
+    criteria: str
+    marks: float = 0
+    answer_type: Optional[int] = None
+    options: str = ""
+    applies_to: str = ""
+    mandatory: bool = False
+
+
+class SheetPreview(BaseModel):
+    codes: List[str] = Field(description="every sheet of the run's workbook, in order")
+    code: str
+    title: str
+    rows: List[PreviewRow]
+    total: float
+
+
+@bp.get("/runs/<int:number>/sheets/<code>", responses={200: SheetPreview})
+def preview(path: SheetPath):
+    """One sheet of the run's workbook, read back from the file as written: sections, sub-sections,
+    questions, marks and Applies To."""
+    folder = _folder(path.exercise_id)
+    book = _workbook(path.exercise_id, folder, path.number, None)
+    found = flows.preview_sheet(book, path.code)
+    if found is None:
+        abort(404, description=f"no sheet {path.code} in run {path.number}")
+    names, name, s = found
+    rows = [PreviewRow(section=r.section or "", sub_section=r.sub_section or "", criteria=r.criteria, marks=r.marks or 0,
+                       answer_type=r.answer_type, options=r.options or "", applies_to=r.applies_to or "",
+                       mandatory=bool(r.mandatory)) for r in (s.rows if s else [])]
+    return SheetPreview(codes=names, code=name, title=(s.title if s else name) or name, rows=rows,
+                        total=sum(r.marks for r in rows)).model_dump()

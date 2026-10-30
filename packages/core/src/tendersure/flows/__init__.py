@@ -19,7 +19,7 @@ from ..review import Item
 from .benchmark import BenchmarkState, MapLine, Tab, benchmark_state, save_benchmark_map
 from .categories import (CategoriesResult, ENGINES, RowProblem, check_table, extract as extract_categories,
                          gate_problem, normalise as normalise_category)
-from .check import CheckResult, check
+from .check import CheckResult, check, preview_sheet, suggest_from_edits
 from .common import FlowError, Model, ModelStatus, load_corpus, load_source, log, model_status
 from .evaluate import ModelEvaluation, PrivacyCheck, evaluate, evaluate_model, privacy_check
 from .generate import Result as GenerateResult, Settings as GenerateSettings, generate, read_review
@@ -28,12 +28,14 @@ from .learn import GlossaryResult, LearnResult, apply_review as apply_learned_re
 from .refine import (ApplyResult, ProposeResult, apply, apply_file, draft_tabs, export_final, export_for_client, export_revised,
                      import_revised, load_categories, propose, propose_file, read_draft, save_categories)
 from .refine import evaluate as evaluate_refinement
+from .rules import Profile, ProfileState, profile_state, save_profile, suggest_from_samples
 from .research import ResearchResult, apply_review as apply_research_review, research
 
 __all__ = [
     "FlowError", "LLMError", "PrivacyError", "Model", "Paths", "current", "use", "log",
     "Draft", "Line", "Category", "Item", "DECISIONS", "keep_team_edits",
     "load_corpus", "load_source", "load_brief", "Rule", "RULE_ACTIONS", "load_client_rules", "save_client_rules",
+    "Profile", "ProfileState", "profile_state", "save_profile", "suggest_from_samples", "suggest_from_edits", "preview_sheet",
     "ingest", "IngestResult", "bank_status", "BankStatus", "model_status", "ModelStatus",
     "extract_categories", "CategoriesResult", "ENGINES",
     "check_table", "gate_problem", "normalise_category", "RowProblem",

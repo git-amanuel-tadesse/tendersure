@@ -209,6 +209,18 @@ Suggested order: T77 -> T78 -> T79 (works from the CLI), then T80.
 |---|---|---|---|---|---|
 | T102 | `rule_checks`: client rules, categories-table items and built-in audiences checked on a workbook; wired into `check` (CLI, Check an edited copy, run check). | 15 | T85, T98, T99, T100 | S | PSI run 24: 0 errors; the acceptance edits each fail with their rule. |
 
+## 16. What PSI taught us (spec 16)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T103 | Every run checks the client's rules and category items on the sheets written; broken ones are F- cards; result and Ready panel count them. | 16 A | T102 | S | A run says its rules hold; a broken one is a card. |
+| T104 | Client profile: form <-> rules of its shapes, country defaults, API, web card before the first build. | 16 B | T85 | M | PSI's rules read back as a profile; saving keeps other rules. |
+| T105 | Rules proposed from the benchmark workbook and from an edited copy's repeated changes; Add from the rules card and the check result. | 16 C | T104 | M | PSI's samples propose Ref 15/15/10 and PO; three removed IBAN rows propose remove IBAN. |
+| T106 | Marks cards named by their sheets; a client marks rule wins over an answer, and its status says so. | 16 D | - | S | Same ID when marks move; status names the rule. |
+| T107 | Technical items edited as a list with a marks box each. | 16 E | T99 | S | Saved with 3 reads back as "... [3]". |
+| T108 | Sheet preview: API reads a run's sheet back; web card with merged sections and wrapped questions. | 16 F | - | S | The preview lists the sheet's rows with marks. |
+| T109 | Warn when a gated build has no learned audience. | 16 G | T98 | S | The note is on the sheet and in the log. |
+
 ## Suggested first slice
 
 T01 → T02 → T03 → T06 → T07: the new template plus the two fixes the team

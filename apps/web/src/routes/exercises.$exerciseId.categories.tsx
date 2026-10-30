@@ -7,6 +7,7 @@ import {
 } from "../components/ui";
 import { UploadButton } from "../components/UploadButton";
 import { type Category, useCategories, useCategoryActions, useExercise, useRefine } from "../lib/api";
+import { type MarkedItem, readItem, writeItem } from "../lib/items";
 
 export const Route = createFileRoute("/exercises/$exerciseId/categories")({ component: CategoriesPage });
 
@@ -123,6 +124,31 @@ function TextCell({ value, onSave, placeholder, wide }: {
   );
 }
 
+/** The technical items as a list, each with its own marks (spec 16 E); stored as "text [n]". */
+function TechnicalCell({ items, onSave }: { items: string[]; onSave: (items: string[]) => void }) {
+  const [rows, setRows] = useState<MarkedItem[]>(items.map(readItem));
+  useEffect(() => setRows(items.map(readItem)), [items]);
+  const commit = (next: MarkedItem[]) => {
+    const out = next.map(writeItem).filter(Boolean);
+    if (JSON.stringify(out) !== JSON.stringify(items)) onSave(out);
+  };
+  const set = (i: number, patch: Partial<MarkedItem>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <div className="space-y-1">
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-1">
+          <Input className="w-56 max-w-full" value={r.text} placeholder="technical item, or (equipment, list)"
+                 onChange={(e) => set(i, { text: e.target.value })} onBlur={() => commit(rows)} />
+          <Input className="w-14" value={r.marks} placeholder="marks" aria-label="marks" title="its own marks; empty shares the section's"
+                 onChange={(e) => set(i, { marks: e.target.value })} onBlur={() => commit(rows)} />
+          <Button variant="ghost" aria-label="Remove item" onClick={() => { const next = rows.filter((_, j) => j !== i); setRows(next); commit(next); }}>✕</Button>
+        </div>
+      ))}
+      <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => setRows((rs) => [...rs, { text: "", marks: "" }])}>+ technical item</Button>
+    </div>
+  );
+}
+
 function Row({ c, problems, save, remove }: {
   c: Category; problems: { field: string; severity: string; message: string }[];
   save: (change: Partial<Category>) => void; remove: () => void;
@@ -148,8 +174,7 @@ function Row({ c, problems, save, remove }: {
           <TextCell value={c.licence.join(" | ")} placeholder="licence / grade"
                     onSave={(v) => save({ licence: split(v) })} />
           <TextCell value={c.hr.join(" | ")} placeholder="key staff (a | b)" onSave={(v) => save({ hr: split(v) })} />
-          <TextCell value={c.technical.join(" | ")} placeholder="technical documents, (equipment, list)"
-                    onSave={(v) => save({ technical: split(v) })} />
+          <TechnicalCell items={c.technical} onSave={(technical) => save({ technical })} />
         </td>
         <td className={cx("px-3 py-2", bad("gate_question") && "bg-red-50 dark:bg-red-950/30")}>
           <Check label="" aria-label="Gate question" checked={c.gate_question}

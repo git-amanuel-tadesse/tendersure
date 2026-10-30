@@ -29,6 +29,7 @@ from typing import Dict, List, Optional, Tuple
 
 import openpyxl
 
+from . import client_rules
 from .generate import (MarksError, Plan, apply_section_marks, check_total, drop_empty_sections, drop_row,
                        keep_section_totals, rebalance_to_100, set_field, spread_marks, to_sheet)
 from .parser import normalise, section_key
@@ -230,8 +231,8 @@ def decision_items(plans: List[Plan]) -> List[Item]:
                 alts[key] |= {v for v in seen.values() if abs(v - mine) > 1e-9}
         options = "; ".join(f"{k}: {', '.join(f'{v:g}' for v in sorted(vs))} elsewhere"
                             for k, vs in alts.items() if vs)
-        items.append(Item(
-            id=f"M-{src}-{_short(text)}", type=MARKS,
+        items.append(Item(                     # named by its sheets, not their marks: an answer carries
+            id=f"M-{src}-{_short(','.join(sorted(p.target.code for p in ps)))}", type=MARKS,   # when marks move
             decide=f"Marks for categories copied from {src} ({ps[0].skeleton.sheet.description})",
             codes=[p.target.code for p in ps], proposed=text,
             why=("Similar categories used " + options) if options else "Close matches agree."))
@@ -558,9 +559,12 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
             it.status = "NOT APPLIED: write e.g. 'technical 10, trade_reference 35'"
             problems.append(f"{it.id}: '{it.answer}' - {it.status[13:]}")
             continue
-        failed, why = [], []
+        failed, why, kept = [], [], []
         for code in it.codes:
             p = by_code[code]
+            fixed = client_rules.fixed_sections(p, p.target.client_rules)
+            kept += [f"{k} {fixed[k]:g} (the client's marks rules), not {v:g}" for k, v in split.items()
+                     if k in fixed and abs(v - fixed[k]) > 1e-9]
             prev = {k: v[0] for k, v in p.section_marks().items()}
             try:
                 apply_section_marks(p, split, f"review {it.id}", share_unscored=True)
@@ -573,6 +577,9 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
                 apply_section_marks(p, {k: v for k, v in prev.items() if v}, "undo rejected review answer")
         it.status = (f"NOT APPLIED on {', '.join(number_of(c) for c in failed)}: "
                      f"{'; '.join(dict.fromkeys(why))}; proposed marks kept") if failed else "applied"
+        if kept and not failed:              # spec 16 D: the client's rule wins over a (carried) answer
+            it.status = f"applied; kept {'; '.join(dict.fromkeys(kept))}"
+            log.append(f"{it.id}: the client's marks rules keep {'; '.join(dict.fromkeys(kept))}")
         log.append(f"{it.id}: marks set on {len(it.codes)} categor{'y' if len(it.codes) == 1 else 'ies'}")
 
     # 3. Rulings on contested fields: applied now, saved for every future batch.

@@ -373,6 +373,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/exercises/{exercise_id}/generate/runs/{number}/sheets/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One sheet of the run's workbook, read back from the file as written: sections, sub-sections,
+         * @description questions, marks and Applies To.
+         */
+        get: operations["generate_preview_runs__int_number__sheets__code__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exercises/{exercise_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["profile_get_profile_get"];
+        /** Saved as this client's rules: those of the profile's shapes are replaced, every other rule kept. */
+        put: operations["profile_set_profile_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/exercises/{exercise_id}/refine": {
         parameters: {
             query?: never;
@@ -856,6 +893,57 @@ export interface components {
             comment: string;
             line: components["schemas"]["Line"];
         };
+        /** ClientProfile */
+        ClientProfile: {
+            /**
+             * Licence Term
+             * @description business permit is written as this, e.g. 'trade license'
+             * @default
+             */
+            licence_term?: string;
+            /**
+             * Local Suppliers
+             * @description local suppliers only: no sort code, no IBAN
+             * @default false
+             */
+            local_suppliers?: boolean;
+            /**
+             * No Conflict Of Interest
+             * @description no conflict-of-interest question
+             * @default false
+             */
+            no_conflict_of_interest?: boolean;
+            /**
+             * Office Evidence
+             * @description the office evidence question's wording
+             * @default
+             */
+            office_evidence?: string;
+            /**
+             * Purchase Order
+             * @description LPO is written as this, e.g. 'PO'
+             * @default
+             */
+            purchase_order?: string;
+            /**
+             * Purchase Order Except
+             * @description groups where LPO stays, e.g. 'engineering'
+             * @default
+             */
+            purchase_order_except?: string;
+            /**
+             * Reference Marks
+             * @description Ref 1, Ref 2, Ref 3 marks, e.g. '15, 15, 10'
+             * @default
+             */
+            reference_marks?: string;
+            /**
+             * Technical Limit
+             * @description at most this many technical questions
+             * @default
+             */
+            technical_limit?: string;
+        };
         /** ClientRule */
         ClientRule: {
             /**
@@ -902,6 +990,12 @@ export interface components {
             client?: string;
             /** Rules */
             rules: components["schemas"]["ClientRule"][];
+            /**
+             * Suggested
+             * @description read only: rules proposed from the client's sample workbook (spec 16 C), none an existing rule covers
+             * @default []
+             */
+            suggested?: components["schemas"]["ClientRule"][];
         };
         /**
          * Draft
@@ -1084,6 +1178,18 @@ export interface components {
              * @default []
              */
             review_problems?: string[];
+            /**
+             * Rules Broken
+             * @description 'code: message' for each one a sheet breaks
+             * @default []
+             */
+            rules_broken?: string[];
+            /**
+             * Rules Checked
+             * @description client rules and category items checked on the sheets written (spec 16 A)
+             * @default 0
+             */
+            rules_checked?: number;
             /**
              * Written
              * @description the sheet codes written
@@ -1499,6 +1605,60 @@ export interface components {
              */
             use_model?: boolean | null;
         };
+        /** PreviewRow */
+        PreviewRow: {
+            /**
+             * Answer Type
+             * @default null
+             */
+            answer_type?: number | null;
+            /**
+             * Applies To
+             * @default
+             */
+            applies_to?: string;
+            /** Criteria */
+            criteria: string;
+            /**
+             * Mandatory
+             * @default false
+             */
+            mandatory?: boolean;
+            /**
+             * Marks
+             * @default 0
+             */
+            marks?: number;
+            /**
+             * Options
+             * @default
+             */
+            options?: string;
+            /**
+             * Section
+             * @default
+             */
+            section?: string;
+            /**
+             * Sub Section
+             * @default
+             */
+            sub_section?: string;
+        };
+        /** ProfileOut */
+        ProfileOut: {
+            /** Client */
+            client: string;
+            /** Country */
+            country: string;
+            defaults: components["schemas"]["ClientProfile"];
+            profile: components["schemas"]["ClientProfile"];
+            /**
+             * Saved
+             * @description false: no rule of the profile's shapes yet - the form shows the country's defaults
+             */
+            saved: boolean;
+        };
         /** Propose */
         Propose: {
             /**
@@ -1808,6 +1968,22 @@ export interface components {
             model: components["schemas"]["ModelStatus"];
             /** Version */
             version: string;
+        };
+        /** SheetPreview */
+        SheetPreview: {
+            /** Code */
+            code: string;
+            /**
+             * Codes
+             * @description every sheet of the run's workbook, in order
+             */
+            codes: string[];
+            /** Rows */
+            rows: components["schemas"]["PreviewRow"][];
+            /** Title */
+            title: string;
+            /** Total */
+            total: number;
         };
         /** StoredFile */
         StoredFile: {
@@ -2746,6 +2922,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Final"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    generate_preview_runs__int_number__sheets__code__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+                number: number;
+                /** @description the sheet's code, e.g. PSI-ET-2026-001 */
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SheetPreview"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    profile_get_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    profile_set_profile_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClientProfile"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileOut"];
                 };
             };
             /** @description Unprocessable Content */

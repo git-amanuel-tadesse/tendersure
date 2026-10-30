@@ -66,7 +66,28 @@ export function ClientRulesCard({ exerciseId }: { exerciseId: string }) {
           </table>
         </div>
       )}
+      {(data?.suggested ?? []).length > 0 && <Suggested rules={data!.suggested!} from="the client's sample workbook" onAdd={(r) => save.mutate([...rules, r])} />}
       <div className="mt-2"><ErrorNotice error={save.error} /></div>
     </Card>
+  );
+}
+
+/** Rules proposed from the client's own files (spec 16 C): added with one click, never applied by themselves. */
+export function Suggested({ rules, from, onAdd }: { rules: ClientRule[]; from: string; onAdd: (r: ClientRule) => void }) {
+  return (
+    <div className="mt-4 rounded-md border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
+      <div className="mb-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">Suggested from {from} · {rules.length}</div>
+      <ul className="space-y-1 text-sm">
+        {rules.map((r, i) => (
+          <li key={i} className="flex flex-wrap items-center gap-2">
+            <Badge>{r.action}</Badge>
+            <span className="font-medium">{r.match.length > 60 ? r.match.slice(0, 60) + "…" : r.match}</span>
+            {r.value && <span>→ {r.value}</span>}
+            <span className="text-xs text-zinc-500">{r.note.replace(/^suggested: /, "")}</span>
+            <Button variant="secondary" className="ml-auto px-2 py-1 text-xs" onClick={() => onAdd({ ...r, note: r.note.replace(/^suggested: /, "") })}>Add</Button>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

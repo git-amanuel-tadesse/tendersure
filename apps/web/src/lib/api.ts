@@ -24,6 +24,7 @@ export const keys = {
   brief: (id: string) => ["brief", id] as const,
   benchmark: (id: string) => ["benchmark", id] as const,
   rules: (id: string) => ["rules", id] as const,
+  profile: (id: string) => ["profile", id] as const,
   refine: (id: string) => ["refine", id] as const,
   categories: (id: string) => ["categories", id] as const,
   runs: (id: string) => ["runs", id] as const,
@@ -238,6 +239,27 @@ export function useSaveClientRules(id: string) {
   return useMutation({
     mutationFn: (rules: ClientRule[]) => unwrap(api.PUT("/api/exercises/{exercise_id}/rules", { ...path(id), body: { rules } })),
     onSuccess: (data) => qc.setQueryData(keys.rules(id), data),
+  });
+}
+
+/** One sheet of a run's workbook, read back from the file (spec 16 F). */
+export type SheetPreview = Schemas["SheetPreview"];
+export const useSheetPreview = (id: string, n: number, code: string) =>
+  useQuery({
+    queryKey: ["preview", id, n, code] as const,
+    queryFn: () => unwrap(api.GET("/api/exercises/{exercise_id}/generate/runs/{number}/sheets/{code}",
+                                  { params: { path: { exercise_id: id, number: n, code: code || "first" } } })),
+  });
+
+/** The client's profile (spec 16 B): house rules as a form, stored as client rules. */
+export type ClientProfile = Schemas["ClientProfile"];
+export const useProfile = (id: string) =>
+  useQuery({ queryKey: keys.profile(id), queryFn: () => unwrap(api.GET("/api/exercises/{exercise_id}/profile", path(id))) });
+export function useSaveProfile(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ClientProfile) => unwrap(api.PUT("/api/exercises/{exercise_id}/profile", { ...path(id), body })),
+    onSuccess: (data) => { qc.setQueryData(keys.profile(id), data); qc.invalidateQueries({ queryKey: keys.rules(id) }); },
   });
 }
 

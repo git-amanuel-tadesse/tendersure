@@ -90,6 +90,8 @@ class Result:
     learned_review: Optional[str] = None
     review_log: List[str] = field(default_factory=list)
     review_problems: List[str] = field(default_factory=list)
+    rules_checked: int = 0                        # client rules and category items checked (spec 16 A)
+    rules_broken: List[str] = field(default_factory=list)   # "code: message" for each broken one
 
     @property
     def written(self) -> List[str]:
@@ -241,6 +243,13 @@ def generate(s: Settings) -> Result:
     if r_table.findings:
         rs.save(r_table, s.research)
     book_audience = audience(s.audience, sheets)
+    gated = [p for p in plans if p.target.gate_question]
+    if gated and not book_audience.entries:          # spec 16 G: say when learned knowledge is missing
+        warn = ("Applies To from built-in rules only: no past sheet in the bank fills Applies To, so who answers "
+                "what was not learned (check firms, companies and individuals on this sheet)")
+        log.info(f"audience: {len(gated)} gated sheet(s), and the audience table is empty - {warn}")
+        for p in gated:
+            p.notes.append(warn)
     donor_rows = gating.donors(trust.usable(sheets, grades), book_audience)
     for p in plans:
         gating.apply(p, book_audience, donor_rows)
@@ -291,9 +300,9 @@ def generate(s: Settings) -> Result:
                   if f.severity == "error"]
         if errors:
             plans.remove(p)
-            rules = Counter(f.rule for f in errors)
+            counts = Counter(f.rule for f in errors)
             failed.append((p.target.code, f"{len(errors)} check error(s): " + ", ".join(
-                f"{r} {n}" for r, n in rules.most_common()) + f" (first: {errors[0].message})"))
+                f"{r} {n}" for r, n in counts.most_common()) + f" (first: {errors[0].message})"))
 
     # Whatever happened above, a sheet that does not total 100 is listed, not
     # written - and never stops the rest of the batch.
@@ -321,13 +330,27 @@ def generate(s: Settings) -> Result:
     items = items if items is not None else decision_items(plans)
     # The findings cards were made before the template rules ran: make them again from the sheets
     # as written, so none reports a row those rules fixed (PSI: 11x "no options" in clean sheets).
+    # Spec 16 A: the client's rules and the category's items, checked on every sheet as written; a
+    # broken one is a finding card, so the run is not Ready.
+    from ..rule_checks import check_rules
+    broken, checked = [], 0
     for p in plans:
-        p.findings = validate_sheet(to_sheet(p))
+        sheet = to_sheet(p)
+        p.findings = validate_sheet(sheet)
+        c = by_code.get(p.target.code)
+        checked += len([r for r in rules if c is None or r.in_group(c.group)]) + (
+            len(c.technical) + len(c.hr) + len(c.licence) if c is not None else 0)
+        found = [f for f in check_rules(sheet, c, rules) if f.severity == "error"]
+        p.findings += found
+        broken += [f"{p.target.code}: {f.message}" for f in found]
     items = [i for i in items if i.type != CHECK] + [i for i in finding_items(plans) if i.type == CHECK]
     brief_note = None if not s.brief else \
         f"Client's brief (read first by the model): {s.brief}" if use_model else f"{cb.NOT_APPLIED[0].upper()}{cb.NOT_APPLIED[1:]}."
     qa = write_qa_report(plans, base + "_qa.xlsx", items, brief_note, every_proposal)
-    r = Result(plans, items, failed, files, qa, learned if n or y else None, review_log, review_problems)
+    r = Result(plans, items, failed, files, qa, learned if n or y else None, review_log, review_problems,
+               checked, broken)
+    log.info(f"client rules: {checked} checked on the sheets written, "
+             + (f"{len(broken)} broken (see the F- cards)" if broken else "all hold"))
     kinds = Counter(i.id[0] for i in r.open_items)
     log.info(f"wrote {qa}")
     log.info(f"Decisions tab: {len(items)} decisions, {len(items) - len(r.open_items)} settled; open: "

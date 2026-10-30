@@ -5,6 +5,8 @@ import { useState } from "react";
 import { BenchmarkCard } from "../components/BenchmarkCard";
 import { BriefBox } from "../components/BriefBox";
 import { ClientRulesCard } from "../components/ClientRulesCard";
+import { ProfileCard } from "../components/ProfileCard";
+import { SheetPreviewCard } from "../components/SheetPreview";
 import { Decisions } from "../components/Decisions";
 import { FinishCard } from "../components/FinishCard";
 import { JobPanel } from "../components/JobPanel";
@@ -27,6 +29,7 @@ function GeneratePage() {
   return (
     <div className="space-y-6">
       <BenchmarkCard exerciseId={exerciseId} />
+      <ProfileCard exerciseId={exerciseId} />
       <ClientRulesCard exerciseId={exerciseId} />
       <BuildCard exerciseId={exerciseId} onStarted={() => navigate({ search: {} })} />
       {runs.length > 0 && (
@@ -183,6 +186,7 @@ function RunView({ exerciseId, n, onApplied, isFinal }: {
         </details>
       </Card>
       {ready && <FinishCard exerciseId={exerciseId} run={r} isFinal={isFinal} />}
+      {r.status === "done" && res.written.length > 0 && <SheetPreviewCard exerciseId={exerciseId} n={n} />}
       <Decisions exerciseId={exerciseId} run={r} onApplied={onApplied} />
     </div>
   );

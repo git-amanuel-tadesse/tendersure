@@ -32,6 +32,8 @@ class ClientRule(BaseModel):
 class ClientRules(BaseModel):
     client: str = ""
     rules: List[ClientRule]
+    suggested: List[ClientRule] = Field([], description="read only: rules proposed from the client's sample workbook "
+                                                         "(spec 16 C), none an existing rule covers")
 
 
 def _client(eid: str) -> str:
@@ -45,16 +47,30 @@ def _path() -> str:
     return flows.current().learned("client_rules")
 
 
-def _out(client: str, rules) -> dict:
-    return ClientRules(client=client, rules=[ClientRule(action=r.action, match=r.match, value=r.value, groups=r.groups,
-                                                        note=r.note, problem=r.problem() or "")
-                                             for r in rules if r.client.upper() == client.upper()]).model_dump()
+def _rule(r) -> ClientRule:
+    return ClientRule(action=r.action, match=r.match, value=r.value, groups=r.groups, note=r.note, problem=r.problem() or "")
+
+
+def _suggested(eid: str, client: str) -> list:
+    """From the benchmark workbook, when one is chosen (spec 16 C)."""
+    from .benchmark_api import chosen
+    folder = current_app.config["WORKSPACES"].folder(eid)
+    f = chosen(folder)
+    if not f or not os.path.exists(os.path.join(folder, f)):
+        return []
+    return flows.suggest_from_samples(os.path.join(folder, f), client, _path())
+
+
+def _out(client: str, rules, eid: str = "") -> dict:
+    mine = [r for r in rules if r.client.upper() == client.upper()]
+    return ClientRules(client=client, rules=[_rule(r) for r in mine],
+                       suggested=[_rule(r) for r in _suggested(eid, client)] if eid else []).model_dump()
 
 
 @bp.get("", responses={200: ClientRules})
 def get_rules(path: ExercisePath):
     client = _client(path.exercise_id)
-    return _out(client, flows.load_client_rules(_path()) if os.path.exists(_path()) else [])
+    return _out(client, flows.load_client_rules(_path()) if os.path.exists(_path()) else [], path.exercise_id)
 
 
 @bp.put("", responses={200: ClientRules})
@@ -67,4 +83,46 @@ def set_rules(path: ExercisePath, body: ClientRules):
     mine = [flows.Rule(client, r.action.strip().lower(), r.match.strip(), r.value.strip(), r.groups.strip(), r.note.strip())
             for r in body.rules if r.match.strip()]
     flows.save_client_rules(others + mine, _path())
-    return _out(client, mine)
+    return _out(client, mine, path.exercise_id)
+
+
+# --- the client's profile (spec 16 B): the house rules as a short form, stored as rules --------
+
+pbp = APIBlueprint("profile", __name__, url_prefix="/api/exercises/<exercise_id>/profile", abp_tags=[Tag(name="rules")])
+
+
+class ClientProfile(BaseModel):
+    licence_term: str = Field("", description="business permit is written as this, e.g. 'trade license'")
+    purchase_order: str = Field("", description="LPO is written as this, e.g. 'PO'")
+    purchase_order_except: str = Field("", description="groups where LPO stays, e.g. 'engineering'")
+    local_suppliers: bool = Field(False, description="local suppliers only: no sort code, no IBAN")
+    no_conflict_of_interest: bool = Field(False, description="no conflict-of-interest question")
+    office_evidence: str = Field("", description="the office evidence question's wording")
+    reference_marks: str = Field("", description="Ref 1, Ref 2, Ref 3 marks, e.g. '15, 15, 10'")
+    technical_limit: str = Field("", description="at most this many technical questions")
+
+
+class ProfileOut(BaseModel):
+    client: str
+    country: str
+    saved: bool = Field(description="false: no rule of the profile's shapes yet - the form shows the country's defaults")
+    profile: ClientProfile
+    defaults: ClientProfile
+
+
+def _profile_out(st) -> dict:
+    return ProfileOut(client=st.client, country=st.country, saved=st.saved,
+                      profile=ClientProfile(**st.profile.as_dict()), defaults=ClientProfile(**st.defaults.as_dict())).model_dump()
+
+
+@pbp.get("", responses={200: ProfileOut})
+def get_profile(path: ExercisePath):
+    ex = current_app.config["WORKSPACES"].get(path.exercise_id)
+    return _profile_out(flows.profile_state(ex.client, ex.prefix, _path()))
+
+
+@pbp.put("", responses={200: ProfileOut})
+def set_profile(path: ExercisePath, body: ClientProfile):
+    """Saved as this client's rules: those of the profile's shapes are replaced, every other rule kept."""
+    ex = current_app.config["WORKSPACES"].get(path.exercise_id)
+    return _profile_out(flows.save_profile(flows.Profile(**body.model_dump()), ex.client, ex.prefix, _path()))

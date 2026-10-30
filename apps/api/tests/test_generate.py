@@ -215,7 +215,7 @@ def test_a_finished_run_is_marked_final_checked_and_added_to_the_bank(client, ex
 
 
 def test_client_rules_are_kept_for_the_client_and_applied(client, ex):
-    assert client.get(f"/api/exercises/{ex}/rules").json == {"client": "AAA", "rules": []}
+    assert client.get(f"/api/exercises/{ex}/rules").json == {"client": "AAA", "rules": [], "suggested": []}
     r = client.put(f"/api/exercises/{ex}/rules", json={"rules": [
         {"action": "remove", "match": "current supplier", "note": "not asked"},
         {"action": "limit", "match": "technical", "value": "many"}]}, headers=W)
@@ -226,3 +226,27 @@ def test_client_rules_are_kept_for_the_client_and_applied(client, ex):
     run = client.get(f"/api/exercises/{ex}/generate/runs/{job.result['run']}").json
     cells = _sheet(client, ex, run, "AAA-ET-2026-001")
     assert not any("current supplier" in v for v in cells) and any("Years in business" in v for v in cells)
+
+
+def test_the_profile_is_the_client_s_rules_as_a_form(client, ex):
+    """Spec 16 B: country defaults until saved; saved as rules, other rules kept."""
+    got = client.get(f"/api/exercises/{ex}/profile").json
+    assert (got["saved"], got["country"], got["profile"]["licence_term"], got["profile"]["local_suppliers"]) == \
+        (False, "ET", "trade license", True)
+    client.put(f"/api/exercises/{ex}/rules", json={"rules": [{"action": "remove", "match": "current supplier"}]}, headers=W)
+    got = client.put(f"/api/exercises/{ex}/profile", json={**got["profile"], "reference_marks": "30, 10"}, headers=W).json
+    assert got["saved"] and got["profile"]["reference_marks"] == "30, 10"
+    rules = [(r["action"], r["match"], r["value"]) for r in client.get(f"/api/exercises/{ex}/rules").json["rules"]]
+    assert ("remove", "current supplier", "") in rules and ("marks", "Ref 1", "30") in rules
+    assert ("replace", "business permit", "trade license") in rules and ("remove", "IBAN", "") in rules
+
+
+def test_a_run_s_sheet_can_be_previewed(client, ex):
+    """Spec 16 F, and the run counts the client's rules it checked (16 A)."""
+    job = _run(client, client.post(f"/api/exercises/{ex}/generate", json={"use_model": False, "only": [1]}, headers=W))
+    n = job.result["run"]
+    got = client.get(f"/api/exercises/{ex}/generate/runs/{n}/sheets/first").json
+    assert got["code"] == "AAA-ET-2026-001" and got["total"] == 100
+    assert got["rows"][0]["section"] and any(r["marks"] > 0 for r in got["rows"])
+    assert client.get(f"/api/exercises/{ex}/generate/runs/{n}/sheets/NOPE").status_code == 404
+    assert client.get(f"/api/exercises/{ex}/generate/runs/{n}").json["result"]["rules_broken"] == []

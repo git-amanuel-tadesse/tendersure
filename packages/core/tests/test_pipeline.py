@@ -3304,3 +3304,101 @@ def test_an_edited_copy_is_held_to_the_client_s_rules(corpus, tmp_path):
     for rule in ("RULE-REPLACE", "RULE-MARKS", "RULE-REMOVE", "CAT-TECHNICAL"):
         assert any(r == rule for _, r in got), rule
     assert ("002", "CAT-TECHNICAL") in got and ("001", "RULE-REMOVE") in got
+
+
+# --- what PSI taught us (spec 16) -------------------------------------------------------------
+
+def test_every_run_checks_the_client_s_rules_and_a_broken_one_is_a_card(corpus, tmp_path):
+    """Spec 16 A."""
+    from tendersure import categories as cat, client_rules as cr, flows
+    from tendersure.review import finding_items
+    from tendersure.validate import Finding
+    cat.save([cat.Category(1, "Provision of Security and Guarding Services", "GENERAL", client="AAA")], str(tmp_path / "c.csv"))
+    rules = str(tmp_path / "rules.csv")
+    cr.save([cr.Rule("AAA", "marks", "Ref 1", "40")], rules)
+    r = flows.generate(flows.GenerateSettings(
+        str(tmp_path / "c.csv"), "AAA", "AAA-ET-2026-", str(tmp_path / "o.xlsx"), source=str(corpus), client_rules=rules,
+        audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
+        model=flows.Model(off=True)))
+    assert r.rules_checked >= 1 and r.rules_broken == []
+    p = r.plans[0]
+    p.findings = [Finding(p.target.code, 80, "RULE-MARKS", "silent", "error", "'Ref 1' carries 30 marks; the client's rule says 40.")]
+    card = finding_items([p])[0]
+    assert card.id == "F-RULE-MARKS" and card.codes == [p.target.code]
+
+
+def test_a_profile_reads_back_from_the_rules_and_saves_as_rules():
+    """Spec 16 B."""
+    from tendersure import profile as pf
+    from tendersure.client_rules import Rule
+    rules = [Rule("PSI", "replace", "LPO", "PO", "!engineering", "Except engineering, LPO is PO"),
+             Rule("PSI", "remove", "IBAN"), Rule("PSI", "remove", "sort code"),
+             Rule("PSI", "reword", "recommendation or award letter", "Attach a completion letter", "engineering"),
+             Rule("NRC", "remove", "IBAN")]
+    p, seen = pf.read([r for r in rules if r.client == "PSI"])
+    assert seen and (p.purchase_order, p.purchase_order_except, p.local_suppliers) == ("PO", "engineering", True)
+    p.reference_marks = "15, 15, 10"
+    out = pf.save_into(p, rules, "PSI")
+    psi = [(r.action, r.match, r.value) for r in out if r.client == "PSI"]
+    assert ("marks", "Ref 1", "15") in psi and ("marks", "Ref 3", "10") in psi
+    assert ("reword", "recommendation or award letter", "Attach a completion letter") in psi      # kept
+    assert ("remove", "IBAN", "") in [(r.action, r.match, r.value) for r in out if r.client == "NRC"]
+    assert next(r for r in out if r.match == "LPO").note == "Except engineering, LPO is PO"          # its own note kept
+    assert pf.defaults("ET").licence_term == "trade license" and pf.defaults("ET").local_suppliers
+    assert pf.read([])[1] is False
+
+
+def test_rules_are_proposed_from_the_client_s_samples_and_edits(corpus):
+    """Spec 16 C."""
+    from copy import deepcopy
+    from tendersure import suggest_rules as sr
+    from tendersure.client_rules import Rule
+    sheets = load_corpus(str(corpus))
+    tabs = [deepcopy(s) for s in sheets if s.client == "AAA"]
+    for t in tabs:
+        for r in t.rows:
+            if section_key(r.section) == "trade_reference":
+                r.marks = 40.0 if r.marks else 0.0
+    got = {(r.action, r.match, r.value) for r in sr.from_samples(tabs, "AAA")}
+    assert ("marks", "Ref 1", "40") in got and ("replace", "LPO", "PO") in got
+    assert sr.new_only(sr.from_samples(tabs, "AAA"), [Rule("AAA", "replace", "lpo", "PO")]) and \
+        ("replace", "LPO", "PO") not in {(r.action, r.match, r.value)
+                                          for r in sr.new_only(sr.from_samples(tabs, "AAA"), [Rule("AAA", "replace", "lpo", "PO")])}
+    before = {s.code: s for s in deepcopy(tabs)}
+    edited = deepcopy(tabs)
+    for s in edited:
+        s.rows = [r for r in s.rows if r.criteria != "Company name"]
+    assert ("remove", "Company name", "") in {(r.action, r.match, r.value) for r in sr.from_edits(before, edited, "AAA")}
+
+
+def test_marks_cards_keep_their_ids_and_a_client_rule_wins_over_an_answer(corpus):
+    """Spec 16 D."""
+    from tendersure.client_rules import Rule
+    from tendersure.review import MARKS, apply_answers, decision_items
+    _, g = _gen(corpus)
+    rule = [Rule("AAA", "marks", "Ref 1", "40")]
+    plan = lambda: g.plan(Target("AAA-ET-2026-009", "Provision of Security and Guarding Services", "AAA", client_rules=rule))
+    a, b = plan(), plan()
+    up = next(q for q in b.questions if q.row.marks and section_key(q.row.section) == "company")
+    up.row.marks += 1                                          # the marks moved, the sheets did not
+    ids = lambda p: [i.id for i in decision_items([p]) if i.type == MARKS and not i.id.startswith("M-BENCH")]
+    assert ids(a) and ids(a) == ids(b)
+    p = plan()
+    split = {k: v[0] for k, v in p.section_marks().items() if v[0]}
+    split["trade_reference"], split["experience"] = 30.0, split["experience"] + split["trade_reference"] - 30
+    items, log, _ = apply_answers([p], {ids(p)[0]: ", ".join(f"{k} {v:g}" for k, v in split.items())})
+    it = next(i for i in items if i.id == ids(p)[0])
+    assert it.status.startswith("applied; kept trade_reference 40") and any("marks rules keep" in x for x in log)
+
+
+def test_a_gated_build_without_learned_audiences_says_so(corpus, tmp_path):
+    """Spec 16 G."""
+    from tendersure import categories as cat, flows
+    cat.save([cat.Category(1, "Provision of Consultancy Services", "CONSULTANCY", client="AAA", gate_question=True,
+                           applies_to=["Sole Proprietor", "Private Limited Company", "Individual Consultant"])],
+             str(tmp_path / "c.csv"))
+    r = flows.generate(flows.GenerateSettings(
+        str(tmp_path / "c.csv"), "AAA", "AAA-ET-2026-", str(tmp_path / "o.xlsx"), source=str(corpus),
+        audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
+        model=flows.Model(off=True)))
+    assert any(n.startswith("Applies To from built-in rules only") for n in r.plans[0].notes)
