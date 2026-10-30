@@ -3143,3 +3143,14 @@ def test_a_batch_spells_each_section_one_way(corpus):
     assert one_label_per_section(plans) > 0
     labels = {q.row.section for p in plans for q in p.questions if section_key(q.row.section) == "technical"}
     assert labels == {"Technical Specifications-TECH"}
+
+
+def test_the_client_s_own_requirements_are_not_put_to_the_team(corpus):
+    from tendersure.generate import finalise
+    from tendersure.review import decision_items
+    p = _plan_with_hr(corpus, hr=["Project Manager", "Foreman"], licence=["min G5/BC5 or above"],
+                      technical=["MAF/DAF", "(Mixer, Dump Truck)"])
+    finalise(p)
+    asked = " ".join(i.decide for i in decision_items([p]) if i.id.startswith("Q-"))
+    for text in ("Project Manager", "Foreman", "grade", "MAF/DAF", "Dump Truck"):
+        assert text not in asked

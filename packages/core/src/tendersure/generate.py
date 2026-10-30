@@ -573,6 +573,9 @@ def place_eligibility(plan: Plan):
             p.note(f"moved from '{p.row.section}' to Eligibility")
         p.row.section = in_section[0].row.section if in_section else ELIGIBILITY_LABEL
         p.row.sub_section = in_section[-1].row.sub_section if in_section else "N/A"
+    for p in moving:                           # the client's own documents: nothing for the team to decide
+        if p.source == "categories table" or any(n.startswith("from the category's licence") for n in p.notes):
+            p.needs_reading = False
     at = _eligibility_position(plan, in_section)
     plan.rows[at:at] = moving
     _keep_freed_marks(plan, moving)

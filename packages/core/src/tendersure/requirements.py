@@ -235,6 +235,10 @@ def stated(category) -> str:
 
 def place_requirements(plan):
     """HR and technical rows from the categories table (licence rows join
-    the Eligibility section with place_eligibility)."""
+    the Eligibility section with place_eligibility). The client asked for
+    them, so none is put to the team as a question to keep or remove."""
     place_hr(plan)
     place_technical(plan)
+    for p in plan.questions:
+        if p.source == SOURCE or any("column" in n and n.startswith("from the category's") for n in p.notes):
+            p.needs_reading = False
