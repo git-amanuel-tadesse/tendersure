@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiNotes, asProposed, benchRows, inTab, plainStatus, quiet, sheetsOf, type Decision } from "./triage";
+import { aiNotes, asProposed, benchChoice, benchRows, inTab, plainStatus, quiet, sheetsOf, type Decision } from "./triage";
 
 const q = (status = "", extra: Partial<Decision> = {}): Decision =>
   ({ id: "Q-1", type: "question", codes: ["PSI-ET-2026-022", "PSI-ET-2026-081"], decide: "x", proposed: "remove: 22, 81", status, ...extra });
@@ -23,6 +23,8 @@ describe("triage", () => {
     const b: Decision = { id: "M-BENCH-PSI-ET-2026-001", type: "marks", codes: ["PSI-ET-2026-001"], decide: "x",
                           proposed: "technical 15, hr 2", keys: ["technical 10, hr 7, company 0"] };
     expect(inTab("bench", b, "", false) && !inTab("needs", b, "", false) && !quiet(b, "")).toBe(true);
+    expect(quiet({ ...b, status: "accepted as proposed" }, "")).toBe(true);           // kept ours in an earlier run
+    expect([benchChoice(""), benchChoice("client"), benchChoice("technical 20")]).toEqual(["kept ours", "client's split", "own split"]);
     expect(benchRows(b)).toEqual([{ section: "technical", ours: 15, client: 10 }, { section: "hr", ours: 2, client: 7 }]);
   });
   it("collapses only what needs nothing", () => {

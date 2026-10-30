@@ -9,9 +9,10 @@ import {
   aAnswer, kindOf, type Marks, marksAnswer, numberOf, parseAAnswer, parseMarks, parseQAnswer, qAnswer, rulingOptions,
   teamOptions, total,
 } from "../lib/answers";
-import { type Item, keys, type Run, useCategories, useGenerateActions, useJob, isRunning } from "../lib/api";
+import { type Item, keys, type Run, useCategories, useGenerateActions, useRuns } from "../lib/api";
 import {
-  aiNotes, asProposed, benchRows, failed, inTab, isBench, matches, plainStatus, quiet, sheetsOf, type Tab, TAB_LABEL, TABS,
+  aiNotes, asProposed, benchChoice, benchDecided, benchRows, failed, inTab, isBench, matches, plainStatus, quiet, sheetsOf,
+  type Tab, TAB_LABEL, TABS,
 } from "../lib/triage";
 import { JobPanel } from "./JobPanel";
 import { Badge, Button, Card, Check, cx, Empty, ErrorNotice, Field, Input, Notice, Select } from "./ui";
@@ -53,11 +54,11 @@ export function Decisions({ exerciseId, run, onApplied }: { exerciseId: string; 
   const sheets = useMemo(() => sheetsOf(items), [items]);
   const title = (code: string) => titles[numberOf(code)] ?? "";
 
-  const applyJob = useJob(apply.data?.id, [keys.runs(exerciseId)]).data;
-  useEffect(() => {
-    const next = (applyJob?.result as { run?: number } | null)?.run;
-    if (applyJob?.status === "done" && next) onApplied(next);
-  }, [applyJob?.status]); // once, when the applying job has finished
+  // As soon as the new run exists, show it (its progress, then its result): staying on this run
+  // while the next one builds looked as if nothing had happened.
+  const runs = useRuns(exerciseId).data?.runs ?? [];
+  const started = apply.data?.id ? runs.find((r) => r.job_id === apply.data!.id) : undefined;
+  useEffect(() => { if (started) onApplied(started.number); }, [started?.number]);
   const save = () => answer.mutateAsync({ n: run.number, answers: Object.fromEntries(dirty.map((id) => [id, draft[id]])) })
     .then(() => setDraft({}));
 
@@ -80,6 +81,7 @@ export function Decisions({ exerciseId, run, onApplied }: { exerciseId: string; 
   useEffect(() => setFocus(0), [current, sheet, query]);
 
   const benchShown = shown.filter(isBench);
+  const benchTodo = items.filter((i) => isBench(i) && !benchDecided(i) || isBench(i) && changed(i.id)).length;
   const bulk = (patch: (i: Item) => string | undefined) =>
     setDraft((d) => { const n = { ...d }; for (const i of shown) { const v = patch(i); if (v !== undefined) n[i.id] = v; } return n; });
   const sheetIndex = sheets.indexOf(sheet);
@@ -97,7 +99,10 @@ export function Decisions({ exerciseId, run, onApplied }: { exerciseId: string; 
                       className={cx("rounded-md px-2.5 py-1 text-sm ring-1", current === t
                         ? "bg-zinc-900 text-white ring-zinc-900 dark:bg-zinc-100 dark:text-zinc-900"
                         : "text-zinc-600 ring-zinc-200 hover:bg-zinc-50 dark:text-zinc-300 dark:ring-zinc-700 dark:hover:bg-zinc-900")}>
-                {TAB_LABEL[t]} <span className={cx("ml-1 tabular-nums", current === t ? "opacity-80" : "text-zinc-400")}>{counts[t]}</span>
+                {TAB_LABEL[t]}{" "}
+                <span className={cx("ml-1 tabular-nums", current === t ? "opacity-80" : "text-zinc-400")}>
+                  {t === "bench" && benchTodo < counts.bench ? `${benchTodo} to decide · ${counts.bench}` : counts[t]}
+                </span>
               </button>
             ))}
           </nav>
@@ -111,9 +116,9 @@ export function Decisions({ exerciseId, run, onApplied }: { exerciseId: string; 
             <Button variant="secondary" disabled={!dirty.length} busy={answer.isPending} onClick={save}>
               Save {dirty.length || ""} answer{dirty.length === 1 ? "" : "s"}
             </Button>
-            <Button busy={apply.isPending || isRunning(applyJob)}
+            <Button busy={apply.isPending || (!!apply.data && !started)}
                     onClick={async () => { if (dirty.length) await save(); apply.mutate(run.number); }}>
-              Apply answers → run {run.number + 1}
+              Apply answers → run {Math.max(run.number, ...runs.map((x) => x.number)) + 1}
             </Button>
           </div>
         </div>
@@ -210,7 +215,7 @@ function StatusBadge({ status }: { status?: string }) {
 function QuietRow({ item, value, onOpen }: { item: Item; value: string; onOpen: () => void }) {
   return (
     <button onClick={onOpen} className="flex w-full items-center gap-2 rounded-md border border-zinc-100 px-3 py-1.5 text-left text-xs hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-900">
-      <StatusBadge status={item.status} />
+      {isBench(item) ? <Badge tone="good">{benchChoice(value)}</Badge> : <StatusBadge status={item.status} />}
       <span className="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-300">{item.decide.split("\n")[0]}</span>
       <span className="shrink-0 text-zinc-400">{item.codes.length} sheet{item.codes.length === 1 ? "" : "s"}</span>
       <span className="shrink-0 font-mono text-zinc-500">{value || item.proposed}</span>

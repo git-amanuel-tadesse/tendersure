@@ -7,7 +7,7 @@ import { BriefBox } from "../components/BriefBox";
 import { Decisions } from "../components/Decisions";
 import { JobPanel } from "../components/JobPanel";
 import { Badge, Button, Card, Check, cx, ErrorNotice, Field, Input, linkButton, Notice, Select, Stat } from "../components/ui";
-import { isRunning, keys, useCategories, useGenerateActions, useJob, useLatestJob, useRun, useRuns } from "../lib/api";
+import { isRunning, keys, type Run, useCategories, useGenerateActions, useJob, useLatestJob, useRun, useRuns } from "../lib/api";
 
 export const Route = createFileRoute("/exercises/$exerciseId/generate")({
   component: GeneratePage,
@@ -149,6 +149,7 @@ function RunView({ exerciseId, n, onApplied }: { exerciseId: string; n: number; 
           <Stat label="Decisions" value={res.items.length} />
           <Stat label="Open" value={Object.values(res.open).reduce((a, b) => a + b, 0)} />
         </div>
+        {r.settings.review_of && <AppliedSummary run={r} />}
         {r.settings.benchmark && (
           <p className="mt-3 text-xs text-zinc-500"><span className="font-medium">Benchmark:</span> {r.settings.benchmark.replace("uploads/", "")}</p>
         )}
@@ -174,3 +175,25 @@ function RunView({ exerciseId, n, onApplied }: { exerciseId: string; n: number; 
     </div>
   );
 }
+
+
+/** A run made from another run's answers: what those answers did, so it is plain that something moved. */
+function AppliedSummary({ run }: { run: Run }) {
+  const items = run.result?.items ?? [];
+  const did = (re: RegExp) => items.filter((i) => re.test(i.status ?? "")).length;
+  const applied = did(/^applied/);
+  const refused = items.filter((i) => /^NOT APPLIED|^PROBLEM/.test(i.status ?? ""));
+  const accepted = did(/^accepted/);
+  return (
+    <div className="mt-3 space-y-2">
+      <Notice tone={refused.length ? "warn" : "good"} title={`Run ${run.settings.review_of}'s answers applied`}>
+        {applied} answer{applied === 1 ? "" : "s"} changed the sheets · {accepted} accepted as proposed
+        {refused.length > 0 && ` · ${refused.length} not applied:`}
+        {refused.length > 0 && (
+          <ul className="mt-1 list-disc pl-5">{refused.slice(0, 8).map((i) => <li key={i.id}><b>{i.id}</b>: {i.status}</li>)}</ul>
+        )}
+      </Notice>
+    </div>
+  );
+}
+

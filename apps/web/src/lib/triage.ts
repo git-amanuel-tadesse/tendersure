@@ -51,9 +51,16 @@ export function inTab(tab: Tab, d: Decision, answer: string, changed: boolean): 
   }
 }
 
+/** A marks-vs-client line already answered in an earlier run (kept ours, or the client's split applied). */
+export const benchDecided = (d: Decision) => isBench(d) && !!d.status && !failed(d.status);
+
+/** What an answered marks-vs-client line chose, in words. */
+export const benchChoice = (answer: string) =>
+  !answer.trim() ? "kept ours" : answer.trim().toLowerCase() === "client" ? "client's split" : "own split";
+
 /** Nothing to do: shown as one line until opened. */
 export const quiet = (d: Decision, answer: string) =>
-  !isBench(d) && !open(d, answer) && !failed(d.status) && !aiNotes(d.status);
+  isBench(d) ? benchDecided(d) : !open(d, answer) && !failed(d.status) && !aiNotes(d.status);
 
 /** The status in plain words, for a badge. */
 export function plainStatus(status = ""): string {
