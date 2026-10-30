@@ -35,6 +35,7 @@ folder (git-ignored; copy `.env.example`):
 import json
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -166,7 +167,20 @@ def _http(url: str, headers: dict, body: dict, timeout: float = 600) -> dict:
 # --- shared request path -------------------------------------------------------
 
 class _Base:
+    """Several threads may share one client (parallel.each): what describes one call - the model
+    that answered, whether it searched, the pages it used - is kept per thread."""
     provider = ""
+
+    @property
+    def _call(self):
+        local = self.__dict__.setdefault("_local", threading.local())
+        if not hasattr(local, "last_model"):
+            local.last_model, local.searching, local.last_sources = None, False, []
+        return local
+
+    last_model = property(lambda self: self._call.last_model, lambda self, v: setattr(self._call, "last_model", v))
+    searching = property(lambda self: self._call.searching, lambda self, v: setattr(self._call, "searching", v))
+    last_sources = property(lambda self: self._call.last_sources, lambda self, v: setattr(self._call, "last_sources", v))
 
     def __init__(self, model, json_mode, transport):
         self.model = model

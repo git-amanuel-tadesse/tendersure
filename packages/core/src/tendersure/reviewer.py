@@ -26,6 +26,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 from . import brief as cb
+from . import parallel
 from .evaluate import _in_sheet
 from .generate import Generator, Plan, ai_cache_key
 from .llm import make_llm
@@ -233,26 +234,36 @@ def ai_review(gen: Generator, plans: List[Plan], reviewer: ModelReviewer, progre
     from .review import apply_answers
     items = decision_items(plans)
     reviews = {}
+    todo = []
     for p in plans:
         if not p.proposal:
             continue
         decisions = decisions_for(p, items, gen)
+        if not decisions:                      # nothing proposed to judge: no call
+            reviews[p.target.code] = (decisions, {})
+            continue
         key = ai_cache_key(p, build_prompt(p, decisions), "#review")
-        try:
-            if cache is not None and key in cache:
-                verdicts = cache[key]
-            else:
-                verdicts = reviewer.review(p, decisions)
-                if cache is not None:
-                    cache[key] = verdicts
-                    if save:
-                        save()
-        except Exception as e:                 # a failed review keeps that category conservative
-            progress(f"{p.target.code}: review failed ({str(e)[:120]}); nothing applied for it")
+        if cache is not None and key in cache:
+            reviews[p.target.code] = (decisions, cache[key])
+        else:
+            todo.append((p, decisions, key))
+
+    def reviewed(item, verdicts, error):       # in this thread, as each review arrives
+        p, decisions, key = item
+        if error is not None:                  # a failed review keeps that category conservative
+            progress(f"{p.target.code}: review failed ({str(error)[:120]}); nothing applied for it")
             verdicts = {}
+        elif cache is not None:
+            cache[key] = verdicts
+            if save:
+                save()
         reviews[p.target.code] = (decisions, verdicts)
         agree = sum(1 for v in verdicts.values() if v["verdict"] == "agree")
         progress(f"{p.target.code}: reviewer agrees with {agree} of {len(decisions)} proposal(s)")
+    if todo:
+        progress(f"AI review: {len(todo)} sheet(s) to review, {parallel.workers()} at a time; "
+                 f"{len(reviews)} reused or with nothing to judge")
+    parallel.each(todo, lambda item: reviewer.review(item[0], item[1]), reviewed)
     answers, notes = answers_from(plans, items, reviews)
     if any(i.id == "T-ADOPT-MAJORITY" for i in items):
         answers["T-ADOPT-MAJORITY"] = "yes"     # client disagreements: the client's own majority

@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from .. import brief as cb
+from .. import parallel
 from .. import categories as cat
 from .. import gating
 from .. import glossary as gl
@@ -166,28 +167,35 @@ def generate(s: Settings) -> Result:
             with open(cache_path, "w") as fh:
                 json.dump(ai_cache, fh)
 
-        asked = reused = 0
+        counts = {"asked": 0, "reused": 0}
+        todo = []
         for p in plans:
             if p.same_category or p.proposal is not None:
                 continue
             key = ai_cache_key(p, build_prompt(p))
             if key in ai_cache:
                 p.proposal = json.loads(json.dumps(ai_cache[key]))
-                reused += 1
-                continue
-            try:
-                prop = selector.propose(p)
-            except Exception as e:      # one failed category must not sink the batch
-                log.info(f"{p.target.code}: no model proposal ({e})")
-                continue
+                counts["reused"] += 1
+            else:
+                todo.append((p, key))
+
+        def proposed(item, prop, error):        # in this thread, as each proposal arrives
+            p, key = item
+            if error is not None:               # one failed category must not sink the batch
+                log.info(f"{p.target.code}: no model proposal ({error})")
+                return
             ai_cache[key] = json.loads(json.dumps(prop))
             save_ai_cache()
-            asked += 1
+            counts["asked"] += 1
             log.info(f"{p.target.code}: {prop['model']} rewords {len(prop.get('reword', {}))} (applied), "
                      f"proposes {len(prop['drop'])} removal(s), "
                      f"{len(prop['add'])} addition(s), {len(prop['drafts'])} new question(s)"
-                     + (f"; ignored {len(prop['ignored'])} invalid" if prop["ignored"] else ""))
-        log.info(f"model proposals: {asked} new, {reused} reused from earlier runs")
+                     + (f"; ignored {len(prop['ignored'])} invalid" if prop["ignored"] else "")
+                     + f" [{counts['asked']}/{len(todo)}]")
+        if todo:
+            log.info(f"model proposals: asking for {len(todo)}, {parallel.workers()} at a time")
+        parallel.each(todo, lambda item: selector.propose(item[0]), proposed)
+        log.info(f"model proposals: {counts['asked']} new, {counts['reused']} reused from earlier runs")
         for p in plans:
             for x in (p.proposal or {}).get("brief_not_applied", []):
                 p.notes.append(f"the client's brief asked: {x} (not applied: the template rules come first)")

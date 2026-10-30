@@ -2272,11 +2272,10 @@ def test_what_the_web_found_nothing_specific_on_is_recorded_and_not_searched_aga
 
 
 def test_research_is_saved_as_it_arrives(tmp_path):
-    """A run stopped half way keeps every search it paid for."""
+    """A search that worked is on disk at once; one that failed is not recorded, so it is tried again."""
     from tendersure import research as rs
     table = rs.Table([])
     table.target = str(tmp_path / "research.csv")
-    done = []
 
     class Web:
         llm = None
@@ -2285,13 +2284,34 @@ def test_research_is_saved_as_it_arrives(tmp_path):
             return [], {t: list(kinds) for t in topics}
 
         def research(self, topic, country, kinds, client=None):
-            if done:
-                raise KeyboardInterrupt                  # the app stopped during the second search
-            done.append(topic)
+            if topic == "Supply of B":
+                raise RuntimeError("the connection dropped")
             return [rs.Finding("names", rs.topic_key(topic), country, topic, {"technical_name": "A"}, ["p | u"], rs.WEB)]
-    with pytest.raises(KeyboardInterrupt):
-        rs.research(["Supply of A", "Supply of B"], "ET", ["names"], table, None, Web())
-    assert [f.topic for f in rs.load(str(tmp_path / "research.csv")).findings] == ["Supply of A"]
+    rs.research(["Supply of A", "Supply of B"], "ET", ["names"], table, None, Web())
+    saved = rs.load(str(tmp_path / "research.csv"))
+    assert [f.topic for f in saved.findings] == ["Supply of A"]
+    assert saved.lookup("names", "Supply of B", "ET") is None                     # searched again next time
+
+
+def test_model_calls_run_side_by_side_and_report_in_one_thread():
+    import threading
+    import time
+    from tendersure import parallel
+    seen, threads = [], set()
+    def slow(x):
+        threads.add(threading.current_thread().name)
+        time.sleep(0.05)
+        if x == 3:
+            raise ValueError("no answer")
+        return x * 10
+    main = threading.current_thread().name
+    started = time.time()
+    parallel.each(range(6), slow, lambda x, r, e: seen.append((x, r, type(e).__name__ if e else None,
+                                                               threading.current_thread().name)), n=6)
+    assert time.time() - started < 0.2                                              # not 6 x 0.05 s
+    assert sorted((x, r, e) for x, r, e, _ in seen) == [(0, 0, None), (1, 10, None), (2, 20, None),
+                                                         (3, None, "ValueError"), (4, 40, None), (5, 50, None)]
+    assert {t for *_, t in seen} == {main} and len(threads) > 1
 
 
 def test_the_refine_proposal_is_kept_and_reused(tmp_path):

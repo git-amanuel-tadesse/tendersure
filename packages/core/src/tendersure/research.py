@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from .learned_store import resolve
+from . import parallel
 from .llm import AccountError, LLMError, make_llm
 from .parser import Sheet, normalise, section_key
 from .similarity import TfidfEmbedder, cosine
@@ -397,20 +398,24 @@ def research(topics: List[str], country: str, kinds: List[str], table: Table, ba
             search.setdefault(topic, []).extend(k for k in ks if k not in search.get(topic, []))
     log.info(f"research: {known} finding(s) from the model's own knowledge for {len(todo)} topic(s); "
              f"{len(search)} topic(s) the model is not sure of go to a web search")
-    nothing = 0
-    for n, (topic, ks) in enumerate(search.items(), 1):
-        log.info(f"research: searching the web ({n}/{len(search)}): {topic[:60]}")
-        got = web.research(topic, country, ks, client)
-        if getattr(getattr(web, "llm", None), "account_error", None) is not None:
-            break                                       # no credit or key: the rest would fail the same way
+    counts = {"nothing": 0, "done": 0}
+
+    def searched(item, got, error):                     # in this thread, as each search comes back
+        topic, ks = item
+        counts["done"] += 1
+        log.info(f"research: searched the web ({counts['done']}/{len(search)}): {topic[:60]}")
+        if error is not None or getattr(getattr(web, "llm", None), "account_error", None) is not None:
+            return                                      # not recorded: searched again next time
         for f in got:
             table.add(f)
             new.append(f)
         for k in ks:
             if not any(f.kind == k for f in got):       # nothing specific: recorded, never searched again
                 table.add(Finding(k, topic_key(topic), country, topic, dict(EMPTY[k]), [], NOTHING))
-                nothing += 1
+                counts["nothing"] += 1
         table.checkpoint()
+    parallel.each(list(search.items()), lambda item: web.research(item[0], country, item[1], client), searched)
+    nothing = counts["nothing"]
     if nothing:
         log.info(f"research: the web search found nothing specific for {nothing} question(s) - for most "
                  f"categories that means only the documents every supplier gives; recorded, not searched again")
