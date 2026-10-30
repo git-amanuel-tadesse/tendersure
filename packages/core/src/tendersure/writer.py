@@ -12,6 +12,8 @@ formula would arrive blank. Pass formulas=True once the team confirms the
 importer recalculates.
 """
 
+import math
+import textwrap
 from copy import copy
 from typing import Dict, List, Optional
 
@@ -218,6 +220,7 @@ class Writer:
                     role = role_b if col <= COL["sub_section"] else "plain"
                     _copy_style(st.cell(role, col), c)
                     _close_border(c)
+                _fit_height(ws, r, COL["criteria"], COL["criteria"])
                 if new_section or not blocks_b:
                     blocks_b.append([r, r])
                 else:
@@ -257,6 +260,27 @@ class Writer:
             for a, b in blocks:
                 if b > a:
                     ws.merge_cells(start_row=a, start_column=col, end_row=b, end_column=col)
+
+
+def _fit_height(ws, r: int, first: int, last: int):
+    """Wrap text shows only as many lines as the row is high, and a row written here has no
+    height, so Excel shows one line (PSI, spec 14 D): the row gets the height its question
+    (or its longest wrapped cell in first..last) needs, from the text's length against the
+    column's width and font size.
+    Characters are counted as wide as a '0', which errs on the tall side."""
+    lines, size = 1, 11.0
+    for col in range(first, last + 1):
+        c = ws.cell(r, col)
+        if not isinstance(c.value, str) or not c.value.strip() or not (c.alignment and c.alignment.wrap_text):
+            continue
+        sz = float(c.font.sz or 11) if c.font else 11.0
+        width = ws.column_dimensions[get_column_letter(col)].width or 8.43
+        per_line = max(1, int(width * 11 / sz) - 1)
+        n = sum(max(1, len(textwrap.wrap(part, per_line))) for part in c.value.split("\n"))
+        if n > lines:
+            lines, size = n, sz
+    if lines > 1:
+        ws.row_dimensions[r].height = max(ws.row_dimensions[r].height or 0, math.ceil(lines * size * 1.35))
 
 
 def _val(ws, row, col) -> float:

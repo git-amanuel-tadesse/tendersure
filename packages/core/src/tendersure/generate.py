@@ -126,6 +126,7 @@ class Plan:
     weak_match: bool = False        # the source shares little with this category (kind/client only)
     proposal: Optional[dict] = None  # model proposal (selectors.py), applied only through review
     benchmark: Optional[dict] = None  # the client's tab it is compared with (benchmark.reference)
+    fixed_sections: set = field(default_factory=set)  # marks the client set itself: no rebalance moves them (spec 14)
 
     @property
     def questions(self) -> List[PlannedRow]:
@@ -288,23 +289,29 @@ def apply_section_marks(plan: Plan, split: Dict[str, float], source: str = "revi
                 p.weight_hint = 1.0                       # equal shares
         if target_marks and not scored:
             raise MarksError(f"section '{key}' has no scored rows to carry {target_marks:g} marks")
-        weights = [(p.row.marks or 0) or p.weight_hint for p in scored]
-        if all((p.row.marks or 0) == w for p, w in zip(scored, weights)) and \
-                abs(sum(weights) - target_marks) < 1e-9:
-            continue
-        new = _largest_remainder(weights, int(round(target_marks)))
-        for p, m in zip(scored, new):
-            r = p.row
-            old = r.marks or 0
-            r.marks = float(m)
-            if r.compliance_attach or (r.compliance is not None and r.system is None):
-                r.compliance, r.system = float(m), None
-            else:
-                r.system, r.compliance = float(m), None
-            if r.answer_type in (2, 3):
-                _rescale_scores(r, m, p.scores_hint)
-            p.note(f"marks {old:g} -> {m} (section split from {source})")
-        plan.marks_source[key] = source
+        if share_marks(scored, target_marks, f"section split from {source}"):
+            plan.marks_source[key] = source
+
+
+def share_marks(scored: List[PlannedRow], target_marks: float, why: str) -> bool:
+    """Spread `target_marks` over rows in proportion to their marks (else their weight hints),
+    in whole marks. False when they already carry exactly that."""
+    weights = [(p.row.marks or 0) or p.weight_hint for p in scored]
+    if all((p.row.marks or 0) == w for p, w in zip(scored, weights)) and abs(sum(weights) - target_marks) < 1e-9:
+        return False
+    new = _largest_remainder(weights, int(round(target_marks)))
+    for p, m in zip(scored, new):
+        r = p.row
+        old = r.marks or 0
+        r.marks = float(m)
+        if r.compliance_attach or (r.compliance is not None and r.system is None):
+            r.compliance, r.system = float(m), None
+        else:
+            r.system, r.compliance = float(m), None
+        if r.answer_type in (2, 3):
+            _rescale_scores(r, m, p.scores_hint)
+        p.note(f"marks {old:g} -> {m} ({why})")
+    return True
 
 
 def keep_section_totals(plan: Plan, before: Dict[str, float], why: str) -> List[str]:
@@ -346,6 +353,28 @@ def spread_marks(plan: Plan, freed: float, why: str) -> Dict[str, float]:
     new = dict(zip(keys, _largest_remainder([current[k] for k in keys], total)))
     apply_section_marks(plan, {k: float(v) for k, v in new.items()}, why)
     return new
+
+
+def rebalance_others(plan: Plan, fixed: set, why: str) -> Optional[str]:
+    """Bring a sheet back to 100 when the client set some sections' marks itself (spec 14): the
+    difference is spread over the other scored sections in proportion, the fixed ones untouched."""
+    t = plan.total()
+    if abs(t - TOTAL_MARKS) < 1e-6:
+        return None
+    fixed = set(fixed) | plan.fixed_sections
+    current = {k: v[0] for k, v in plan.section_marks().items() if v[0] > 0 and k not in fixed}
+    if not current:
+        note = f"marks: the sheet totals {t:g} after {why}, and no other section can take the difference"
+        plan.notes.append(note)
+        return note
+    keys = list(current)
+    new = dict(zip(keys, _largest_remainder([current[k] for k in keys],
+                                            int(round(sum(current.values()) + TOTAL_MARKS - t)))))
+    apply_section_marks(plan, {k: float(v) for k, v in new.items()}, why)
+    note = (f"marks rebalanced to {TOTAL_MARKS} after {why}: {TOTAL_MARKS - t:+g} spread over the other "
+            f"sections in proportion ({', '.join(f'{k} {v:g}' for k, v in new.items())})")
+    plan.notes.append(note)
+    return note
 
 
 def rebalance_to_100(plan: Plan, why: str) -> Optional[str]:
@@ -667,6 +696,7 @@ def finalise(plan: Plan):
     place_sub_category_question(plan)
     place_eligibility(plan)
     _relabel_sections(plan)
+    client_rules.apply_marks(plan, plan.target.client_rules)       # last: nothing after moves these marks
     for p in plan.questions:
         note = fix_missing_options(p.row) or fix_option_scores(p.row)
         if note:

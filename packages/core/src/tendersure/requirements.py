@@ -9,9 +9,9 @@ sheet of the category, with or without a model.
   in order, keeping their marks (the client's benchmark); roles beyond them
   arrive with 0 marks; skeleton roles left over go, their marks kept in the
   section.
-- Technical: one upload per item, replacing a matching skeleton row (and its
-  marks) or added with 0 marks; an equipment list asks for ownership or rent
-  evidence.
+- Technical: the items are the whole Technical section, one upload each; an
+  equipment list asks for ownership or rent evidence of each piece. An item
+  ending in "[n]" carries n marks (spec 14 B); the others share the rest.
 
 Marks are not rebalanced across sections: a row added with 0 marks leaves
 the sheet at 100, and the QA report lets the team move marks.
@@ -28,6 +28,9 @@ GRADE_ROW = re.compile(r"\bgrade\b|competenc|contractor\s+(level|class|category)
 ROLE_ROW = re.compile(r"\b(cvs?|curriculum\s+vitae|resume)\b|evidence\b.*\bfor\b", re.I)
 OWNERSHIP_ROW = re.compile(r"ownership|rent(al)?\s+agreement|lease", re.I)
 _YEARS = re.compile(r"\s*(?:min(?:imum)?\.?|at\s+least)?\s*(\d+)\+?\s*(?:years?|yrs?)\b.*$", re.I)
+_ITEM_MARKS = re.compile(r"\s*\[\s*(\d+(?:\.\d+)?)\s*(?:marks?)?\s*\]\s*$", re.I)
+_WORDED = re.compile(r"^(please|attach|upload|submit|provide|insert|state|list|describe|are|is|do|does|have|has|"
+                     r"can|will)\b", re.I)
 _PLAIN = {"evidence", "letter", "for", "min", "minimum", "year", "years", "please", "attach", "of", "and", "the",
           "a", "an", "with", "copy", "valid", "your", "from", "set", "up", "or", "related", "any"}
 HR_LABEL = "Human Resource- HRM"
@@ -167,36 +170,46 @@ def place_hr(plan):
             plan.notes.append(f"HR marks: {problem}")
 
 
-def _technical_items(items: List[str]) -> List[str]:
+def item_marks(item: str) -> Tuple[str, Optional[float]]:
+    """ "Attach a warranty letter [3]" -> ("Attach a warranty letter", 3.0) (spec 14 B)."""
+    m = _ITEM_MARKS.search(item)
+    return (item[:m.start()].strip(), float(m.group(1))) if m else (item.strip(), None)
+
+
+def _technical_items(items: List[str]) -> List[Tuple[str, Optional[float]]]:
     """An equipment list in brackets is one question per piece (spec 12 R2): "(Dump Truck,
-    Pick up)" -> "(Dump Truck)", "(Pick up)"."""
+    Pick up)" -> "(Dump Truck)", "(Pick up)"; marks given to the list go to each piece."""
     out = []
     for item in items:
-        if item.startswith("("):
-            out += [f"({x.strip()})" for x in item.strip("()").split(",") if x.strip()]
+        text, marks = item_marks(item)
+        if text.startswith("("):
+            out += [(f"({x.strip()})", marks) for x in text.strip("()").split(",") if x.strip()]
         else:
-            out.append(item)
+            out.append((text, marks))
     return out
 
 
 def _technical_text(item: str) -> str:
     if item.startswith("("):
         return f"Please attach evidence of ownership or rent agreement for a {item.strip('()').strip()}"
+    if _WORDED.match(item):                       # the client's own question: as written
+        return item[:1].upper() + item[1:]
     return f"Please attach {_lower_first(item)}"
 
 
 def place_technical(plan):
     """The category's technical items are its whole Technical section (spec 12 R2): a past
     question matching an item is reworded to it, every other technical question goes, and
-    the section's marks are shared equally by the items."""
-    from .generate import ADAPTED, apply_section_marks, drop_row, insert_rows
+    the section's marks are shared equally by the items. Items with their own marks keep
+    them, and the other sections take up the difference (spec 14 B)."""
+    from .generate import ADAPTED, apply_section_marks, drop_row, insert_rows, rebalance_others
     items = _technical_items(plan.target.technical)
     if not items:
         return
     before = plan.section_marks().get("technical", (0, 0, 0))[0]
     free = [p for _, p in _section_rows(plan, "technical")]
-    kept, new = [], []
-    for item in items:
+    kept, new, given, order = [], [], {}, []
+    for item, marks in items:
         if item.startswith("("):
             hit = next((p for p in free if OWNERSHIP_ROW.search(p.row.criteria)), None)
         else:
@@ -207,20 +220,42 @@ def place_technical(plan):
             free.remove(hit)
             kept.append(hit)
             _set_upload(hit, _technical_text(item), f"from the category's technical column ({item})")
+            row = hit.row
         else:
-            r = _new_row(_technical_text(item), mandatory=False)
-            r.section = TECH_LABEL
-            new.append(r)
+            row = _new_row(_technical_text(item), mandatory=False)
+            row.section = TECH_LABEL
+            new.append(row)
+        order.append(id(row))
+        if marks is not None:
+            given[id(row)] = marks
     for p in free:                                   # not one of the client's items
         drop_row(plan, plan.rows.index(p), "the category's technical column lists the whole Technical section")
     if new:
         insert_rows(plan, "technical", new, ADAPTED, SOURCE, "from the category's technical column",
                     section_label=TECH_LABEL)
-    if before:
-        for _, p in _section_rows(plan, "technical"):
-            p.row.marks, p.weight_hint = 0.0, 1.0           # equal shares of the section's marks
-            p.row.system = p.row.compliance = None
-        apply_section_marks(plan, {"technical": before}, "the category's technical column")
+    slots = _section_rows(plan, "technical")              # in the client's order
+    rows = sorted((p for _, p in slots), key=lambda p: order.index(id(p.row)) if id(p.row) in order else len(order))
+    for (i, _), p in zip(slots, rows):
+        plan.rows[i] = p
+    if not given:
+        if before:
+            for p in rows:
+                p.row.marks, p.weight_hint = 0.0, 1.0       # equal shares of the section's marks
+                p.row.system = p.row.compliance = None
+            apply_section_marks(plan, {"technical": before}, "the category's technical column")
+        return
+    rest = [p for p in rows if id(p.row) not in given]
+    left = max(before - sum(given.values()), 0) if rest else 0
+    for p in rows:
+        p.row.marks, p.row.system, p.row.compliance = 0.0, None, None
+        p.weight_hint = given.get(id(p.row), left / len(rest) if rest else 0.0)
+    total = sum(given.values()) + left
+    apply_section_marks(plan, {"technical": total}, "the category's technical column")
+    plan.fixed_sections.add("technical")
+    for p in rest if not left else []:
+        p.note("0 marks: the other technical items carry the section's marks")
+    if abs(total - before) > 1e-9:
+        rebalance_others(plan, {"technical"}, "the technical items' own marks")
 
 
 def stated(category) -> str:

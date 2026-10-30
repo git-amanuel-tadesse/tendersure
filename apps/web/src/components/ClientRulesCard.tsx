@@ -8,6 +8,7 @@ const ACTIONS: Record<string, { match: string; value: string }> = {
   replace: { match: "the term, e.g. LPO", value: "with, e.g. PO" },
   reword: { match: "questions containing…", value: "the new wording" },
   limit: { match: "section, e.g. technical", value: "at most, e.g. 3" },
+  marks: { match: "sub-section, e.g. Ref 1", value: "marks, e.g. 15" },
 };
 const blank: ClientRule = { action: "remove", match: "", value: "", groups: "", note: "", problem: "" };
 

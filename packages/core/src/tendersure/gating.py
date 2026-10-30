@@ -13,6 +13,9 @@ Individual Consultant is not offered, and individual-only questions go.
 
 Who answers what is learned from past sheets that fill Applies To (SNV's)
 and kept as the "audience" table (learned_store), which the team may edit.
+Where the table has no answer, built-in rules decide (spec 14 A): the
+shareholder section is for PLCs and share companies, the company's own
+documents for the firms, the rest for everyone.
 """
 
 import re
@@ -22,15 +25,23 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from . import grouping
-from .generate import ADAPTED, Plan, PlannedRow, _apply_corrections, drop_row, insert_rows
+from .generate import (ADAPTED, Plan, PlannedRow, _apply_corrections, drop_empty_sections, drop_row, insert_rows,
+                       keep_section_totals, rebalance_to_100)
 from .learned_store import resolve
 from .parser import Row, Sheet, section_key
-from .schema import BUSINESS_TYPES, INDIVIDUAL, business_types
+from .schema import BUSINESS_TYPES, FIRMS, INDIVIDUAL, business_types
 from .trust import context_key
 
 AUDIENCE = "audience"
 SEEDED, CONFIRMED = "seeded", "confirmed"
 COLUMNS = ["question_key", "example", "applies_to", "status", "uses"]
+COMPANIES = ["Private Limited Company", "Share Company"]
+_COMPANIES_ROW = re.compile(r"private\s+limited|share\s+compan|limited\s+liability", re.I)
+_FIRMS_ROW = re.compile(r"\b(company|firm|organi[sz]ation|business)(\s*'s)?\s+name\b|name\s+of\s+(the\s+)?(company|firm|"
+                        r"organi[sz]ation|business)|\boffices?\b|(commercial|company|business)(\s*/\s*\w+)?\s+registration|"
+                        r"incorporation|memorandum|articles\s+of"
+                        r"\s+association|\bvat\b|company\s+profile", re.I)
+_FULL_NAME = re.compile(r"\bfull\s+name\b", re.I)
 _BUSINESS_QUESTION = re.compile(r"organi[sz]ation\s+type|type\s+of\s+organi[sz]ation|legal\s+(?:form|status)", re.I)
 
 
@@ -166,6 +177,37 @@ def _add_individual_questions(plan: Plan, book: Book, donor_rows: Dict[str, Row]
                 q.needs_reading = False
 
 
+def default_audience(p: PlannedRow) -> Optional[List[str]]:
+    """Who answers a question the audience table does not know (spec 14 A); None is everyone."""
+    r = p.row
+    if section_key(r.section) == "shareholder" or _COMPANIES_ROW.search(r.criteria):
+        return COMPANIES
+    if _FIRMS_ROW.search(r.criteria):
+        return FIRMS
+    return None
+
+
+def _full_name_text(country: str) -> str:
+    return "Full name (as per Fayda ID)" if country == "ET" else "Full name (as per national ID or passport)"
+
+
+def _add_individual_name(plan: Plan):
+    """A gated sheet that accepts individuals asks their name, after the company name (spec 14 A)."""
+    if any(_FULL_NAME.search(p.row.criteria) for p in plan.questions):
+        return
+    company = [i for i, p in enumerate(plan.rows) if p.kind == "question" and section_key(p.row.section) == "company"]
+    if not company:
+        return
+    at = next((i for i in company if _FIRMS_ROW.search(plan.rows[i].row.criteria)
+               and "name" in plan.rows[i].row.criteria.lower()), company[0])
+    anchor = plan.rows[at].row
+    row = Row(source_file="", sheet="", excel_row=0, section=anchor.section, sub_section=anchor.sub_section,
+              criteria=_full_name_text(plan.target.country), marks=0.0, answer_type=1, mandatory=True,
+              applies_to=INDIVIDUAL)
+    plan.rows.insert(at + 1, PlannedRow(kind="question", row=row, origin=ADAPTED, source="standard row",
+                                        notes=["the individual's name: the category accepts individual consultants"]))
+
+
 def apply(plan: Plan, book: Book, donor_rows: Dict[str, Row]):
     """Gate Question and Applies To for one sheet, from its category's columns."""
     t, gate = plan.target, business_question(plan)
@@ -184,26 +226,41 @@ def apply(plan: Plan, book: Book, donor_rows: Dict[str, Row]):
     g.answer_type, g.mandatory, g.options, g.option_scores = 2, True, options, ",".join("0" for _ in types)
     g.gate_question, g.applies_to = True, None
     _add_individual_questions(plan, book, donor_rows)
+    if INDIVIDUAL in types:
+        _add_individual_name(plan)
+    before, dropped = {k: v[0] for k, v in plan.section_marks().items()}, len(plan.dropped)
     unknown_documents = 0
     for i in reversed(range(len(plan.rows))):
         p = plan.rows[i]
         if p.kind != "question" or p is gate:
             continue
-        aud, similar = book.lookup(_key_of(plan, p))
         p.row.gate_question = False
-        if aud is None:
+        if p.row.applies_to and business_types(p.row.applies_to) == [INDIVIDUAL] and p.source == "standard row":
+            continue                                     # the individual's name, just added
+        aud, similar = book.lookup(_key_of(plan, p))
+        who = aud.applies_to if aud is not None else default_audience(p)
+        if who is None:
             p.row.applies_to = None
             if p.row.answer_type == 5:
                 unknown_documents += 1
                 p.note("asked of every business type: no past sheet says who answers it", adapted=False)
             continue
-        answer = [x for x in types if x in aud.applies_to]
+        answer = [x for x in types if x in who]
         if not answer:
-            drop_row(plan, i, f"answered only by {', '.join(aud.applies_to)}, which this category does not accept")
+            drop_row(plan, i, f"answered only by {', '.join(who)}, which this category does not accept")
             continue
         p.row.applies_to = None if answer == types else ", ".join(answer)
-        if similar and p.row.applies_to:
+        if aud is None and p.row.applies_to:
+            p.note(f"Applies To: {', '.join(answer)} (built-in rule: no past sheet says who answers it)",
+                   adapted=False)
+        elif similar and p.row.applies_to:
             p.note(f"Applies To from a similar question ('{aud.example}')", adapted=False)
+    if len(plan.dropped) > dropped:            # marks of rows no accepted type answers stay in the sheet
+        drop_empty_sections(plan)
+        here = {k for k, v in plan.section_marks().items()}
+        problems = keep_section_totals(plan, {k: m for k, m in before.items() if k in here}, "Applies To")
+        if problems or abs(plan.total() - 100) > 1e-6:
+            rebalance_to_100(plan, "questions no accepted business type answers")
     if unknown_documents:
         plan.notes.append(f"{unknown_documents} uploads have no known audience and are asked of every business "
                           f"type: set them in data/audience.csv if some types should not answer")

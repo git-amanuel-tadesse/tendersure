@@ -5,6 +5,8 @@ some groups' sheets, said once and applied on every run.
     replace  the term `match` with `value` ("LPO" -> "PO", "business permit" -> "trade license")
     reword   a question containing `match` gets `value` as its whole wording
     limit    at most `value` questions in the section named `match`
+    marks    the sub-section named `match` ("Ref 1") carries `value` marks; the
+             other sections take up the difference (spec 14 C)
 
 `groups` scopes a rule by the words of a category's group: "engineering" for
 those groups only, "!engineering" for every other; empty for all. Matching is
@@ -25,7 +27,7 @@ from .parser import section_key
 
 RULES = "client_rules"
 COLUMNS = ["client", "action", "match", "value", "groups", "note"]
-ACTIONS = ("remove", "replace", "reword", "limit")
+ACTIONS = ("remove", "replace", "reword", "limit", "marks")
 NEVER = {"declaration", "submission"}
 
 
@@ -60,6 +62,8 @@ class Rule:
             return f"{self.action} needs a value"
         if self.action == "limit" and not self.value.strip().isdigit():
             return "limit needs a number as value"
+        if self.action == "marks" and not re.fullmatch(r"\d+(\.\d+)?", self.value.strip()):
+            return "marks needs a number as value"
         return None
 
 
@@ -87,7 +91,7 @@ def _keep_case(found: str, value: str) -> str:
 def apply(plan, rules: List[Rule]):
     """The client's rules on one plan, in their order (spec 12 C3: before the template rules)."""
     from .generate import NEW, drop_empty_sections, drop_row, keep_section_totals, rebalance_to_100
-    mine = [r for r in rules if r.in_group(plan.target.group)]
+    mine = [r for r in rules if r.in_group(plan.target.group) and r.action != "marks"]
     if not mine:
         return
     before = {k: v[0] for k, v in plan.section_marks().items()}
@@ -128,3 +132,34 @@ def apply(plan, rules: List[Rule]):
         problems = keep_section_totals(plan, {k: before.get(k, 0) for k in changed if k in here}, "client rules")
         if problems or any(k not in here and before.get(k) for k in changed):
             rebalance_to_100(plan, "client rules")
+
+
+def _name(text) -> str:
+    return "".join(str(text or "").lower().split())
+
+
+def apply_marks(plan, rules: List[Rule]):
+    """The `marks` rules on one plan (spec 14 C), after every other template rule: each named
+    sub-section carries its marks, and the sections no rule set take up the difference."""
+    from .generate import rebalance_others, share_marks
+    from .validate import asks_for_document
+    mine = [r for r in rules if r.action == "marks" and r.in_group(plan.target.group)]
+    touched = set()
+    for rule in mine:
+        rows = [p for p in plan.questions if _name(p.row.sub_section) == _name(rule.match)
+                and section_key(p.row.section) not in NEVER]
+        if not rows:
+            continue
+        why = f"client rule: {rule.note or f'{rule.match} carries {rule.value} marks'}"
+        scored = [p for p in rows if (p.row.marks or 0) > 0] or \
+            [p for p in rows if asks_for_document(p.row)] or [p for p in rows if p.row.answer_type in (2, 3, 4, 5)]
+        if not scored:
+            plan.notes.append(f"{why}: '{rule.match}' has no question that can carry marks")
+            continue
+        for p in scored:
+            p.weight_hint = p.weight_hint or 1.0
+        share_marks(scored, float(rule.value), why)
+        touched.add(section_key(rows[0].row.section))
+    if touched:
+        plan.fixed_sections |= touched
+        rebalance_others(plan, set(), "the client's sub-section marks")

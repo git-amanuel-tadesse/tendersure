@@ -454,7 +454,7 @@
       "ClientRule": {
         "properties": {
           "action": {
-            "description": "remove, replace, reword or limit",
+            "description": "remove, replace, reword, limit or marks",
             "title": "Action",
             "type": "string"
           },
@@ -465,7 +465,7 @@
             "type": "string"
           },
           "match": {
-            "description": "the phrase (remove, reword), the term (replace) or the section (limit)",
+            "description": "the phrase (remove, reword), the term (replace), the section (limit) or the sub-section (marks)",
             "title": "Match",
             "type": "string"
           },
@@ -483,7 +483,7 @@
           },
           "value": {
             "default": "",
-            "description": "replace: the new term; reword: the new wording; limit: how many",
+            "description": "replace: the new term; reword: the new wording; limit: how many; marks: the sub-section's marks",
             "title": "Value",
             "type": "string"
           }

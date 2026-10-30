@@ -21,9 +21,9 @@ bp = APIBlueprint("rules", __name__, url_prefix="/api/exercises/<exercise_id>/ru
 
 
 class ClientRule(BaseModel):
-    action: str = Field(description="remove, replace, reword or limit")
-    match: str = Field(description="the phrase (remove, reword), the term (replace) or the section (limit)")
-    value: str = Field("", description="replace: the new term; reword: the new wording; limit: how many")
+    action: str = Field(description="remove, replace, reword, limit or marks")
+    match: str = Field(description="the phrase (remove, reword), the term (replace), the section (limit) or the sub-section (marks)")
+    value: str = Field("", description="replace: the new term; reword: the new wording; limit: how many; marks: the sub-section's marks")
     groups: str = Field("", description="'' for all groups; words of group names, '!words' to skip them; comma-separated")
     note: str = Field("", description="why, in the team's words")
     problem: str = Field("", description="read only: why the rule cannot be applied, if it cannot")

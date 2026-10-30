@@ -1850,8 +1850,9 @@ def test_a_gated_category_gets_its_business_types_and_audiences(corpus):
         == ("Individual Consultant", 5, "eligibility", True)
     assert rows["Please attach a valid Trade license"].row.applies_to == "Sole Proprietor, Private Limited Company"
     assert rows["Attach evidence e.g. PO or award letter"].row.applies_to is None          # everyone
-    office = rows["Attach evidence of physically registered office"]
-    assert office.row.applies_to is None and "no past sheet says who answers it" in office.notes[-1]
+    office = rows["Attach evidence of physically registered office"]                # spec 14 A: a built-in rule
+    assert office.row.applies_to == "Sole Proprietor, Private Limited Company"
+    assert any("built-in rule" in n for n in office.notes)
     assert check_gate(to_sheet(p), True, types) == [] and p.total() == 100
 
 
@@ -3154,3 +3155,108 @@ def test_the_client_s_own_requirements_are_not_put_to_the_team(corpus):
     asked = " ".join(i.decide for i in decision_items([p]) if i.id.startswith("Q-"))
     for text in ("Project Manager", "Foreman", "grade", "MAF/DAF", "Dump Truck"):
         assert text not in asked
+
+
+# --- PSI's Version 2 comments (spec 14) -------------------------------------------------------
+
+def test_without_a_learned_audience_built_in_rules_say_who_answers(corpus):
+    """Spec 14 A: the bank reset left the audience table empty; firms, companies and
+    individuals are still told apart."""
+    from tendersure import gating
+    from tendersure.generate import PlannedRow, finalise, to_sheet
+    from tendersure.parser import Row
+    from tendersure.validate import check_gate
+
+    def plan(types):
+        sheets, g = _gen(corpus)
+        src = next(s for s in sheets if s.name == "AAA-ET-2026-003")
+        p = g.plan(Target(src.code, src.description, src.client, gate_question=True, applies_to=types,
+                          country="ET"))
+        at = next(i for i, q in enumerate(p.rows) if q.kind == "question" and section_key(q.row.section) == "technical")
+        for text in ("Name", "No. of shares", "Attach National ID or passport"):
+            p.rows.insert(at, PlannedRow(kind="question", row=Row(
+                "", "", 0, section="Director/ Shareholder Information", sub_section="Shareholder 1", criteria=text,
+                answer_type=5 if "Attach" in text else 1, marks=0.0, compliance_attach="Attach" in text)))
+            at += 1
+        p.rows.insert(at, PlannedRow(kind="subtotal"))
+        gating.apply(p, gating.Book([]), {})
+        finalise(p)
+        return p
+
+    types = ["Sole Proprietor", "Private Limited Company", "Share Company", "Individual Consultant"]
+    p = plan(types)
+    rows = {q.row.criteria: q.row for q in p.questions}
+    assert rows["No. of shares"].applies_to == "Private Limited Company, Share Company"
+    assert rows["Attach National ID or passport"].applies_to == "Private Limited Company, Share Company"
+    assert rows["Company name"].applies_to == "Sole Proprietor, Private Limited Company, Share Company"
+    assert rows["Insert TIN number"].applies_to is None                                    # everyone
+    texts = [q.row.criteria for q in p.questions]
+    assert texts[texts.index("Company name") + 1] == "Full name (as per Fayda ID)"
+    assert rows["Full name (as per Fayda ID)"].applies_to == "Individual Consultant"
+    assert check_gate(to_sheet(p), True, types) == [] and p.total() == 100
+
+    p = plan(["Sole Proprietor", "Individual Consultant"])                   # no company has shareholders
+    assert not any(section_key(q.row.section) == "shareholder" for q in p.questions)
+    assert any("which this category does not accept" in why for _, why in p.dropped)
+
+
+def test_technical_items_can_carry_their_own_marks(corpus):
+    """Spec 14 B: PSI's engineering equipment sample, 10 / 3 / 2, worded as PSI wrote it."""
+    from tendersure.generate import finalise
+    sheets, g = _gen(corpus)
+    src = next(s for s in sheets if s.name == "AAA-ET-2026-002")
+    maf = ("Are you a manufacturer or a distributor. If a manufacturer, attach a current and valid manufacturing "
+           "License. If a distributor, attach manufacturer authorization or Attach evidence of dealership "
+           "authorization form")
+    p = g.plan(Target(src.code, "Engineering Equipment", src.client, technical=[
+        f"{maf} [10]", "Attach Evidence Letter to extend warranty on goods sold for 1 year minimum [3]",
+        "Attach Evidence letter/document to provide Training, Post-sales setup, repair and maintenance Yes/No [2]"]))
+    finalise(p)
+    tech = [(q.row.criteria, q.row.marks) for q in p.questions if section_key(q.row.section) == "technical"]
+    assert tech == [(maf, 10), ("Attach Evidence Letter to extend warranty on goods sold for 1 year minimum", 3),
+                    ("Attach Evidence letter/document to provide Training, Post-sales setup, repair and maintenance "
+                     "Yes/No", 2)]
+    assert p.total() == 100 and _checked(p) == []
+
+
+def test_a_client_rule_sets_a_sub_section_s_marks(corpus):
+    """Spec 14 C: PSI's references at 15 / 15 / 10; the other sections give up the difference."""
+    from tendersure.client_rules import Rule
+    from tendersure.generate import PlannedRow, finalise
+    from tendersure.parser import Row
+    _, g = _gen(corpus)
+    rules = [Rule("AAA", "marks", "Ref 1", "15"), Rule("AAA", "marks", "Ref 2", "15"),
+             Rule("AAA", "marks", "ref3", "10"), Rule("AAA", "marks", "Ref 9", "5")]
+    p = g.plan(Target("AAA-ET-2026-003", "Provision of Security and Guarding Services", "AAA", client_rules=rules))
+    up = next(q for q in p.questions if q.row.sub_section == "Ref 1" and "Attach" in q.row.criteria)
+    up.row.marks = up.row.compliance = 30.0
+    at = p.rows.index(up) + 1
+    for ref, marks in (("Ref 2", 10.0), ("Ref 3", 10.0)):
+        for text in ("Client Name", "Attach evidence e.g. PO or award letter"):
+            m = marks if "Attach" in text else 0.0
+            p.rows.insert(at, PlannedRow(kind="question", row=Row(
+                "", "", 0, section=up.row.section, sub_section=ref, criteria=text, answer_type=5 if m else 1,
+                marks=m, compliance=m if m else None, compliance_attach=bool(m))))
+            at += 1
+    others = {k: v[0] for k, v in p.section_marks().items() if k != "trade_reference"}
+    finalise(p)
+    refs = {q.row.sub_section: q.row.marks for q in p.questions if "Attach" in q.row.criteria
+            and section_key(q.row.section) == "trade_reference"}
+    assert refs == {"Ref 1": 15, "Ref 2": 15, "Ref 3": 10}
+    after = {k: v[0] for k, v in p.section_marks().items() if k != "trade_reference"}
+    assert sum(after.values()) - sum(others.values()) == 10 and p.total() == 100        # refs 50 -> 40
+    assert Rule("AAA", "marks", "Ref 1", "fifteen").problem() == "marks needs a number as value"
+
+
+def test_long_questions_get_rows_high_enough_to_show_them():
+    """Spec 14 D: wrap text shows only as many lines as the row is high."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment
+    from tendersure.writer import _fit_height
+    ws = Workbook().active
+    ws.column_dimensions["D"].width = 58
+    for r, text in ((1, "x " * 150), (2, "Company name")):
+        c = ws.cell(r, 4, text.strip())
+        c.alignment = Alignment(wrap_text=True)
+        _fit_height(ws, r, 4, 4)
+    assert ws.row_dimensions[1].height >= 5 * 14 and ws.row_dimensions[2].height is None

@@ -194,6 +194,15 @@ Suggested order: T77 -> T78 -> T79 (works from the CLI), then T80.
 | T89 | Technical items replace the Technical section; equipment one question per item. | 12 R2 | - | S | Exactly the items, marks kept. |
 | T90 | Partnership; Organization type options on every sheet; Fayda ID / national ID for individuals on gated sheets. | 12 R3, R4 | - | S | As in the acceptance. |
 
+## 14. PSI's Version 2 comments (spec 14)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T98 | Built-in audience rules when the learned table has no answer; "Full name (as per Fayda ID)" for individuals on gated sheets. | 14 A | - | S | The A acceptance cases pass. |
+| T99 | Technical items carry marks (`[n]`); the difference rebalanced over the other sections; items worded as questions kept as written. | 14 B | - | S | 10 / 3 / 2 kept, sheet at 100. |
+| T100 | Client-rule action `marks` for a sub-section, run last in finalise, other sections rebalanced. API and web accept it. | 14 C | - | S | Ref 1 / 2 / 3 at 15 / 15 / 10, sheet at 100. |
+| T101 | Writer sets question row heights from wrapped text. | 14 D | - | S | Long questions get tall rows. |
+
 ## Suggested first slice
 
 T01 → T02 → T03 → T06 → T07: the new template plus the two fixes the team

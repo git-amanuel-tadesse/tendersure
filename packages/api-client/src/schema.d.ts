@@ -860,7 +860,7 @@ export interface components {
         ClientRule: {
             /**
              * Action
-             * @description remove, replace, reword or limit
+             * @description remove, replace, reword, limit or marks
              */
             action: string;
             /**
@@ -871,7 +871,7 @@ export interface components {
             groups?: string;
             /**
              * Match
-             * @description the phrase (remove, reword), the term (replace) or the section (limit)
+             * @description the phrase (remove, reword), the term (replace), the section (limit) or the sub-section (marks)
              */
             match: string;
             /**
@@ -888,7 +888,7 @@ export interface components {
             problem?: string;
             /**
              * Value
-             * @description replace: the new term; reword: the new wording; limit: how many
+             * @description replace: the new term; reword: the new wording; limit: how many; marks: the sub-section's marks
              * @default
              */
             value?: string;
