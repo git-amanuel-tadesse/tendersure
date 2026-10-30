@@ -5,6 +5,7 @@ import { useState } from "react";
 import { BenchmarkCard } from "../components/BenchmarkCard";
 import { BriefBox } from "../components/BriefBox";
 import { Decisions } from "../components/Decisions";
+import { FinishCard } from "../components/FinishCard";
 import { JobPanel } from "../components/JobPanel";
 import { Badge, Button, Card, Check, cx, ErrorNotice, Field, Input, linkButton, Notice, Select, Stat } from "../components/ui";
 import { isRunning, keys, type Run, useCategories, useGenerateActions, useJob, useLatestJob, useRun, useRuns } from "../lib/api";
@@ -19,6 +20,7 @@ function GeneratePage() {
   const { run: selected } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const runs = useRuns(exerciseId).data?.runs ?? [];
+  const finalRun = useRuns(exerciseId).data?.final ?? null;
   const current = selected ?? runs[0]?.number;
   const select = (n: number) => navigate({ search: { run: n } });
   return (
@@ -36,7 +38,10 @@ function GeneratePage() {
                                         r.number === current && "bg-accent-50 ring-1 ring-accent-600/30 dark:bg-accent-800/20")}>
                     <div className="flex items-center justify-between">
                       <span className="font-medium">Run {r.number}</span>
-                      <Badge tone={r.status === "done" ? "good" : r.status === "failed" ? "bad" : "info"}>{r.status}</Badge>
+                      <span className="flex gap-1">
+                        {r.number === finalRun && <Badge tone="accent">final</Badge>}
+                        <Badge tone={r.status === "done" ? "good" : r.status === "failed" ? "bad" : "info"}>{r.status}</Badge>
+                      </span>
                     </div>
                     <div className="mt-0.5 text-xs text-zinc-500">
                       {r.created.replace("T", " ").slice(0, 16)}
@@ -53,7 +58,7 @@ function GeneratePage() {
               ))}
             </ul>
           </Card>
-          {current && <RunView exerciseId={exerciseId} n={current} onApplied={select} />}
+          {current && <RunView exerciseId={exerciseId} n={current} onApplied={select} isFinal={finalRun === current} />}
         </div>
       )}
     </div>
@@ -121,7 +126,9 @@ function BuildCard({ exerciseId, onStarted }: { exerciseId: string; onStarted: (
 
 // --- a run: its result and its review ------------------------------------------------------------
 
-function RunView({ exerciseId, n, onApplied }: { exerciseId: string; n: number; onApplied: (n: number) => void }) {
+function RunView({ exerciseId, n, onApplied, isFinal }: {
+  exerciseId: string; n: number; onApplied: (n: number) => void; isFinal: boolean;
+}) {
   const run = useRun(exerciseId, n);
   const r = run.data;
   const job = useJob(r?.job_id, [keys.run(exerciseId, n), keys.runs(exerciseId)]).data;
@@ -137,6 +144,8 @@ function RunView({ exerciseId, n, onApplied }: { exerciseId: string; n: number; 
   }
   const res = r.result;
   const files = [...res.files, res.qa, res.learned_review].filter((f): f is string => !!f);
+  // spec 11: nothing open and no answer waiting - the work moves on
+  const ready = r.status === "done" && Object.values(res.open).reduce((a, b) => a + b, 0) === 0 && Object.keys(r.answers).length === 0;
   return (
     <div className="space-y-6">
       <Card title={`Run ${n}${r.settings.review_of ? `: run ${r.settings.review_of}'s answers applied` : ""}`}
@@ -171,6 +180,7 @@ function RunView({ exerciseId, n, onApplied }: { exerciseId: string; n: number; 
           <div className="mt-2"><JobPanel jobId={r.job_id} /></div>
         </details>
       </Card>
+      {ready && <FinishCard exerciseId={exerciseId} run={r} isFinal={isFinal} />}
       <Decisions exerciseId={exerciseId} run={r} onApplied={onApplied} />
     </div>
   );

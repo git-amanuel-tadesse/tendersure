@@ -680,6 +680,49 @@
         "title": "Exercises",
         "type": "object"
       },
+      "Final": {
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "file": {
+            "description": "its workbook, relative to the exercise",
+            "title": "File",
+            "type": "string"
+          },
+          "run": {
+            "title": "Run",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run",
+          "file",
+          "at"
+        ],
+        "title": "Final",
+        "type": "object"
+      },
+      "FinishStep": {
+        "properties": {
+          "file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "an uploaded workbook (the team's edited copy); none: this run's own workbook",
+            "title": "File"
+          }
+        },
+        "title": "FinishStep",
+        "type": "object"
+      },
       "GenerateResult": {
         "properties": {
           "failed": {
@@ -2111,6 +2154,19 @@
       },
       "Runs": {
         "properties": {
+          "final": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "the run marked as the exercise's final version (spec 11)",
+            "title": "Final"
+          },
           "runs": {
             "items": {
               "$ref": "#/components/schemas/RunSummary"
@@ -3451,6 +3507,190 @@
           }
         },
         "summary": "Build again with this run's answers: same settings, same proposals (no new model call for",
+        "tags": [
+          "generate"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/generate/runs/{number}/bank": {
+      "post": {
+        "description": "so later exercises start from the client's own sheets. Adding it again replaces it.",
+        "operationId": "generate_add_to_bank_runs__int_number__bank_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishStep"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Add the team's edited copy - or this run's workbook - to the bank as the client's history,",
+        "tags": [
+          "generate"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/generate/runs/{number}/check": {
+      "post": {
+        "description": "(what changed since generation) and the categories table, as a job (spec 03).",
+        "operationId": "generate_check_copy_runs__int_number__check_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishStep"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Check a workbook - the team's edited copy, or the run's own - against this run's workbook",
+        "tags": [
+          "generate"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/generate/runs/{number}/final": {
+      "post": {
+        "operationId": "generate_mark_final_runs__int_number__final_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Final"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "This run is the exercise's final version; marking another run moves the mark.",
         "tags": [
           "generate"
         ]

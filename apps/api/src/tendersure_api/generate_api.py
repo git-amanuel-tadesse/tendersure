@@ -34,6 +34,7 @@ from .workspaces import NotFound
 bp = APIBlueprint("generate", __name__, url_prefix="/api/exercises/<exercise_id>/generate",
                   abp_tags=[Tag(name="generate")])
 RUNS = "runs"
+FINAL = "final.json"
 
 
 class Options(BaseModel):
@@ -70,6 +71,18 @@ class Run(RunSummary):
 
 class Runs(BaseModel):
     runs: List[RunSummary]
+    final: Optional[int] = Field(None, description="the run marked as the exercise's final version (spec 11)")
+
+
+class Final(BaseModel):
+    run: int
+    file: str = Field(description="its workbook, relative to the exercise")
+    at: str
+
+
+class FinishStep(BaseModel):
+    file: Optional[str] = Field(None, description="an uploaded workbook (the team's edited copy); "
+                                                  "none: this run's own workbook")
 
 
 class RunPath(BaseModel):
@@ -184,7 +197,9 @@ def _start(eid: str, folder: str, settings: RunSettings, proposals=None, answers
 @bp.get("", responses={200: Runs})
 def list_runs(path: ExercisePath):
     folder = _folder(path.exercise_id)
-    return Runs(runs=[_summary(folder, n) for n in reversed(_numbers(folder))]).model_dump()
+    final = _read(os.path.join(folder, FINAL))
+    return Runs(runs=[_summary(folder, n) for n in reversed(_numbers(folder))],
+                final=final["run"] if final else None).model_dump()
 
 
 @bp.post("", responses={202: Job})
@@ -233,3 +248,82 @@ def apply(path: RunPath):
     answers = {k: v for k, v in answers.items() if v}
     settings = RunSettings(**{**_read(os.path.join(d, "settings.json")), "review_of": path.number})
     return _start(path.exercise_id, folder, settings, _read(os.path.join(d, "proposals.json"), {}), answers), 202
+
+
+# --- finishing a run (spec 11) ----------------------------------------------------------------
+
+def _finished(folder: str, n: int) -> dict:
+    result = _read(os.path.join(_run_dir(folder, n), "result.json"))
+    if result is None:
+        abort(409, description=f"run {n} has not finished")
+    return result
+
+
+def _workbook(eid: str, folder: str, n: int, body: Optional[FinishStep]) -> str:
+    """The team's edited copy when one is given, else the run's own workbook."""
+    if body is not None and body.file:
+        try:
+            return current_app.config["WORKSPACES"].resolve(eid, body.file)
+        except NotFound as e:
+            abort(404, description=str(e))
+    return os.path.join(folder, _finished(folder, n)["files"][0])
+
+
+@bp.post("/runs/<int:number>/final", responses={200: Final})
+def mark_final(path: RunPath):
+    """This run is the exercise's final version; marking another run moves the mark."""
+    folder = _folder(path.exercise_id)
+    final = Final(run=path.number, file=_finished(folder, path.number)["files"][0],
+                  at=time.strftime("%Y-%m-%dT%H:%M:%S"))
+    _write(os.path.join(folder, FINAL), final.model_dump())
+    return final.model_dump()
+
+
+@bp.post("/runs/<int:number>/check", responses={202: Job})
+def check_copy(path: RunPath, body: FinishStep):
+    """Check a workbook - the team's edited copy, or the run's own - against this run's workbook
+    (what changed since generation) and the categories table, as a job (spec 03)."""
+    eid, n = path.exercise_id, path.number
+    folder = _folder(eid)
+    ex = current_app.config["WORKSPACES"].get(eid)
+    target = _workbook(eid, folder, n, body)
+    generated = _workbook(eid, folder, n, None)
+    report = os.path.join(_run_dir(folder, n), f"check - {os.path.splitext(os.path.basename(target))[0]}.xlsx")
+
+    def step():
+        from collections import Counter
+        r = flows.check(target, ex.client, os.path.join(folder, CATEGORIES),
+                        generated if os.path.abspath(target) != os.path.abspath(generated) else None,
+                        None, report, flows.Model(off=True))
+        return {"errors": r.errors, "warnings": r.warnings, "report": os.path.relpath(report, folder).replace(os.sep, "/"),
+                "rules": dict(Counter(f.rule for f in r.findings).most_common())}
+    job = current_app.config["JOBS"].submit("check", f"Check {os.path.basename(target)}", step, exercise_id=eid)
+    return Job.of(job).model_dump(), 202
+
+
+@bp.post("/runs/<int:number>/bank", responses={202: Job})
+def add_to_bank(path: RunPath, body: FinishStep):
+    """Add the team's edited copy - or this run's workbook - to the bank as the client's history,
+    so later exercises start from the client's own sheets. Adding it again replaces it."""
+    import shutil
+    from .bank import UPLOAD_LABEL
+    eid, n = path.exercise_id, path.number
+    folder = _folder(eid)
+    source = _workbook(eid, folder, n, body)
+    store = current_app.config["WORKSPACES"]
+    os.makedirs(os.path.join(store.root, ".staging"), exist_ok=True)
+    staging = tempfile.mkdtemp(prefix="bank-", dir=os.path.join(store.root, ".staging"))
+    os.makedirs(os.path.join(staging, eid))
+    shutil.copy(source, os.path.join(staging, eid, os.path.basename(source)))      # one path per exercise and file
+
+    def step():
+        try:
+            p = flows.current()
+            r = flows.ingest(staging, p.bank, p.reports, UPLOAD_LABEL)
+            return {"added": r.added, "replaced": r.replaced, "unchanged": r.unchanged, "sheets_added": r.sheets_added,
+                    "tiers": r.tiers}
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
+    job = current_app.config["JOBS"].submit("ingest", f"Add {os.path.basename(source)} to the bank", step, exercise_id=eid)
+    return Job.of(job).model_dump(), 202
+

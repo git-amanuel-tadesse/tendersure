@@ -316,6 +316,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/exercises/{exercise_id}/generate/runs/{number}/bank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add the team's edited copy - or this run's workbook - to the bank as the client's history,
+         * @description so later exercises start from the client's own sheets. Adding it again replaces it.
+         */
+        post: operations["generate_add_to_bank_runs__int_number__bank_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exercises/{exercise_id}/generate/runs/{number}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a workbook - the team's edited copy, or the run's own - against this run's workbook
+         * @description (what changed since generation) and the categories table, as a job (spec 03).
+         */
+        post: operations["generate_check_copy_runs__int_number__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exercises/{exercise_id}/generate/runs/{number}/final": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** This run is the exercise's final version; marking another run moves the mark. */
+        post: operations["generate_mark_final_runs__int_number__final_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/exercises/{exercise_id}/refine": {
         parameters: {
             query?: never;
@@ -872,6 +929,27 @@ export interface components {
         Exercises: {
             /** Exercises */
             exercises: components["schemas"]["Exercise"][];
+        };
+        /** Final */
+        Final: {
+            /** At */
+            at: string;
+            /**
+             * File
+             * @description its workbook, relative to the exercise
+             */
+            file: string;
+            /** Run */
+            run: number;
+        };
+        /** FinishStep */
+        FinishStep: {
+            /**
+             * File
+             * @description an uploaded workbook (the team's edited copy); none: this run's own workbook
+             * @default null
+             */
+            file?: string | null;
         };
         /** GenerateResult */
         GenerateResult: {
@@ -1610,6 +1688,12 @@ export interface components {
         };
         /** Runs */
         Runs: {
+            /**
+             * Final
+             * @description the run marked as the exercise's final version (spec 11)
+             * @default null
+             */
+            final?: number | null;
             /** Runs */
             runs: components["schemas"]["RunSummary"][];
         };
@@ -2457,6 +2541,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    generate_add_to_bank_runs__int_number__bank_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishStep"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    generate_check_copy_runs__int_number__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinishStep"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    generate_mark_final_runs__int_number__final_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Final"];
                 };
             };
             /** @description Unprocessable Content */

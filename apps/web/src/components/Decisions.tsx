@@ -116,9 +116,11 @@ export function Decisions({ exerciseId, run, onApplied }: { exerciseId: string; 
             <Button variant="secondary" disabled={!dirty.length} busy={answer.isPending} onClick={save}>
               Save {dirty.length || ""} answer{dirty.length === 1 ? "" : "s"}
             </Button>
-            <Button busy={apply.isPending || (!!apply.data && !started)}
+            <Button busy={apply.isPending || (!!apply.data && !started)} disabled={!dirty.length && !Object.keys(run.answers).length}
+                    title={!dirty.length && !Object.keys(run.answers).length ? "nothing new to apply: answer or change a decision first" : undefined}
                     onClick={async () => { if (dirty.length) await save(); apply.mutate(run.number); }}>
-              Apply answers → run {Math.max(run.number, ...runs.map((x) => x.number)) + 1}
+              {!dirty.length && !Object.keys(run.answers).length ? "Nothing new to apply"
+                : `Apply answers → run ${Math.max(run.number, ...runs.map((x) => x.number)) + 1}`}
             </Button>
           </div>
         </div>

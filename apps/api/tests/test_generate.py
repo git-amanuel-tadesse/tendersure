@@ -179,3 +179,36 @@ def test_clearing_a_carried_answer_sticks(client, ex):
     three = _run(client, client.post(f"/api/exercises/{ex}/generate/runs/{two}/apply", headers=W)).result["run"]
     now = _items(client.get(f"/api/exercises/{ex}/generate/runs/{three}").json)[m["id"]]
     assert now["answer"] == "" and not now["status"].startswith("NOT APPLIED")
+
+
+def test_a_finished_run_is_marked_final_checked_and_added_to_the_bank(client, ex):
+    """Spec 11: after the review, the work moves on."""
+    job = _run(client, client.post(f"/api/exercises/{ex}/generate", json={"use_model": False}, headers=W))
+    n = job.result["run"]
+    r = client.post(f"/api/exercises/{ex}/generate/runs/{n}/final", headers=W)
+    assert r.status_code == 200 and r.json["run"] == n
+    assert client.get(f"/api/exercises/{ex}/generate").json["final"] == n
+
+    own = _run(client, client.post(f"/api/exercises/{ex}/generate/runs/{n}/check", json={}, headers=W)).result
+    assert own["errors"] == 0 and own["report"].endswith(".xlsx")
+
+    run = client.get(f"/api/exercises/{ex}/generate/runs/{n}").json
+    data = client.get(f"/api/exercises/{ex}/files/{run['result']['files'][0]}").data
+    wb = openpyxl.load_workbook(io.BytesIO(data))
+    ws = wb.worksheets[0]
+    row = next(r for r in range(5, ws.max_row) if ws.cell(r, 4).value == "Years in business")
+    ws.cell(row, 4).value = "Years in business (since registration)"           # the team edits one question
+    buf = io.BytesIO()
+    wb.save(buf)
+    client.post(f"/api/exercises/{ex}/files", data={"file": (io.BytesIO(buf.getvalue()), "edited.xlsx")},
+                content_type="multipart/form-data", headers=W)
+    edited = _run(client, client.post(f"/api/exercises/{ex}/generate/runs/{n}/check",
+                                      json={"file": "uploads/edited.xlsx"}, headers=W)).result
+    assert edited["errors"] == 0 and edited["rules"]                          # the change since generation is listed
+
+    added = _run(client, client.post(f"/api/exercises/{ex}/generate/runs/{n}/bank",
+                                     json={"file": "uploads/edited.xlsx"}, headers=W)).result
+    assert added["added"] == 1 and added["sheets_added"] == run["written"]
+    again = _run(client, client.post(f"/api/exercises/{ex}/generate/runs/{n}/bank",
+                                     json={"file": "uploads/edited.xlsx"}, headers=W)).result
+    assert again["unchanged"] == 1 and again["added"] == 0

@@ -228,6 +228,27 @@ export function useBenchmarkActions(id: string) {
   };
 }
 
+/** After the review (spec 11): mark the final run, check an edited copy, add it to the bank. */
+export function useFinishActions(id: string) {
+  const qc = useQueryClient();
+  const at = (n: number) => ({ params: { path: { exercise_id: id, number: n } } });
+  return {
+    final: useMutation({
+      mutationFn: (n: number) => unwrap(api.POST("/api/exercises/{exercise_id}/generate/runs/{number}/final", at(n))),
+      onSuccess: () => qc.invalidateQueries({ queryKey: keys.runs(id) }),
+    }),
+    check: useMutation({
+      mutationFn: ({ n, file }: { n: number; file?: string }) =>
+        unwrap(api.POST("/api/exercises/{exercise_id}/generate/runs/{number}/check", { ...at(n), body: { file: file || null } })),
+    }),
+    bank: useMutation({
+      mutationFn: ({ n, file }: { n: number; file?: string }) =>
+        unwrap(api.POST("/api/exercises/{exercise_id}/generate/runs/{number}/bank", { ...at(n), body: { file: file || null } })),
+      onSuccess: () => qc.invalidateQueries({ queryKey: keys.bank }),
+    }),
+  };
+}
+
 export function useGenerateActions(id: string) {
   const qc = useQueryClient();
   return {
