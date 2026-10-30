@@ -16,6 +16,16 @@ from these specs until the task list is reviewed.
 | [04-bank-learning.md](04-bank-learning.md) | History → the learned names and Yes/No verdicts every build reuses | 5, 11 at scale |
 | [05-research.md](05-research.md) | Technical names, questions, licences and document names: our data first, then the web | team request, 2026-10-29 |
 | [06-web-app.md](06-web-app.md) | The browser UI for refinement and generation (Flask + TanStack), over a shared service layer | (team request, 2026-10-29) |
+| [07-client-brief.md](07-client-brief.md) | The client's brief, read first by the model, and the draft's licence, HR and technical columns | (team request, 2026-10-29) |
+| [08-client-benchmark.md](08-client-benchmark.md) | The client's sample criteria, compared with ours (compare only) | (PSI, 2026-10-29) |
+| [09-split-and-merge.md](09-split-and-merge.md) | Split and merge categories in the refinement review | (team request, 2026-10-29) |
+| [10-review-cockpit.md](10-review-cockpit.md) | The Decisions review, built for a person: triage, bulk answers, one Apply | (team request, 2026-10-30) |
+| [11-finish.md](11-finish.md) | Finishing a run: ready to send, mark final, check an edited copy, add to the bank | (team request, 2026-10-30) |
+| [12-client-rules.md](12-client-rules.md) | Client rules, country-first sources, and PSI's generation comments | (PSI feedback, 2026-10-30) |
+| [13-shared-server.md](13-shared-server.md) | One cloud server on the tailnet holding the team's one bank: identity, write lock, deploy, backups | (team request, 2026-10-30) |
+| [14-psi-version-2.md](14-psi-version-2.md) | PSI's Version 2 comments: built-in Applies To, technical items with marks, sub-section marks rule, wrapped rows | (PSI feedback, 2026-10-30) |
+| [15-rules-as-checks.md](15-rules-as-checks.md) | An edited copy checked against the client's rules and the categories table's items | (team request, 2026-10-30) |
+| [16-lessons-from-psi.md](16-lessons-from-psi.md) | What PSI taught us: rules checked every run, client profile, rules proposed from the client's files, calmer review, preview | (team request, 2026-10-30) |
 
 The build order is in [TASKS.md](TASKS.md).
 

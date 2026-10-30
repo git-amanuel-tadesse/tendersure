@@ -194,6 +194,20 @@ Suggested order: T77 -> T78 -> T79 (works from the CLI), then T80.
 | T89 | Technical items replace the Technical section; equipment one question per item. | 12 R2 | - | S | Exactly the items, marks kept. |
 | T90 | Partnership; Organization type options on every sheet; Fayda ID / national ID for individuals on gated sheets. | 12 R3, R4 | - | S | As in the acceptance. |
 
+## 13. One shared server (spec 13)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T91 | Shared-write lock in core (thread + file lock on `data/.lock`) around every read-change-write of the bank and learned files: client rules, glossary drafts, research, ingest; CLI writers take it too; SQLite busy timeout. | 13 H3 | - | M | Two threads and two processes saving different clients' rules at once: both kept. |
+| T92 | Identity: user from `Tailscale-User-Login` / `-Name` on loopback requests only, else `local`; `TENDERSURE_HOSTS` adds allowed hosts; `GET /api/me`; jobs record who started them; `data/audit.jsonl` line on every save; outbox records the user; name in the UI header and on jobs; `make contract`. | 13 H2 | - | M | Headers from a non-loopback address are ignored; a save writes one audit line with the user. |
+| T93 | Production serving: waitress (one process, threads), `tendersure-api --serve`, systemd unit and `tailscale serve` config under `deploy/`. | 13 H1, H5 | - | S | The unit starts the app on 127.0.0.1; health answers through `tailscale serve`. |
+| T94 | `scripts/provision` wizard: VM, tailnet, firewall with no public ports, service user, home, `.env` (600). | 13 H1, H5 | T93 | S | A fresh VM serves the app on the tailnet following only the wizard. |
+| T95 | `make deploy`: wait for idle jobs (`--force`), check out, install, build web, restart, health check. | 13 H5 | T93 | S | A deploy during a job waits; with `--force` the job shows `interrupted`. |
+| T96 | Backups: nightly timer, SQLite online backup, restic to object storage, 14 daily / 8 weekly; `scripts/restore`; `scripts/pull-snapshot` for a laptop sandbox. | 13 H4, H6 | T94 | M | A restore into an empty home shows the same Home numbers and exercises. |
+| T97 | Retention pruning (outbox and jobs 90 days, cached answers 180) on the nightly timer; move in: seed the server home from this machine. | 13 H7, H8 | T96 | S | Files older than the limits are gone, younger ones kept; the server's Home matches this machine's. |
+
+Suggested order: T91 -> T92 (both safe on laptops too), then T93 -> T94 -> T95 -> T96 -> T97.
+
 ## 14. PSI's Version 2 comments (spec 14)
 
 | ID | Task | Spec | Depends | Size | Done when |
