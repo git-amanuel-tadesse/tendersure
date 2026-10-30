@@ -38,8 +38,9 @@ export function aiNotes(status = ""): string {
 /** Not applied, or a problem: a person has to look. */
 export const failed = (status = "") => /^(AI: )?(NOT APPLIED|PROBLEM)/.test(status) || /\bNOT APPLIED\b/.test(status);
 
-/** No answer and nothing done with it yet (a check item is fixed in the workbook, not here). */
-export const open = (d: Decision, answer: string) => !answer && !d.status && d.type !== "check";
+/** No answer and nothing done with it yet. A check item counts: it is fixed in the sheet, not
+ * answered, but the run list counts it as open, so the review shows it where people look. */
+export const open = (d: Decision, answer: string) => !answer && !d.status;
 
 export function inTab(tab: Tab, d: Decision, answer: string, changed: boolean): boolean {
   switch (tab) {

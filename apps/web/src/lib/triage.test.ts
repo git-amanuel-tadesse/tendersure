@@ -10,6 +10,7 @@ describe("triage", () => {
     expect(inTab("needs", q(), "keep in all", false)).toBe(false);
     expect(inTab("needs", q("NOT APPLIED on 4: section 'technical' is not in this sheet"), "x", false)).toBe(true);
     expect(inTab("needs", q("accepted as proposed"), "", false)).toBe(false);
+    expect(inTab("needs", q("", { id: "F-UP-BOTH-FLAGS", type: "check" }), "", false)).toBe(true);   // to fix in the sheet
   });
   it("finds where the AI review went against the proposal", () => {
     const s = "AI: applied: removed from 1 | 22: removal not applied, reviewer: licences are delivered online";

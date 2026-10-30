@@ -27,6 +27,7 @@ from ..reports import load_decisions, write_qa_report
 from ..requirements import stated as stated_requirements
 from ..schema import business_types
 from ..similarity import Retriever
+from ..validate import validate_sheet
 from ..writer import Writer
 from .categories import gate_problem
 from .common import FlowError, Model, audience, glossary, groups_for, load_source, log, read_marks, research_tools
@@ -297,8 +298,13 @@ def generate(s: Settings) -> Result:
         files = [s.out]
         writer.write(plans, s.out)
         log.info(f"wrote {len(plans)} sheets -> {s.out}")
-    from ..review import decision_items
+    from ..review import CHECK, decision_items, finding_items
     items = items if items is not None else decision_items(plans)
+    # The findings cards were made before the template rules ran: make them again from the sheets
+    # as written, so none reports a row those rules fixed (PSI: 11x "no options" in clean sheets).
+    for p in plans:
+        p.findings = validate_sheet(to_sheet(p))
+    items = [i for i in items if i.type != CHECK] + [i for i in finding_items(plans) if i.type == CHECK]
     brief_note = None if not s.brief else \
         f"Client's brief (read first by the model): {s.brief}" if use_model else f"{cb.NOT_APPLIED[0].upper()}{cb.NOT_APPLIED[1:]}."
     qa = write_qa_report(plans, base + "_qa.xlsx", items, brief_note, every_proposal)

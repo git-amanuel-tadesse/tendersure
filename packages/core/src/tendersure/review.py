@@ -255,7 +255,14 @@ def decision_items(plans: List[Plan]) -> List[Item]:
                 f"({_marks_text(theirs)}); or give your own.",
             keys=[adopt]))
 
-    # T / CHECK: remaining findings, grouped by rule.
+    return items + finding_items(plans)
+
+
+def finding_items(plans: List[Plan]) -> List[Item]:
+    """T / CHECK: what the validator still finds in the sheets, grouped by rule.
+    Built again once the template rules have run (flows.generate), so a card
+    never reports a row those rules already fixed."""
+    items: List[Item] = []
     by_rule: Dict[str, dict] = {}
     for p in plans:
         for f in p.findings:
