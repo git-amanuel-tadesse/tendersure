@@ -61,6 +61,7 @@ class Settings:
     brief: str = ""                         # the client's brief (spec 07 B), read first by the model steps
     benchmark: Optional[str] = None         # the client's sample criteria workbook (spec 08)
     benchmark_map: Optional[str] = None     # group | kind | tab; proposed (and written) when absent
+    client_rules: Optional[str] = None      # spec 12 C; default data/client_rules.csv
 
     def __post_init__(self):
         p = current()
@@ -70,6 +71,7 @@ class Settings:
         self.audience = self.audience or p.learned("audience")
         self.yes_no = self.yes_no or p.learned("yesno_polarity")
         self.glossary = self.glossary or p.learned("glossary")
+        self.client_rules = self.client_rules or p.learned("client_rules")
 
     @property
     def reviewing(self) -> bool:
@@ -110,6 +112,10 @@ def generate(s: Settings) -> Result:
     gen = Generator(sheets, Retriever(sheets, groups), decisions, grades, rulings)
 
     refs = benchmark_refs(s, cats)
+    from .. import client_rules as cr
+    rules = cr.for_client(cr.load(s.client_rules), s.client) if os.path.exists(s.client_rules) else []
+    if rules:
+        log.info(f"client rules: {len(rules)} for {s.client} ({', '.join(sorted({r.action for r in rules}))})")
     plans, failed = [], []
     for c in list(cats):
         problem = gate_problem(c)                   # the same rule the categories page shows per row
@@ -121,7 +127,7 @@ def generate(s: Settings) -> Result:
         exclude = {sh.name for sh in sheets if sh.code == code} if s.rebuild_existing else None
         target = Target(code, c.description, s.client, c.group, s.client_name, c.sub_categories,
                         c.requirements or stated_requirements(c), c.eligibility, c.gate_question,
-                        business_types(c.applies_to), c.licence, c.hr, c.technical, s.brief)
+                        business_types(c.applies_to), c.licence, c.hr, c.technical, s.brief, rules)
         try:
             plan = gen.plan(target, exclude=exclude, marks=marks.get(code))
             plan.benchmark = refs[0].get(c.number)

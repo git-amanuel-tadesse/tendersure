@@ -2985,3 +2985,52 @@ def test_the_model_s_own_sub_category_question_is_the_standard_one():
     assert SUB_CATEGORY.search("Select the product sub-categories your company is able to supply")
     assert SUB_CATEGORY.search("Please select the subcategory you would like to participate in")
     assert not SUB_CATEGORY.search("Attach a letter that specifies your experience for the given category/sub-category")
+
+
+# --- client rules (spec 12 C) -----------------------------------------------------------------
+
+def _ruled(corpus, group, *rules):
+    from tendersure.client_rules import Rule
+    from tendersure.generate import finalise
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-003", "Provision of Security and Guarding Services", "AAA", group,
+                      client_rules=[Rule("AAA", *r) for r in rules]))
+    finalise(p)
+    return p
+
+
+def test_client_rules_remove_replace_reword_and_limit(corpus):
+    from tendersure.generate import check_total
+    p = _ruled(corpus, "GENERAL",
+               ("remove", "current supplier"),
+               ("replace", "PO", "purchase order"),
+               ("reword", "Years in business", "How many years has the company been operating?"),
+               ("limit", "technical", "1"))
+    texts = [q.row.criteria for q in p.questions]
+    assert not any("current supplier" in t for t in texts)
+    assert "Attach evidence e.g. purchase order or award letter" in texts
+    assert "How many years has the company been operating?" in texts
+    tech = [q for q in p.questions if section_key(q.row.section) == "technical"]
+    assert len(tech) == 1 and tech[0].row.marks == 20                   # the section kept its marks
+    assert any(n.startswith("client rule") for q in p.questions for n in q.notes)
+    check_total(p)
+
+
+def test_a_client_rule_can_skip_or_target_groups(corpus):
+    only = _ruled(corpus, "ENGINEERING WORKS", ("reword", "Years in business", "Years in construction"), )
+    assert "Years in construction" in [q.row.criteria for q in only.questions]
+    from tendersure.client_rules import Rule
+    r = Rule("AAA", "replace", "LPO", "PO", "!engineering")
+    assert r.in_group("GENERAL") and not r.in_group("ENGINEERING WORKS") and not r.in_group("ENGINEERING (CONSULTANCY)")
+    assert Rule("AAA", "remove", "x", "", "engineering").in_group("ENGINEERING EQUIPMENTS and MATERIAL")
+    assert not Rule("AAA", "remove", "x", "", "engineering").in_group("GENERAL")
+    assert Rule("AAA", "limit", "technical", "three").problem() == "limit needs a number as value"
+
+
+def test_a_replaced_term_keeps_its_case():
+    from tendersure.client_rules import Rule, _keep_case
+    pat = Rule("AAA", "replace", "business permit", "trade license").pattern()
+    text = "Does your company have a valid business permit? Business Permit number"
+    assert pat.sub(lambda m: _keep_case(m.group(0), "trade license"), text) == \
+        "Does your company have a valid trade license? Trade license number"
+    assert not Rule("AAA", "replace", "PO", "x").pattern().search("POLICY and SPO")   # whole words only

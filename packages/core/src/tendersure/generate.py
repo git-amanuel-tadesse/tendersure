@@ -70,6 +70,7 @@ class Target:
     hr: List[str] = field(default_factory=list)
     technical: List[str] = field(default_factory=list)
     brief: str = ""                 # the client's brief for the run (spec 07 B), read first by the model
+    client_rules: list = field(default_factory=list)   # spec 12 C: applied first among the template rules
 
     @property
     def name_in_text(self) -> str:
@@ -591,7 +592,9 @@ def finalise(plan: Plan):
     them here also keeps the AI's cached answers valid, as its prompts are
     built from the plan before this point. The category's own licence, HR
     and technical items come first (spec 07 R4)."""
+    from . import client_rules
     from .requirements import place_requirements
+    client_rules.apply(plan, plan.target.client_rules)
     place_requirements(plan)
     complete_blocks(plan)
     place_sub_category_question(plan)
