@@ -3260,3 +3260,47 @@ def test_long_questions_get_rows_high_enough_to_show_them():
         c.alignment = Alignment(wrap_text=True)
         _fit_height(ws, r, 4, 4)
     assert ws.row_dimensions[1].height >= 5 * 14 and ws.row_dimensions[2].height is None
+
+
+# --- the client's rules as checks (spec 15) ---------------------------------------------------
+
+def test_an_edited_copy_is_held_to_the_client_s_rules(corpus, tmp_path):
+    from tendersure import categories as cat, client_rules as cr, flows
+    cats = [cat.Category(1, "Supply of Office Stationery and Toners", "GENERAL", client="AAA"),
+            cat.Category(2, "Provision of Security and Guarding Services", "GENERAL", client="AAA",
+                         technical=["Attach the guard licence [6]", "Attach the patrol plan [4]"])]
+    cat.save(cats, str(tmp_path / "cats.csv"))
+    rules = str(tmp_path / "rules.csv")
+    cr.save([cr.Rule("AAA", "remove", "current supplier", note="not asked"),
+             cr.Rule("AAA", "replace", "PO", "purchase order"),
+             cr.Rule("AAA", "marks", "Ref 1", "40", note="references at 40")], rules)
+    gen = tmp_path / "gen.xlsx"
+    flows.generate(flows.GenerateSettings(
+        str(tmp_path / "cats.csv"), "AAA", "AAA-ET-2026-", str(gen), source=str(corpus), client_rules=rules,
+        audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
+        model=flows.Model(off=True)))
+
+    def check(path):
+        r = flows.check(str(path), "AAA", str(tmp_path / "cats.csv"), None, str(tmp_path / "yn.csv"),
+                        str(tmp_path / "report.xlsx"), flows.Model(off=True), client_rules=rules)
+        return sorted((f.sheet[-3:], f.rule) for f in r.findings if f.severity == "error")
+
+    assert check(gen) == []                                            # as generated: every rule holds
+    wb = openpyxl.load_workbook(gen)
+    for ws in wb:
+        for r in range(5, ws.max_row + 1):
+            c = ws.cell(r, 4)
+            if c.value == "Attach evidence e.g. purchase order or award letter":
+                c.value = "Attach evidence e.g. PO or award letter"            # the replaced term back
+                ws.cell(r, 5).value, ws.cell(r, 8).value = 30, 30              # Ref 1 off its 40
+            elif c.value == "Years in business" and ws.title.endswith("001"):
+                c.value = "Is your company a current supplier of AAA?"         # a removed question back
+            elif c.value == "Attach the guard licence":
+                ws.cell(r, 5).value, ws.cell(r, 8).value = 8, 8                 # the item's own marks moved
+            elif c.value == "Attach the patrol plan":
+                c.value = "Attach a staffing plan"                              # an item gone
+    wb.save(tmp_path / "edited.xlsx")
+    got = check(tmp_path / "edited.xlsx")
+    for rule in ("RULE-REPLACE", "RULE-MARKS", "RULE-REMOVE", "CAT-TECHNICAL"):
+        assert any(r == rule for _, r in got), rule
+    assert ("002", "CAT-TECHNICAL") in got and ("001", "RULE-REMOVE") in got

@@ -36,8 +36,11 @@ class CheckResult:
 
 def check(workbook: str, client: Optional[str] = None, categories: Optional[str] = None,
           against: Optional[str] = None, yes_no: Optional[str] = None, out: Optional[str] = None,
-          model: Model = Model(), brief: str = "") -> CheckResult:
+          model: Model = Model(), brief: str = "", client_rules: Optional[str] = None) -> CheckResult:
     from .. import check as ck
+    from .. import client_rules as cr
+    rules_file = client_rules or current().learned("client_rules")
+    rules = cr.for_client(cr.load(rules_file), client) if client and os.path.exists(rules_file) else []
     cats = cat.load(categories) if categories else None
     yes_is = None
     book = yesno.load(yes_no or current().learned("yesno_polarity"))
@@ -45,7 +48,7 @@ def check(workbook: str, client: Optional[str] = None, categories: Optional[str]
         def yes_is(rows, i):
             v = book.lookup(trust.context_key(rows, i))
             return v.yes_is if v else None
-    findings = ck.check_workbook(workbook, client, cats, against, yes_is)
+    findings = ck.check_workbook(workbook, client, cats, against, yes_is, rules)
     if model.wanted()[0]:
         from .. import check_ai
         findings += check_ai.read(workbook, model.name, client=client, brief=brief)

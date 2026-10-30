@@ -177,9 +177,8 @@ def _add_individual_questions(plan: Plan, book: Book, donor_rows: Dict[str, Row]
                 q.needs_reading = False
 
 
-def default_audience(p: PlannedRow) -> Optional[List[str]]:
+def default_audience(r: Row) -> Optional[List[str]]:
     """Who answers a question the audience table does not know (spec 14 A); None is everyone."""
-    r = p.row
     if section_key(r.section) == "shareholder" or _COMPANIES_ROW.search(r.criteria):
         return COMPANIES
     if _FIRMS_ROW.search(r.criteria):
@@ -238,7 +237,7 @@ def apply(plan: Plan, book: Book, donor_rows: Dict[str, Row]):
         if p.row.applies_to and business_types(p.row.applies_to) == [INDIVIDUAL] and p.source == "standard row":
             continue                                     # the individual's name, just added
         aud, similar = book.lookup(_key_of(plan, p))
-        who = aud.applies_to if aud is not None else default_audience(p)
+        who = aud.applies_to if aud is not None else default_audience(p.row)
         if who is None:
             p.row.applies_to = None
             if p.row.answer_type == 5:

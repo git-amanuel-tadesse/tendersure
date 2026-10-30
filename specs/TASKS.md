@@ -203,6 +203,12 @@ Suggested order: T77 -> T78 -> T79 (works from the CLI), then T80.
 | T100 | Client-rule action `marks` for a sub-section, run last in finalise, other sections rebalanced. API and web accept it. | 14 C | - | S | Ref 1 / 2 / 3 at 15 / 15 / 10, sheet at 100. |
 | T101 | Writer sets question row heights from wrapped text. | 14 D | - | S | Long questions get tall rows. |
 
+## 15. The client's rules as checks (spec 15)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T102 | `rule_checks`: client rules, categories-table items and built-in audiences checked on a workbook; wired into `check` (CLI, Check an edited copy, run check). | 15 | T85, T98, T99, T100 | S | PSI run 24: 0 errors; the acceptance edits each fail with their rule. |
+
 ## Suggested first slice
 
 T01 → T02 → T03 → T06 → T07: the new template plus the two fixes the team

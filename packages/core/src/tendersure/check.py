@@ -223,7 +223,11 @@ def sheet_findings(s: Sheet, client: Optional[str], cat: Optional[Category] = No
 
 def check_workbook(path: str, client: Optional[str] = None, categories: Optional[List[Category]] = None,
                    against: Optional[str] = None,
-                   yes_is: Optional[Callable[[List[Row], int], Optional[str]]] = None) -> List[Finding]:
+                   yes_is: Optional[Callable[[List[Row], int], Optional[str]]] = None,
+                   rules: Optional[list] = None) -> List[Finding]:
+    """Every rule on a workbook; with `categories` and the client's `rules`, also what the
+    client asked for (spec 15)."""
+    from .rule_checks import check_rules
     wb = openpyxl.load_workbook(path, data_only=True)
     sheets = [(ws, parse_sheet(ws, path.split("/")[-1])) for ws in wb.worksheets]
     sheets = [(ws, s) for ws, s in sheets if s is not None]
@@ -240,6 +244,8 @@ def check_workbook(path: str, client: Optional[str] = None, categories: Optional
             out.append(_f(s.name, 2, "CODE-DUPLICATE", "error", f"{codes[s.code]} sheets use code {s.code}.",
                           "Give each category its own code.", PLATFORM))
         out += sheet_findings(s, client, by_number.get(_number(s)), categories is not None, yes_is)
+        if categories is not None or rules:
+            out += check_rules(s, by_number.get(_number(s)), rules or [])
         if against:
             out += check_against(s, before.get(s.code))
     if categories is not None:
