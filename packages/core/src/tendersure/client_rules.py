@@ -203,6 +203,13 @@ def _add(plan, rule: Rule, why: str) -> bool:
     p = next(q for q in plan.questions if q.row is r)
     r.marks, r.system, r.compliance, p.weight_hint = marks, sys_m, comp_m, 0.0
     p.needs_reading = False
+    if plan.target.gate_question:               # gating ran before: who answers it, by the built-in rules (spec 14 A)
+        from .gating import default_audience
+        from .schema import business_types
+        who = default_audience(r)
+        accepted = business_types(plan.target.applies_to)
+        answer = [t for t in accepted if who is None or t in who]
+        r.applies_to = ", ".join(answer) if answer and answer != accepted else None
     return marks > 0
 
 

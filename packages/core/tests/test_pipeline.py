@@ -3487,3 +3487,20 @@ def test_the_client_s_approved_list_imports_and_keeps_the_team_s_settings(tmp_pa
     training = cats[2]
     assert training.gate_question and "Individual Consultant" in training.applies_to
     assert training.technical == ["Attach the training plan [5]"] and kept and kept[0].startswith("3 ")
+
+
+def test_an_added_question_on_a_gated_sheet_says_who_answers_it(corpus):
+    """Spec 17 A with 14 A: rows a client rule adds come after gating, so they get Applies To themselves."""
+    from tendersure import gating
+    from tendersure.client_rules import Rule
+    from tendersure.generate import finalise
+    _, g = _gen(corpus)
+    types = ["Sole Proprietor", "Private Limited Company", "Individual Consultant"]
+    p = g.plan(Target("AAA-ET-2026-003", "Provision of Consultancy Services", "AAA", gate_question=True, applies_to=types,
+                      client_rules=[Rule("AAA", "add", "registration", "Please attach VAT Certificate"),
+                                    Rule("AAA", "add", "registration", "Please confirm you accept 30 days payment")]))
+    gating.apply(p, gating.Book([]), {})
+    finalise(p)
+    rows = {q.row.criteria: q.row for q in p.questions}
+    assert rows["Please attach VAT Certificate"].applies_to == "Sole Proprietor, Private Limited Company"
+    assert rows["Please confirm you accept 30 days payment"].applies_to is None                     # everyone
