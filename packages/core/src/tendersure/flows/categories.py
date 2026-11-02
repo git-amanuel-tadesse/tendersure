@@ -111,3 +111,32 @@ def check_table(cats: List[cat.Category]) -> List[RowProblem]:
             out.append(RowProblem(c.number, "applies_to", WARNING,
                                   f"{', '.join(unknown)}: not one of {', '.join(BUSINESS_TYPES)}"))
     return out
+
+
+def import_client_list(path: str, client: str, current: List[cat.Category]) -> tuple:
+    """The client's approved category list (.xlsx in the draft's layout) as the categories table
+    (spec 17 D): numbers, descriptions as written (spacing tidied), groups and sub-categories from
+    the file; a category whose description matches one in `current` keeps the team's settings for
+    it (gate, Applies To, eligibility, licence, HR, technical, requirements). Returns (categories,
+    one line per category whose settings were carried)."""
+    from .. import refine as rf
+    from ..schema import FIRMS, INDIVIDUAL
+    tidy = lambda t: " ".join(str(t or "").replace("\xa0", " ").split())
+    key = lambda t: tidy(t).lower()
+    old = {key(c.description): c for c in current}
+    out, kept = [], []
+    for i, d in enumerate(rf.read_draft(path), 1):
+        number = int(d.id) if str(d.id).isdigit() else i
+        c = cat.Category(number, tidy(d.description), tidy(d.group) or None, [tidy(x) for x in d.sub_categories if tidy(x)],
+                         client, None, "", [], d.individual, FIRMS + ([INDIVIDUAL] if d.individual else []),
+                         d.licence, d.hr, d.technical)
+        was = old.get(key(c.description))
+        if was is not None:
+            carried = [f for f in ("gate_question", "applies_to", "eligibility", "licence", "hr", "technical", "requirements")
+                       if getattr(was, f) and getattr(was, f) != getattr(c, f)]
+            for f in carried:
+                setattr(c, f, getattr(was, f))
+            if carried:
+                kept.append(f"{c.number} {c.description[:50]}: {', '.join(carried)} kept from the table")
+        out.append(normalise(c))
+    return out, kept

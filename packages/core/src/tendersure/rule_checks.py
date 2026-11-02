@@ -38,9 +38,9 @@ def _why(rule) -> str:
 # --- R1 the client's rules ------------------------------------------------------------
 
 def check_client_rules(sheet: Sheet, cat: Optional[Category], rules: list) -> List[Finding]:
-    group = cat.group if cat is not None else None
-    mine = [r for r in rules if (r.in_group(group) if cat is not None else not r.groups.strip())]
+    mine = [r for r in rules if (r.in_group(cat.group, cat.number) if cat is not None else not r.groups.strip())]
     rows = [r for r in sheet.rows if section_key(r.section) not in NEVER]
+    added = {_norm(r.wording()) for r in mine if r.action == "add"}        # never counted by a limit (spec 17 A)
     out = []
     for rule in mine:
         pat = rule.pattern()
@@ -60,7 +60,7 @@ def check_client_rules(sheet: Sheet, cat: Optional[Category], rules: list) -> Li
             key, n = section_key(rule.match), int(rule.value)
             if key == "technical" and cat is not None and cat.technical:
                 continue                               # the category lists its own technical items (spec 12 R2)
-            section = [r for r in rows if section_key(r.section) == key]
+            section = [r for r in rows if section_key(r.section) == key and _norm(r.criteria) not in added]
             if len(section) > n:
                 out.append(_f(sheet, section[n], "RULE-LIMIT", "error", f"{len(section)} questions in '{section[0].section}'; "
                               f"the client's rule allows at most {n}{_why(rule)}.", "Remove the extra questions."))
@@ -71,6 +71,14 @@ def check_client_rules(sheet: Sheet, cat: Optional[Category], rules: list) -> Li
                 out.append(_f(sheet, sub[0], "RULE-MARKS", "error", f"'{rule.match}' carries {got:g} marks; the client's "
                               f"rule says {float(rule.value):g}{_why(rule)}.",
                               f"Give '{rule.match}' {float(rule.value):g} marks and keep the sheet at 100."))
+        elif rule.action == "add":
+            hit = next((r for r in rows if _norm(r.criteria) == _norm(rule.wording())), None)
+            if hit is None:
+                out.append(_f(sheet, None, "RULE-ADD", "error", f"The client's rule adds '{rule.wording()[:70]}' to "
+                              f"'{rule.match}'{_why(rule)}; this sheet does not ask it.", f"Add: {rule.wording()}"))
+            elif rule.added_marks() and abs((hit.marks or 0) - rule.added_marks()) > 1e-6:
+                out.append(_f(sheet, hit, "RULE-ADD", "warning", f"'{hit.criteria[:50]}' carries {hit.marks or 0:g} marks; "
+                              f"the client's rule gave it {rule.added_marks():g}.", "Keep it if the team moved the marks."))
     return out
 
 

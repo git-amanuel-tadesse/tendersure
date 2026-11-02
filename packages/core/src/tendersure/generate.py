@@ -377,18 +377,19 @@ def rebalance_others(plan: Plan, fixed: set, why: str) -> Optional[str]:
     return note
 
 
-def rebalance_to_100(plan: Plan, why: str) -> Optional[str]:
+def rebalance_to_100(plan: Plan, why: str, target: float = TOTAL_MARKS) -> Optional[str]:
     """Bring a sheet back to 100 after removals left marks with nowhere to go.
 
     The missing (or surplus) marks are spread over the scored sections in
     proportion to the marks the client already gave them, so the client's own
     weighting is kept. Returns a note, or None if the sheet was already at 100.
+    `target` is lower when a client rule's added question brings the rest later (spec 17 A).
     """
     t = plan.total()
-    if abs(t - TOTAL_MARKS) < 1e-6:
+    if abs(t - target) < 1e-6:
         return None
-    new = spread_marks(plan, TOTAL_MARKS - t, why)
-    note = (f"marks rebalanced to {TOTAL_MARKS} after {why}: {TOTAL_MARKS - t:+g} spread over the "
+    new = spread_marks(plan, target - t, why)
+    note = (f"marks rebalanced to {target:g} after {why}: {target - t:+g} spread over the "
             f"other sections in proportion ({', '.join(f'{k} {v:g}' for k, v in new.items())})")
     plan.notes.append(note)
     return note

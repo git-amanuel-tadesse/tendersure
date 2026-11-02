@@ -26,6 +26,7 @@ from these specs until the task list is reviewed.
 | [14-psi-version-2.md](14-psi-version-2.md) | PSI's Version 2 comments: built-in Applies To, technical items with marks, sub-section marks rule, wrapped rows | (PSI feedback, 2026-10-30) |
 | [15-rules-as-checks.md](15-rules-as-checks.md) | An edited copy checked against the client's rules and the categories table's items | (team request, 2026-10-30) |
 | [16-lessons-from-psi.md](16-lessons-from-psi.md) | What PSI taught us: rules checked every run, client profile, rules proposed from the client's files, calmer review, preview | (team request, 2026-10-30) |
+| [17-psi-version-3.md](17-psi-version-3.md) | PSI's Version 3 comments: an `add` client rule, Trade License naming, sum formulas, importing the client's list | (PSI feedback, 2026-11-02) |
 
 The build order is in [TASKS.md](TASKS.md).
 

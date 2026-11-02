@@ -65,7 +65,8 @@ class RowChange(BaseModel):
 
 
 class TableImport(BaseModel):
-    source: str = Field(description="'refine' (the applied review), or an uploaded CSV such as uploads/x.csv")
+    source: str = Field(description="'refine' (the applied review), an uploaded table such as uploads/x.csv, or the "
+                                    "client's approved category list as uploads/x.xlsx (spec 17 D)")
 
 
 def _folder(eid: str) -> str:
@@ -142,12 +143,21 @@ def import_table(path: ExercisePath, body: TableImport):
             src = current_app.config["WORKSPACES"].resolve(eid, body.source)
         except NotFound as e:
             abort(404, description=str(e))
-        if not src.lower().endswith(".csv"):
-            abort(400, description="import a categories table as .csv (the categories step writes one)")
-        try:
-            cats = flows.load_categories(src)
-        except (KeyError, ValueError) as e:
-            abort(422, description=f"{os.path.basename(src)} is not a categories table ({type(e).__name__}: {e})")
+        if src.lower().endswith(".xlsx"):                # the client's approved list (spec 17 D)
+            ex = current_app.config["WORKSPACES"].get(eid)
+            try:
+                cats, kept = flows.import_client_list(src, ex.client, _load(folder))
+            except Exception as e:                      # unreadable, or not in the draft's layout
+                abort(422, description=f"{os.path.basename(src)} is not a category list ({type(e).__name__}: {e})")
+            for line in kept:
+                flows.log.info(f"categories: {line}")
+        elif not src.lower().endswith(".csv"):
+            abort(400, description="import a categories table (.csv), or the client's category list (.xlsx)")
+        else:
+            try:
+                cats = flows.load_categories(src)
+            except (KeyError, ValueError) as e:
+                abort(422, description=f"{os.path.basename(src)} is not a categories table ({type(e).__name__}: {e})")
     return _save(folder, eid, cats, keep_old=True)
 
 

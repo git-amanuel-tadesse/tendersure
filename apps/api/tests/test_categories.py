@@ -78,7 +78,10 @@ def test_a_table_can_be_imported_from_a_csv(client, ex, tmp_path):
     r = client.post(f"/api/exercises/{ex}/categories/import", json={"source": bad}, headers=W)
     assert r.status_code == 422 and "not a categories table" in r.json["detail"]
     xl = _upload(client, ex, "book.xlsx", b"PK")
-    assert client.post(f"/api/exercises/{ex}/categories/import", json={"source": xl}, headers=W).status_code == 400
+    r = client.post(f"/api/exercises/{ex}/categories/import", json={"source": xl}, headers=W)
+    assert r.status_code == 422 and "not a category list" in r.json["detail"]
+    doc = _upload(client, ex, "notes.pdf", b"%PDF-1.4")
+    assert client.post(f"/api/exercises/{ex}/categories/import", json={"source": doc}, headers=W).status_code == 400
     assert client.post(f"/api/exercises/{ex}/categories/import", json={"source": "refine"},
                        headers=W).status_code == 409                # no applied review in this exercise
 
@@ -92,3 +95,19 @@ def test_an_empty_table_and_wrong_rows(client, ex):
     r = client.patch(f"/api/exercises/{ex}/categories/1", json={"group": "OFFICE"}, headers=W).json
     assert r["categories"][0]["group"] == "OFFICE" and r["categories"][0]["description"] == OFFICE["description"]
     assert client.put(f"/api/exercises/{ex}/categories", json={"categories": []}).status_code == 403   # no header
+
+
+def test_the_client_s_approved_list_can_be_imported(client, ex, tmp_path):
+    """Spec 17 D: the client's list (.xlsx in the draft's layout) becomes the table."""
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws["B3"], ws["C3"] = "No", "Category Description"
+    for i, (n, text) in enumerate([(None, "GENERAL"), (1, "Supply of office stationery"), (2, "Provision of Fumigation")], 4):
+        ws.cell(i, 2, n)
+        ws.cell(i, 3, text)
+    wb.save(tmp_path / "final.xlsx")
+    f = _upload(client, ex, "final.xlsx", (tmp_path / "final.xlsx").read_bytes())
+    t = client.post(f"/api/exercises/{ex}/categories/import", json={"source": f}, headers=W).json
+    assert [(c["number"], c["description"], c["group"]) for c in t["categories"]] == [
+        (1, "Supply of office stationery", "GENERAL"), (2, "Provision of Fumigation", "GENERAL")]

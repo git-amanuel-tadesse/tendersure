@@ -1946,7 +1946,8 @@ def test_hand_edits_are_found(corpus, tmp_path):
     errors, rows = _check(edited, tmp_path, str(cats), str(gen))
     rules = {r[2] for r in rows if r[0] == "AAA-ET-2026-01"}                  # findings carry the tab's name
     assert errors > 0                               # the CLI exits 1 on this
-    assert {"SUM-ROWS", "MARKS-SPLIT", "AT-ASKS-TEXT", "OTHER-CLIENT", "KENYA-COLUMN", "CODE-TAB",
+    # Sub Totals are =SUM() formulas (spec 17 C): a changed mark moves the total, not a stale sub-total
+    assert {"SUM-NOT-100", "MARKS-SPLIT", "AT-ASKS-TEXT", "OTHER-CLIENT", "KENYA-COLUMN", "CODE-TAB",
             "EDIT-CHANGED"} <= rules
 
 
@@ -3402,3 +3403,87 @@ def test_a_gated_build_without_learned_audiences_says_so(corpus, tmp_path):
         audience=str(tmp_path / "aud.csv"), glossary=str(tmp_path / "g.csv"), yes_no=str(tmp_path / "yn.csv"),
         model=flows.Model(off=True)))
     assert any(n.startswith("Applies To from built-in rules only") for n in r.plans[0].notes)
+
+
+# --- PSI's Version 3 comments (spec 17) -------------------------------------------------------
+
+def test_an_add_rule_adds_its_question_with_its_marks_and_scope(corpus):
+    from tendersure.client_rules import Rule
+    from tendersure.generate import finalise
+    _, g = _gen(corpus)
+    rules = [Rule("AAA", "limit", "technical", "1"),
+             Rule("AAA", "add", "financial", "Please confirm if you extend the credit period for 30 Days [2]"),
+             Rule("AAA", "add", "registration", "Please attach VAT Certificate", "!medical"),
+             Rule("AAA", "add", "technical", "Provide details of the machinery and equipment available (type, quantity and capacity).", "#3"),
+             Rule("AAA", "add", "technical", "Attach evidence of ownership or lease", "#9")]
+    p = g.plan(Target("AAA-ET-2026-003", "Provision of Security and Guarding Services", "AAA", "GENERAL", client_rules=rules))
+    finalise(p)
+    rows = {q.row.criteria: q.row for q in p.questions}
+    credit = rows["Please confirm if you extend the credit period for 30 Days"]
+    assert (section_key(credit.section), credit.answer_type, credit.marks, credit.system) == ("financial", 4, 2, 2)
+    vat = rows["Please attach VAT Certificate"]
+    assert (section_key(vat.section), vat.answer_type) == ("registration", 5)
+    details = rows["Provide details of the machinery and equipment available (type, quantity and capacity)."]
+    assert (details.answer_type, details.marks) == (1, 0)
+    assert "Attach evidence of ownership or lease" not in rows                       # #9 is another category
+    tech = [q for q in p.questions if section_key(q.row.section) == "technical"]
+    assert len(tech) == 2                                                             # limit 1 + the added row
+    assert p.total() == 100 and _checked(p) == []
+    medical = Rule("AAA", "add", "registration", "x", "!medical")
+    assert not medical.in_group("MEDICAL, PHARMACEUTICAL & RELIEF ITEMS") and Rule("A", "add", "t", "x", "#3").in_group("G", 3)
+
+
+def test_a_carried_marks_answer_does_not_grow_an_added_section(corpus):
+    from tendersure.client_rules import Rule
+    from tendersure.generate import finalise
+    from tendersure.review import apply_answers
+    _, g = _gen(corpus)
+    rules = [Rule("AAA", "add", "experience", "Please confirm if you extend the credit period for 30 Days [2]")]
+    target = lambda: Target("AAA-ET-2026-009", "Provision of Security and Guarding Services", "AAA", client_rules=rules)
+    first = g.plan(target())
+    finalise(first)
+    split = {k: v[0] for k, v in first.section_marks().items() if v[0]}
+    again = g.plan(target())
+    from tendersure.review import MARKS, decision_items
+    mid = next(i.id for i in decision_items([again]) if i.type == MARKS and not i.id.startswith("M-BENCH"))
+    apply_answers([again], {mid: ", ".join(f"{k} {v:g}" for k, v in split.items())})
+    finalise(again)
+    assert {k: v[0] for k, v in again.section_marks().items() if v[0]} == split and again.total() == 100
+
+
+def test_the_trade_license_is_named_trade_license_whatever_the_glossary_learned(corpus):
+    from tendersure import glossary as gl, naming
+    from tendersure.generate import finalise
+    _, g = _gen(corpus)
+    p = g.plan(Target("AAA-ET-2026-003", "Provision of Security and Guarding Services", "AAA"))
+    finalise(p)
+    book = gl.Glossary([gl.Entry("*", "please attach a valid trade license", "Please attach a valid Trade license",
+                                 "Business Permit", "BP", "", gl.SEEDED, 54)])
+    naming.name_documents([p], book, naming.RuleDrafter())
+    tl = next(q.row for q in p.questions if q.row.criteria == "Please attach a valid Trade license")
+    assert (tl.archive_short_name, tl.acronym) == ("Trade License", "TL")
+
+
+def test_sub_totals_are_sum_formulas_by_default(corpus, tmp_path):
+    gen, cats, r = _generated(corpus, tmp_path)
+    ws = openpyxl.load_workbook(gen).worksheets[0]
+    subs = [ws.cell(i, 5).value for i in range(1, ws.max_row + 1) if ws.cell(i, 2).value == "Sub Total"]
+    assert subs and all(str(v).startswith("=SUM(") for v in subs)
+    errors, _ = _check(gen, tmp_path, str(cats))
+    assert errors == 0
+
+
+def test_the_client_s_approved_list_imports_and_keeps_the_team_s_settings(tmp_path):
+    from tendersure import categories as cat, flows
+    path = _draft_book(tmp_path / "final.xlsx", [(None, "GENERAL"), (1, "Supply of office stationery"),
+                                                  (2, "Provision of Fumigation\xa0 Services"),
+                                                  (None, "CONSULTANCY"), (3, "Provision of Training services")])
+    current = [cat.Category(1, "Provision of Training Services", "CONSULTANCY", client="AAA", gate_question=True,
+                            applies_to=["Sole Proprietor", "Individual Consultant"], technical=["Attach the training plan [5]"])]
+    cats, kept = flows.import_client_list(path, "AAA", current)
+    assert [(c.number, c.description, c.group) for c in cats] == [
+        (1, "Supply of office stationery", "GENERAL"), (2, "Provision of Fumigation Services", "GENERAL"),
+        (3, "Provision of Training services", "CONSULTANCY")]
+    training = cats[2]
+    assert training.gate_question and "Individual Consultant" in training.applies_to
+    assert training.technical == ["Attach the training plan [5]"] and kept and kept[0].startswith("3 ")

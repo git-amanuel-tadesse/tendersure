@@ -235,6 +235,15 @@ Suggested order: T91 -> T92 (both safe on laptops too), then T93 -> T94 -> T95 -
 | T108 | Sheet preview: API reads a run's sheet back; web card with merged sections and wrapped questions. | 16 F | - | S | The preview lists the sheet's rows with marks. |
 | T109 | Warn when a gated build has no learned audience. | 16 G | T98 | S | The note is on the sheet and in the log. |
 
+## 17. PSI's Version 3 comments (spec 17)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T110 | Client-rule action `add` (wording, `[n]` marks, answer type from the wording, section created when missing), `#n` category scope, never limited, held out of carried marks answers, `RULE-ADD` check. | 17 A | T85, T102 | M | The A acceptance cases pass. |
+| T111 | Trade License named Trade License / TL; replace rules change short names and their acronyms. | 17 B | - | S | TL whatever the glossary says. |
+| T112 | `=SUM()` sub-totals by default (CLI `--values`); the check reads a formula total from the rows. | 17 C | - | S | Default build writes formulas; check passes. |
+| T113 | Import the client's approved category list (.xlsx), keeping the team's settings by description. | 17 D | - | S | PSI's list: 77 categories, gates and engineering items kept. |
+
 ## Suggested first slice
 
 T01 → T02 → T03 → T06 → T07: the new template plus the two fixes the team

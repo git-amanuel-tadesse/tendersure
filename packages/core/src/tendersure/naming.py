@@ -23,7 +23,7 @@ from . import grouping
 from .generate import Plan, PlannedRow
 from .llm import LLMError, make_llm
 from .trust import context_key
-from .validate import needs_names
+from .validate import TRADE_LICENSE, asks_for_document, needs_names
 
 log = logging.getLogger("tendersure")
 
@@ -224,8 +224,37 @@ def fill(plan: Plan, glossary: gl.Glossary):
                    else "from the glossary")
             p.note(f"{' and '.join(took)} {how}", adapted=False)
         p.row.archive_short_name, p.row.acronym = short or None, acronym or None
+    _client_names(plan)
     _acronyms_for_other_names(plan)
     _unique_acronyms(plan)
+
+
+TRADE_LICENSE_NAME = ("Trade License", "TL")
+
+
+def _client_names(plan: Plan):
+    """Names the template and the client's rules settle (spec 17 B), over what the glossary learned:
+    the Trade License upload is Trade License / TL (the Red Cross file named it Business Permit /
+    BP); a `replace` rule changes short names too, and an acronym of the old name's initials is
+    made again from the new name."""
+    rules = [r for r in plan.target.client_rules if r.action == "replace" and r.applies_to(plan)]
+    for p in plan.questions:
+        r = p.row
+        if TRADE_LICENSE.search(r.criteria) and asks_for_document(r):
+            if (r.archive_short_name, r.acronym) != TRADE_LICENSE_NAME:
+                if r.archive_short_name:
+                    p.note(f"short name {r.archive_short_name} / {r.acronym} -> Trade License / TL (template rule)",
+                           adapted=False)
+                r.archive_short_name, r.acronym = TRADE_LICENSE_NAME
+            continue
+        for rule in rules:
+            if r.archive_short_name and rule.pattern().search(r.archive_short_name):
+                old = r.archive_short_name
+                r.archive_short_name = rule.pattern().sub(lambda m: rule.value[:1].upper() + rule.value[1:]
+                                                          if m.group(0)[:1].isupper() else rule.value, old)
+                if not r.acronym or r.acronym == acronym_for(old):
+                    r.acronym = acronym_for(r.archive_short_name) or None
+                p.note(f"short name {old} -> {r.archive_short_name} (client rule)", adapted=False)
 
 
 def _acronyms_for_other_names(plan: Plan):

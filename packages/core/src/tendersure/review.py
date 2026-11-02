@@ -551,6 +551,7 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
             answer=answers.get(fid, "")))
 
     # 2. Marks.
+    held: Dict[str, float] = {}           # marks per sheet a client `add` rule brings back at finalise
     for it in [i for i in items if i.type == MARKS and not accepted(i)]:
         given = it.keys[0] if it.id.startswith("M-BENCH-") and it.keys and \
             it.answer.strip().lower() in ("client", "benchmark") else it.answer
@@ -566,10 +567,22 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
             kept += [f"{k} {fixed[k]:g} (the client's marks rules), not {v:g}" for k, v in split.items()
                      if k in fixed and abs(v - fixed[k]) > 1e-9]
             prev = {k: v[0] for k, v in p.section_marks().items()}
+            # spec 17 A: an answer carried from the last run counts the marks of rows a client `add`
+            # rule brings back at finalise; take them out here, or the section grows every run
+            pending = {k: v for k, v in client_rules.pending_add_marks(p, p.target.client_rules).items()
+                       if split.get(k, 0) > v}
+            given = {k: v - pending.get(k, 0) for k, v in split.items()}
+            held[code] = sum(pending.values())
             try:
-                apply_section_marks(p, split, f"review {it.id}", share_unscored=True)
-                check_total(p)
+                apply_section_marks(p, given, f"review {it.id}", share_unscored=True)
+                if pending:
+                    if abs(p.total() + sum(pending.values()) - 100) > 1e-6:
+                        raise MarksError(f"marks total {p.total() + sum(pending.values()):g} with the client's added "
+                                         f"questions, not 100")
+                else:
+                    check_total(p)
             except MarksError as e:
+                held.pop(code, None)
                 failed.append(code)
                 why.append(str(e))          # the reason itself: a total that is off, a section not there...
                 problems.append(f"{it.id} on {code}: {e} - kept the previous marks")
@@ -641,7 +654,7 @@ def apply_answers(plans: List[Plan], answers: Dict[str, str],
     # so applying the same answers again gives the same sheets.
     for p in plans:
         try:
-            note = rebalance_to_100(p, "removals in the review")
+            note = rebalance_to_100(p, "removals in the review", 100 - held.get(p.target.code, 0))
         except MarksError as e:
             problems.append(str(e))
             continue

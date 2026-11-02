@@ -54,7 +54,7 @@ class Settings:
     glossary: Optional[str] = None
     country: Optional[str] = None           # default: from the prefix (ERCS-ET-... -> ET)
     rebuild_existing: bool = False
-    formulas: bool = False
+    formulas: bool = True                   # =SUM() sub-totals (PSI V3, spec 17 C); False writes values
     split_files: bool = False
     ai_review: bool = True                  # False: stop after the proposals (rewordings applied)
     model: Model = Model()
@@ -338,7 +338,7 @@ def generate(s: Settings) -> Result:
         sheet = to_sheet(p)
         p.findings = validate_sheet(sheet)
         c = by_code.get(p.target.code)
-        checked += len([r for r in rules if c is None or r.in_group(c.group)]) + (
+        checked += len([r for r in rules if c is None or r.in_group(c.group, c.number)]) + (
             len(c.technical) + len(c.hr) + len(c.licence) if c is not None else 0)
         found = [f for f in check_rules(sheet, c, rules) if f.severity == "error"]
         p.findings += found

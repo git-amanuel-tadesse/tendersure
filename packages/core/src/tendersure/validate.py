@@ -175,9 +175,11 @@ def check_marks(sheet: Sheet) -> List[Finding]:
                                f"Total {t.marks:g} does not equal system {t.system:g} "
                                f"+ compliance {t.compliance:g}.",
                                "A row is probably missing from one of the System/Compliance sums."))
-    if t.marks is not None and abs(t.marks - TOTAL_MARKS) > 1e-6:
+    # A =SUM() total written without a cached value reads empty (spec 17 C): it is the questions' marks.
+    total = t.marks if t.marks is not None else sum(r.marks or 0 for r in sheet.rows)
+    if abs(total - TOTAL_MARKS) > 1e-6:
         out.append(Finding(sheet.name, t.excel_row, "SUM-NOT-100", PLATFORM, "error",
-                           f"Total marks is {t.marks:g}, not {TOTAL_MARKS}.",
+                           f"Total marks is {total:g}, not {TOTAL_MARKS}.",
                            "Rebalance the section marks."))
 
     sub_sum = sum(s.marks for s in subs if s.marks is not None)

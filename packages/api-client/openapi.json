@@ -1648,7 +1648,7 @@
             "type": "boolean"
           },
           "formulas": {
-            "default": false,
+            "default": true,
             "title": "Formulas",
             "type": "boolean"
           },
@@ -2271,7 +2271,7 @@
             "type": "string"
           },
           "formulas": {
-            "default": false,
+            "default": true,
             "title": "Formulas",
             "type": "boolean"
           },
@@ -2542,7 +2542,7 @@
       "TableImport": {
         "properties": {
           "source": {
-            "description": "'refine' (the applied review), or an uploaded CSV such as uploads/x.csv",
+            "description": "'refine' (the applied review), an uploaded table such as uploads/x.csv, or the client's approved category list as uploads/x.xlsx (spec 17 D)",
             "title": "Source",
             "type": "string"
           }

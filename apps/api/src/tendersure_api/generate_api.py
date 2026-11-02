@@ -42,7 +42,7 @@ class Options(BaseModel):
     use_model: Optional[bool] = Field(None, description="None: when one is configured; False: no AI step")
     ai_review: bool = Field(True, description="False: stop after the proposals (rewordings applied)")
     rebuild_existing: bool = False
-    formulas: bool = False
+    formulas: bool = True
     split_files: bool = False
 
 

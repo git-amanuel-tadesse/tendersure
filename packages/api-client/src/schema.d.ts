@@ -1579,7 +1579,7 @@ export interface components {
             ai_review?: boolean;
             /**
              * Formulas
-             * @default false
+             * @default true
              */
             formulas?: boolean;
             /**
@@ -1883,7 +1883,7 @@ export interface components {
             brief?: string;
             /**
              * Formulas
-             * @default false
+             * @default true
              */
             formulas?: boolean;
             /**
@@ -2015,7 +2015,7 @@ export interface components {
         TableImport: {
             /**
              * Source
-             * @description 'refine' (the applied review), or an uploaded CSV such as uploads/x.csv
+             * @description 'refine' (the applied review), an uploaded table such as uploads/x.csv, or the client's approved category list as uploads/x.xlsx (spec 17 D)
              */
             source: string;
         };

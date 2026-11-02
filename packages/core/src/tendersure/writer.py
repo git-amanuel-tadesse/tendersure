@@ -5,11 +5,10 @@ fonts, fills, borders, the merged 'Marks' banner, merged Section/Sub Section
 blocks and merged Sub Total labels. The output should be indistinguishable
 from a hand-made sheet.
 
-Subtotal and total rows are written as literal numbers by default. The source
-sheets use =SUM() formulas, but a file written here has no cached formula
-results, and if the platform reads cell values without recalculating, a
-formula would arrive blank. Pass formulas=True once the team confirms the
-importer recalculates.
+Subtotal and total rows are =SUM() formulas, as in the source sheets and as
+PSI asked (spec 17 C); generate writes them by default. formulas=False writes
+literal numbers, for an importer that reads cell values without recalculating
+(a file written here has no cached formula results).
 """
 
 import math

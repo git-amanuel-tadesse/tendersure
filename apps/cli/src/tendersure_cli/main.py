@@ -267,7 +267,8 @@ def main(argv=None):
                    help="standing rulings: read every run, extended by C- answers (default data/rulings.csv)")
     p.add_argument("--rebuild-existing", action="store_true",
                    help="ignore an existing sheet with the same code instead of reusing it")
-    p.add_argument("--formulas", action="store_true", help="write =SUM() subtotals instead of values")
+    p.add_argument("--values", dest="formulas", action="store_false",
+                   help="write sub-totals as values instead of =SUM() formulas (the default, spec 17 C)")
     p.add_argument("--split-files", action="store_true", help="one workbook per category")
     p.add_argument("--no-ai-review", action="store_true",
                    help="with --model: stop after the proposals (rewordings applied) and leave the rest to a person")

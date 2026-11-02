@@ -82,7 +82,7 @@ function BuildCard({ exerciseId, onStarted }: { exerciseId: string; onStarted: (
   const [model, setModel] = useState("auto");
   const [aiReview, setAiReview] = useState(true);
   const [rebuild, setRebuild] = useState(false);
-  const [formulas, setFormulas] = useState(false);
+  const [formulas, setFormulas] = useState(true);
   const [splitFiles, setSplitFiles] = useState(false);
   const numbers = only.split(",").map((s) => parseInt(s, 10)).filter((n) => n > 0);
   if (table && !table.categories.length)
