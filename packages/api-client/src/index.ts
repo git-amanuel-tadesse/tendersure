@@ -90,10 +90,7 @@ const at = <P extends keyof paths>(path: P, params: Record<string, string> = {})
 
 export const links = {
   bankReport: (name: "validation_report.xlsx" | "bank.xlsx") => at("/api/bank/reports/{name}", { name }),
-  revised: (exercise_id: string) => at("/api/exercises/{exercise_id}/refine/revised.xlsx", { exercise_id }),
-  final: (exercise_id: string) => at("/api/exercises/{exercise_id}/refine/final.xlsx", { exercise_id }),
-  revisedForClient: (exercise_id: string) => at("/api/exercises/{exercise_id}/refine/revised-client.xlsx", { exercise_id }),
-  finalForClient: (exercise_id: string) => at("/api/exercises/{exercise_id}/refine/final-client.xlsx", { exercise_id }),
   categoriesCsv: (exercise_id: string) => at("/api/exercises/{exercise_id}/categories/categories.csv", { exercise_id }),
+  listForClient: (exercise_id: string) => at("/api/exercises/{exercise_id}/refine/list/client.xlsx", { exercise_id }),
   file: fileUrl,
 };

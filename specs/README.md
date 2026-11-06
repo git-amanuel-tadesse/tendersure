@@ -30,6 +30,7 @@ from these specs until the task list is reviewed.
 | [18-draft-in-tabs-and-previous-list.md](18-draft-in-tabs-and-previous-list.md) | A draft over several tabs read as one, sub-category lines, and the client's previous list as evidence | (Amref, 2026-11-04) |
 | [19-amref-proposal-review.md](19-amref-proposal-review.md) | What Amref's first proposal showed: eligibility from the client's words only, previous tabs, supply vs repair, split wording, abbreviations | (Amref, 2026-11-04) |
 | [20-render.md](20-render.md) | The team server on Render: one Docker service with a disk, a public URL behind one team password | (team request, 2026-11-06) |
+| [21-comment-driven-list.md](21-comment-driven-list.md) | The category list shaped by the team's comments: the client's draft as written, comments in the margin read by the AI, checked, decided one at a time | (Amref test, 2026-11-06) |
 
 The build order is in [TASKS.md](TASKS.md).
 

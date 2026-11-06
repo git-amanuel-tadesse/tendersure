@@ -277,3 +277,15 @@ ERCS for an early look.
 | T124 | `tendersure-api --serve`: waitress on 0.0.0.0:$PORT, refuses without a 16+ character `TENDERSURE_PASSWORD`; HTTP Basic on every request but `/api/health`; same-origin check and `X-TenderSure` kept; `TENDERSURE_WEB_DIST`. | 20 R1, R2 | - | S | Done: the team-server tests in apps/api/tests/test_app.py pass. |
 | T125 | `Dockerfile` (web build, then the Python parties), `.dockerignore` keeping client data out, `render.yaml` (Frankfurt, disk at /app/home, manual deploys, generated password). | 20 R1, R3 | T124 | S | Done: the image builds and answers /api/health; the password guards the rest. |
 | T126 | Move in: copy `data/`, `workspaces/`, `.cache/` onto the disk; the server's Home shows this machine's numbers. | 20 R3 | T125 | S | Same Home numbers and exercises on Render. |
+
+## 21. The category list, shaped by the team's comments (spec 21)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T127 | Core comments module from the prototype: actions incl. merge, instructions with the lines each targets, ask again for missing ones, the three flags, sources (draft, brief, approved lists); tests on recorded answers. | 21 B, C | - | M | Done: tendersure/catlist.py, tests in test_catlist.py. |
+| T128 | The list store: list from the draft as written, versions, apply ticked changes, undo latest; client workbook and categories table from it. | 21 A, D, G | T127 | M | Done: list_api.py storage; versions, undo, outputs tested in test_list.py. |
+| T129 | API: list, comment (job), decide, undo, log, check against a list; one waiting comment per exercise; re-read when the list changed. | 21 B, D, F | T128 | M | Done: list_api.py routes; one waiting comment and re-read tested. |
+| T130 | Web: the Refinement page as layout A: the list as the client's document, the comment margin with instructions, changes, sources and flags, Apply/Reject/Undo, the check panel, downloads. | 21 A–D, F, G | T129 | M | Done: the Refinement page (components/list/); Amref's draft renders. |
+| T131 | Remove the AI proposal, Decisions table, previous-list card and internal review workbook (UI, API, core); move the prototype to a throwaway branch. | 21 H | T130 | S | Partly: UI, API and prototype removed; the old core refinement and CLI `refine` remain. |
+| T132 | Standing comments ("always, for this client"): kept per client, offered in order on the next exercise. | 21 E | T130 | M | A kept comment is offered on a new exercise of the client. |
+| T133 | Acceptance run on Amref from its draft as written, recorded in the spec. | 21 Acceptance | T130 | S | Done: 61 categories, same group 55/62, 6 missing, 5 extra (spec 21, Acceptance run). |

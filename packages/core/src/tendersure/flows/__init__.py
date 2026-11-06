@@ -29,6 +29,8 @@ from .refine import (ApplyResult, ProposeResult, apply, apply_file, draft_tabs, 
                      import_revised, load_categories, propose, propose_file, read_draft, read_previous,
                      save_categories)
 from .refine import evaluate as evaluate_refinement
+from .catlist import (ListChange, ListInstruction, ListReading, ListReference, ListRow, apply_changes,
+                      approved_lists, check_list, export_client_list, list_categories, read_comment, start_list)
 from .rules import Profile, ProfileState, profile_state, save_profile, suggest_from_samples
 from .research import ResearchResult, apply_review as apply_research_review, research
 
@@ -48,5 +50,7 @@ __all__ = [
     "generate", "read_review", "GenerateSettings", "GenerateResult",
     "benchmark_state", "save_benchmark_map", "BenchmarkState", "Tab", "MapLine",
     "check", "CheckResult",
+    "ListRow", "ListChange", "ListInstruction", "ListReading", "ListReference", "start_list", "approved_lists",
+    "read_comment", "apply_changes", "check_list", "list_categories", "export_client_list",
     "evaluate", "evaluate_model", "privacy_check", "ModelEvaluation", "PrivacyCheck",
 ]

@@ -1,7 +1,7 @@
 """/api/exercises/<id>/categories: the categories table generation reads (spec 06 S4).
 
-It is the exercise's categories.csv - written by applying the refinement
-review, or imported from a CSV - edited in place. Every answer carries the
+It is the exercise's categories.csv - made from the category list (spec 21), or
+imported from a CSV or the client's approved list - edited in place. Every answer carries the
 table's problems row by row (the gate rule generation applies, duplicate
 numbers, unknown organization types), so a mismatch is fixed here instead of
 turning up as NOT WRITTEN. A table with problems is still saved: the team
@@ -19,8 +19,8 @@ from pydantic import BaseModel, Field
 from tendersure import flows
 
 from .exercises import ExercisePath
-from .refine_api import CATEGORIES, _need
-from .schemas import ApplyResult, Category
+from .list_api import CATEGORIES, categories_from_list
+from .schemas import Category
 from .workspaces import NotFound
 
 bp = APIBlueprint("categories", __name__, url_prefix="/api/exercises/<exercise_id>/categories",
@@ -65,7 +65,7 @@ class RowChange(BaseModel):
 
 
 class TableImport(BaseModel):
-    source: str = Field(description="'refine' (the applied review), an uploaded table such as uploads/x.csv, or the "
+    source: str = Field(description="'list' (the exercise's category list), an uploaded table such as uploads/x.csv, or the "
                                     "client's approved category list as uploads/x.xlsx (spec 17 D)")
 
 
@@ -131,13 +131,12 @@ def change_row(path: RowPath, body: RowChange):
 
 @bp.post("/import", responses={200: Table})
 def import_table(path: ExercisePath, body: TableImport):
-    """Replace the table: from the applied refinement review, or from an uploaded CSV. The table it
-    replaces is kept in history/."""
+    """Replace the table: from the exercise's category list, an uploaded CSV, or the client's approved list.
+    The table it replaces is kept in history/."""
     eid = path.exercise_id
     folder = _folder(eid)
-    if body.source == "refine":
-        final = ApplyResult.model_validate(_need(folder, "final.json", "the refinement review has not been applied"))
-        cats = [c.core() for c in final.categories]
+    if body.source == "list":
+        cats = categories_from_list(eid)
     else:
         try:
             src = current_app.config["WORKSPACES"].resolve(eid, body.source)
@@ -165,5 +164,5 @@ def import_table(path: ExercisePath, body: TableImport):
 def download_table(path: ExercisePath):
     p = os.path.join(_folder(path.exercise_id), CATEGORIES)
     if not os.path.exists(p):
-        abort(404, description="no categories table yet: apply the refinement review or import one")
+        abort(404, description="no categories table yet: make it from the category list, or import one")
     return send_file(p, as_attachment=True, download_name=CATEGORIES)

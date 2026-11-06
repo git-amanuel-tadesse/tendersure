@@ -6,7 +6,7 @@ import os
 import pytest
 
 from tendersure import flows
-from test_refine import _job, _proposed, _upload
+from test_refine import _book, _upload
 
 W = {"X-TenderSure": "1"}
 OFFICE = {"number": 1, "description": "Supply of Office Stationery and Toners", "group": "GENERAL"}
@@ -58,13 +58,13 @@ def test_other_problems_rows_can_have(client, ex):
     assert t["errors"] == 3 and len(t["categories"]) == 3            # saved anyway: fixed over several edits
 
 
-def test_the_table_comes_from_the_applied_review_and_the_old_one_is_kept(client, ex):
+def test_the_table_comes_from_the_category_list_and_the_old_one_is_kept(client, ex):
     _put(client, ex, [OFFICE])
-    _proposed(client, ex)
-    _job(client, client.post(f"/api/exercises/{ex}/refine/apply", json={"use_model": False}, headers=W))
-    final = client.get(f"/api/exercises/{ex}/refine").json["final"]["categories"]
-    t = client.post(f"/api/exercises/{ex}/categories/import", json={"source": "refine"}, headers=W).json
-    assert [c["description"] for c in t["categories"]] == [c["description"] for c in final]
+    f = _upload(client, ex, "Red Cross Draft.xlsx", _book())
+    client.post(f"/api/exercises/{ex}/refine/draft", json={"file": f, "sheets": ["Draft list"]}, headers=W)
+    rows = client.get(f"/api/exercises/{ex}/refine/list").json["rows"]
+    t = client.post(f"/api/exercises/{ex}/categories/import", json={"source": "list"}, headers=W).json
+    assert [c["description"] for c in t["categories"]] == [r["description"] for r in rows]
     history = os.path.join(client.application.config["WORKSPACES"].folder(ex), "history")
     assert len([n for n in os.listdir(history) if n.startswith("categories ")]) == 1
 
@@ -82,8 +82,8 @@ def test_a_table_can_be_imported_from_a_csv(client, ex, tmp_path):
     assert r.status_code == 422 and "not a category list" in r.json["detail"]
     doc = _upload(client, ex, "notes.pdf", b"%PDF-1.4")
     assert client.post(f"/api/exercises/{ex}/categories/import", json={"source": doc}, headers=W).status_code == 400
-    assert client.post(f"/api/exercises/{ex}/categories/import", json={"source": "refine"},
-                       headers=W).status_code == 409                # no applied review in this exercise
+    assert client.post(f"/api/exercises/{ex}/categories/import", json={"source": "list"},
+                       headers=W).status_code == 409                # no draft read, so no list, in this exercise
 
 
 def test_an_empty_table_and_wrong_rows(client, ex):

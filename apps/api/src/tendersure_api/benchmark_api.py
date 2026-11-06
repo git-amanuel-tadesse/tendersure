@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 from tendersure import flows
 
 from .exercises import ExercisePath
-from .refine_api import CATEGORIES, _exercise, _flow, _upload
+from .list_api import CATEGORIES
+from .refine_api import _exercise, _flow, _upload
 from .workspaces import NotFound
 
 bp = APIBlueprint("benchmark", __name__, url_prefix="/api/exercises/<exercise_id>/benchmark",

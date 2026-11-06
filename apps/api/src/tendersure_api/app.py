@@ -80,6 +80,7 @@ def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = N
     from .jobs import Runner
     from .jobs_api import bp as jobs
     from .refine_api import bp as refine
+    from .list_api import bp as category_list
     from .workspaces import Workspaces
     app = OpenAPI(__name__, info=Info(title="TenderSure", version=VERSION), doc_ui=False, static_folder=None,
                   validation_error_callback=_invalid)
@@ -150,6 +151,7 @@ def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = N
     app.register_api(jobs)
     app.register_api(bank)
     app.register_api(refine)
+    app.register_api(category_list)
     app.register_api(categories)
     app.register_api(generate)
     app.register_api(benchmark)

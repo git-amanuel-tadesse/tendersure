@@ -11,10 +11,12 @@ import { useEffect, useRef } from "react";
 
 export type Job = Schemas["Job"];
 export type Exercise = Schemas["ExerciseDetail"];
-export type Line = Schemas["Line"];
 export type Category = Schemas["Category"];
 export type Item = Schemas["Item"];
 export type Run = Schemas["Run"];
+export type ListState = Schemas["ListState"];
+export type ListComment = Schemas["Comment"];
+export type ListChange = Schemas["ListChange"];
 
 export const keys = {
   settings: ["settings"] as const,
@@ -26,6 +28,7 @@ export const keys = {
   rules: (id: string) => ["rules", id] as const,
   profile: (id: string) => ["profile", id] as const,
   refine: (id: string) => ["refine", id] as const,
+  list: (id: string) => ["list", id] as const,
   categories: (id: string) => ["categories", id] as const,
   runs: (id: string) => ["runs", id] as const,
   run: (id: string, n: number) => ["run", id, n] as const,
@@ -133,30 +136,15 @@ export const useRefine = (id: string) =>
 
 export function useRefineActions(id: string) {
   const qc = useQueryClient();
-  const set = (data: Schemas["RefineState"]) => qc.setQueryData(keys.refine(id), data);
   return {
+    /** Read the client's draft: the category list starts again from it, as written (spec 21 A). */
     chooseDraft: useMutation({
       mutationFn: (body: Inputs["ChooseDraft"]) =>
         unwrap(api.POST("/api/exercises/{exercise_id}/refine/draft", { ...path(id), body })),
-      onSuccess: set,
-    }),
-    propose: useMutation({
-      mutationFn: (body: Inputs["Propose"]) =>
-        unwrap(api.POST("/api/exercises/{exercise_id}/refine/propose", { ...path(id), body })),
-    }),
-    changeLines: useMutation({
-      mutationFn: (changes: Inputs["LineChange"][]) =>
-        unwrap(api.PATCH("/api/exercises/{exercise_id}/refine/lines", { ...path(id), body: { changes } })),
-      onSuccess: set,
-    }),
-    importAnswers: useMutation({
-      mutationFn: (body: Inputs["RefineImport"]) =>
-        unwrap(api.POST("/api/exercises/{exercise_id}/refine/import", { ...path(id), body })),
-      onSuccess: (r) => r.applied && qc.invalidateQueries({ queryKey: keys.refine(id) }),
-    }),
-    apply: useMutation({
-      mutationFn: (body: Inputs["RefineApply"]) =>
-        unwrap(api.POST("/api/exercises/{exercise_id}/refine/apply", { ...path(id), body })),
+      onSuccess: (data) => {
+        qc.setQueryData(keys.refine(id), data);
+        void qc.invalidateQueries({ queryKey: keys.list(id) });
+      },
     }),
   };
 }
@@ -305,6 +293,55 @@ export function useGenerateActions(id: string) {
           params: { path: { exercise_id: id, number: n } },
         })),
       onSuccess: () => qc.invalidateQueries({ queryKey: keys.runs(id) }),
+    }),
+  };
+}
+
+// --- the category list shaped by comments (spec 21) ------------------------------------------
+
+/** The list, its decided comments and the one waiting; polled while the AI reads a comment. */
+export const useList = (id: string, enabled = true) =>
+  useQuery({
+    queryKey: keys.list(id),
+    queryFn: () => unwrap(api.GET("/api/exercises/{exercise_id}/refine/list", path(id))),
+    enabled,
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.pending?.state === "reading" ? 1500 : false),
+  });
+
+export function useListActions(id: string) {
+  const qc = useQueryClient();
+  const set = (data: Schemas["ListState"]) => qc.setQueryData(keys.list(id), data);
+  const reload = () => qc.invalidateQueries({ queryKey: keys.list(id) });
+  return {
+    comment: useMutation({
+      mutationFn: (body: Inputs["CommentIn"]) =>
+        unwrap(api.POST("/api/exercises/{exercise_id}/refine/list/comment", { ...path(id), body })),
+      onSettled: reload,
+    }),
+    reread: useMutation({
+      mutationFn: (commentId: string) =>
+        unwrap(api.POST("/api/exercises/{exercise_id}/refine/list/reread", { ...path(id), body: { id: commentId } })),
+      onSettled: reload,
+    }),
+    decide: useMutation({
+      mutationFn: (body: Inputs["DecideIn"]) =>
+        unwrap(api.POST("/api/exercises/{exercise_id}/refine/list/decide", { ...path(id), body })),
+      onSuccess: set,
+      onError: reload,
+    }),
+    undo: useMutation({
+      mutationFn: () => unwrap(api.POST("/api/exercises/{exercise_id}/refine/list/undo", path(id))),
+      onSuccess: set,
+    }),
+    check: useMutation({
+      mutationFn: (body: Inputs["CheckIn"]) =>
+        unwrap(api.POST("/api/exercises/{exercise_id}/refine/list/check", { ...path(id), body })),
+    }),
+    categories: useMutation({
+      mutationFn: (body: Inputs["CategoriesIn"]) =>
+        unwrap(api.POST("/api/exercises/{exercise_id}/refine/list/categories", { ...path(id), body })),
+      onSuccess: () => qc.invalidateQueries({ queryKey: keys.categories(id) }),
     }),
   };
 }

@@ -27,7 +27,7 @@ from tendersure import flows
 
 from .exercises import ExercisePath
 from .jobs_api import Job
-from .refine_api import CATEGORIES
+from .list_api import CATEGORIES
 from .schemas import GenerateResult
 from .workspaces import NotFound
 

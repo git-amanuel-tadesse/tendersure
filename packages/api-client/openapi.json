@@ -18,78 +18,6 @@
         "title": "Answers",
         "type": "object"
       },
-      "ApplyResult": {
-        "properties": {
-          "categories": {
-            "items": {
-              "$ref": "#/components/schemas/Category"
-            },
-            "title": "Categories",
-            "type": "array"
-          },
-          "categories_out": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Categories Out"
-          },
-          "excluded": {
-            "items": {
-              "$ref": "#/components/schemas/Line"
-            },
-            "title": "Excluded",
-            "type": "array"
-          },
-          "final": {
-            "items": {
-              "$ref": "#/components/schemas/Line"
-            },
-            "title": "Final",
-            "type": "array"
-          },
-          "notes": {
-            "items": {
-              "$ref": "#/components/schemas/ClientNote"
-            },
-            "title": "Notes",
-            "type": "array"
-          },
-          "out": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Out"
-          },
-          "problems": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Problems",
-            "type": "array"
-          }
-        },
-        "required": [
-          "final",
-          "excluded",
-          "notes",
-          "problems",
-          "categories"
-        ],
-        "title": "ApplyResult",
-        "type": "object"
-      },
       "BankStatus": {
         "properties": {
           "clients": {
@@ -231,6 +159,47 @@
         "title": "Brief",
         "type": "object"
       },
+      "CategoriesIn": {
+        "properties": {
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "a label for this version of the list",
+            "title": "Version"
+          }
+        },
+        "title": "CategoriesIn",
+        "type": "object"
+      },
+      "CategoriesOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "kept": {
+            "default": [],
+            "description": "the team's edits on the table that were kept",
+            "items": {
+              "type": "string"
+            },
+            "title": "Kept",
+            "type": "array"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "CategoriesOut",
+        "type": "object"
+      },
       "Category": {
         "description": "A row of the categories table generation reads.",
         "properties": {
@@ -356,37 +325,91 @@
         "title": "Category",
         "type": "object"
       },
-      "Change": {
+      "CheckIn": {
         "properties": {
-          "after": {
-            "title": "After",
+          "file": {
+            "description": "an uploaded list the team made",
+            "title": "File",
             "type": "string"
           },
-          "before": {
-            "title": "Before",
-            "type": "string"
+          "sheets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sheets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "CheckIn",
+        "type": "object"
+      },
+      "CheckOut": {
+        "properties": {
+          "close_pairs": {
+            "items": {
+              "$ref": "#/components/schemas/Pair"
+            },
+            "title": "Close Pairs",
+            "type": "array"
           },
-          "description": {
-            "title": "Description",
-            "type": "string"
+          "close_wording": {
+            "title": "Close Wording",
+            "type": "integer"
           },
-          "field": {
-            "title": "Field",
-            "type": "string"
+          "extra": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Extra",
+            "type": "array"
           },
-          "index": {
-            "title": "Index",
+          "group_differs": {
+            "items": {
+              "$ref": "#/components/schemas/GroupDiff"
+            },
+            "title": "Group Differs",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "ours": {
+            "title": "Ours",
+            "type": "integer"
+          },
+          "same_group": {
+            "title": "Same Group",
+            "type": "integer"
+          },
+          "same_wording": {
+            "title": "Same Wording",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
             "type": "integer"
           }
         },
         "required": [
-          "index",
-          "description",
-          "field",
-          "before",
-          "after"
+          "target",
+          "ours",
+          "same_wording",
+          "close_wording",
+          "same_group",
+          "missing",
+          "extra",
+          "close_pairs",
+          "group_differs"
         ],
-        "title": "Change",
+        "title": "CheckOut",
         "type": "object"
       },
       "ChooseBenchmark": {
@@ -409,46 +432,20 @@
             "title": "File",
             "type": "string"
           },
-          "sheet": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Sheet"
+          "sheets": {
+            "default": [],
+            "description": "the tabs to read as one draft; none: the first with a list",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sheets",
+            "type": "array"
           }
         },
         "required": [
           "file"
         ],
         "title": "ChooseDraft",
-        "type": "object"
-      },
-      "ClientNote": {
-        "properties": {
-          "change": {
-            "description": "the model's proposed change: shown, never applied",
-            "title": "Change",
-            "type": "string"
-          },
-          "comment": {
-            "title": "Comment",
-            "type": "string"
-          },
-          "line": {
-            "$ref": "#/components/schemas/Line"
-          }
-        },
-        "required": [
-          "line",
-          "comment",
-          "change"
-        ],
-        "title": "ClientNote",
         "type": "object"
       },
       "ClientProfile": {
@@ -579,6 +576,138 @@
         "title": "ClientRules",
         "type": "object"
       },
+      "Comment": {
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "changes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ListChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "decided_at": {
+            "default": "",
+            "title": "Decided At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "instructions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ListInstruction"
+            },
+            "title": "Instructions",
+            "type": "array"
+          },
+          "job": {
+            "default": "",
+            "title": "Job",
+            "type": "string"
+          },
+          "list_version": {
+            "description": "the version of the list it was read on",
+            "title": "List Version",
+            "type": "integer"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "sources": {
+            "default": [],
+            "description": "the approved lists the AI was given",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "state": {
+            "description": "reading, ready or failed while waiting; applied, rejected or undone once decided",
+            "title": "State",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version_after": {
+            "default": 0,
+            "title": "Version After",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "text",
+          "at",
+          "state",
+          "list_version"
+        ],
+        "title": "Comment",
+        "type": "object"
+      },
+      "CommentIn": {
+        "properties": {
+          "author": {
+            "default": "",
+            "description": "who writes it, e.g. a team member's name",
+            "title": "Author",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "CommentIn",
+        "type": "object"
+      },
+      "DecideIn": {
+        "properties": {
+          "apply": {
+            "description": "true: apply the ticked changes; false: reject the comment",
+            "title": "Apply",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ticked": {
+            "default": [],
+            "description": "the ids of the changes to apply",
+            "items": {
+              "type": "string"
+            },
+            "title": "Ticked",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "apply"
+        ],
+        "title": "DecideIn",
+        "type": "object"
+      },
       "Draft": {
         "description": "A row of a client's draft category list.",
         "properties": {
@@ -675,20 +804,17 @@
             "title": "File",
             "type": "string"
           },
-          "sheet": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Sheet"
+          "sheets": {
+            "default": [],
+            "description": "the tabs read, as one draft; none: the first with a list",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sheets",
+            "type": "array"
           },
           "tabs": {
-            "description": "the workbook's tabs, to pick the one with the list",
+            "description": "the workbook's visible tabs, to pick the ones with the list",
             "items": {
               "type": "string"
             },
@@ -949,6 +1075,29 @@
         "title": "GenerateResult",
         "type": "object"
       },
+      "GroupDiff": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "ours": {
+            "title": "Ours",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "target",
+          "ours"
+        ],
+        "title": "GroupDiff",
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "ok": {
@@ -965,36 +1114,6 @@
           "version"
         ],
         "title": "Health",
-        "type": "object"
-      },
-      "ImportResult": {
-        "properties": {
-          "applied": {
-            "title": "Applied",
-            "type": "boolean"
-          },
-          "changes": {
-            "items": {
-              "$ref": "#/components/schemas/Change"
-            },
-            "title": "Changes",
-            "type": "array"
-          },
-          "unmatched": {
-            "description": "rows of the workbook that match no line here: not applied",
-            "items": {
-              "type": "string"
-            },
-            "title": "Unmatched",
-            "type": "array"
-          }
-        },
-        "required": [
-          "changes",
-          "unmatched",
-          "applied"
-        ],
-        "title": "ImportResult",
         "type": "object"
       },
       "IngestForm": {
@@ -1223,297 +1342,239 @@
         "title": "Jobs",
         "type": "object"
       },
-      "Line": {
-        "description": "A line of the revised category list: one proposed category, with how it came from the draft.",
+      "ListChange": {
         "properties": {
-          "applies_to": {
+          "group": {
+            "default": "",
+            "title": "Group",
+            "type": "string"
+          },
+          "groups": {
             "default": [],
             "items": {
               "type": "string"
             },
-            "title": "Applies To",
+            "title": "Groups",
             "type": "array"
           },
-          "code": {
+          "id": {
             "default": "",
-            "title": "Code",
+            "title": "Id",
             "type": "string"
           },
-          "comment": {
+          "instruction": {
+            "default": -1,
+            "title": "Instruction",
+            "type": "integer"
+          },
+          "key": {
             "default": "",
-            "description": "the client's comment; with edit, the new wording",
-            "title": "Comment",
+            "title": "Key",
             "type": "string"
           },
-          "decision": {
-            "default": "",
-            "description": "the review: accept, reject, remove or edit (blank accepts)",
-            "title": "Decision",
+          "keys": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Keys",
+            "type": "array"
+          },
+          "kind": {
+            "description": "reword, group, remove, fold, subs, add, split, order or merge",
+            "title": "Kind",
             "type": "string"
           },
+          "risky": {
+            "default": "",
+            "description": "why to look before applying; a flagged change starts unticked",
+            "title": "Risky",
+            "type": "string"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "source_text": {
+            "default": "",
+            "title": "Source Text",
+            "type": "string"
+          },
+          "subs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Subs",
+            "type": "array"
+          },
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "texts": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Texts",
+            "type": "array"
+          },
+          "ticked": {
+            "default": true,
+            "description": "in a decided comment: whether it was applied",
+            "title": "Ticked",
+            "type": "boolean"
+          },
+          "why": {
+            "default": "",
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ListChange",
+        "type": "object"
+      },
+      "ListInstruction": {
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "status": {
+            "description": "done, nothing_to_change, partly_done or unclear",
+            "title": "Status",
+            "type": "string"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "status"
+        ],
+        "title": "ListInstruction",
+        "type": "object"
+      },
+      "ListRow": {
+        "properties": {
           "description": {
             "title": "Description",
             "type": "string"
           },
-          "eligibility": {
-            "default": [],
-            "description": "stated by the draft: applied",
-            "items": {
-              "type": "string"
-            },
-            "title": "Eligibility",
-            "type": "array"
-          },
           "from_draft": {
+            "default": [],
+            "description": "the client's draft rows the category comes from",
             "items": {
               "type": "string"
             },
             "title": "From Draft",
             "type": "array"
           },
-          "gate_question": {
-            "readOnly": true,
-            "title": "Gate Question",
-            "type": "boolean"
-          },
           "group": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Group"
-          },
-          "hr": {
-            "default": [],
-            "description": "the draft's key staff items",
-            "items": {
-              "type": "string"
-            },
-            "title": "Hr",
-            "type": "array"
-          },
-          "licence": {
-            "default": [],
-            "description": "the draft's licence / contractor level items",
-            "items": {
-              "type": "string"
-            },
-            "title": "Licence",
-            "type": "array"
-          },
-          "merge_with": {
-            "default": [],
-            "description": "with decision merge: # numbers of the lines merged into this one",
-            "items": {
-              "type": "string"
-            },
-            "title": "Merge With",
-            "type": "array"
-          },
-          "question": {
-            "default": "",
-            "description": "a question for the client about this line",
-            "title": "Question",
+            "title": "Group",
             "type": "string"
           },
-          "reason": {
-            "default": "",
-            "title": "Reason",
+          "key": {
+            "title": "Key",
             "type": "string"
           },
-          "research_sources": {
+          "subs": {
             "default": [],
             "items": {
               "type": "string"
             },
-            "title": "Research Sources",
-            "type": "array"
-          },
-          "split_into": {
-            "default": [],
-            "description": "with decision split: each piece becomes a category",
-            "items": {
-              "type": "string"
-            },
-            "title": "Split Into",
-            "type": "array"
-          },
-          "status": {
-            "description": "Kept, Renamed, Merged, Separated, Repeated, Additional or Removed",
-            "title": "Status",
-            "type": "string"
-          },
-          "sub_categories": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Sub Categories",
-            "type": "array"
-          },
-          "suggested_eligibility": {
-            "default": [],
-            "description": "the model's or research's: shown, not applied",
-            "items": {
-              "type": "string"
-            },
-            "title": "Suggested Eligibility",
-            "type": "array"
-          },
-          "suggested_merge": {
-            "default": [],
-            "description": "by rules: # numbers of overlapping lines",
-            "items": {
-              "type": "string"
-            },
-            "title": "Suggested Merge",
-            "type": "array"
-          },
-          "suggested_split": {
-            "default": [],
-            "description": "by rules: a split to choose, never applied on its own",
-            "items": {
-              "type": "string"
-            },
-            "title": "Suggested Split",
-            "type": "array"
-          },
-          "technical": {
-            "default": [],
-            "description": "the draft's technical documents and equipment",
-            "items": {
-              "type": "string"
-            },
-            "title": "Technical",
-            "type": "array"
-          },
-          "technical_name": {
-            "default": "",
-            "title": "Technical Name",
-            "type": "string"
-          },
-          "usual_split": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Usual Split",
+            "title": "Subs",
             "type": "array"
           }
         },
         "required": [
-          "description",
-          "status",
-          "from_draft",
-          "gate_question"
+          "key",
+          "group",
+          "description"
         ],
-        "title": "Line",
+        "title": "ListRow",
         "type": "object"
       },
-      "LineChange": {
+      "ListState": {
         "properties": {
-          "code": {
+          "file": {
+            "description": "the draft it started from",
+            "title": "File",
+            "type": "string"
+          },
+          "pending": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/Comment"
               },
               {
                 "type": "null"
               }
             ],
-            "default": null,
-            "title": "Code"
+            "default": null
           },
-          "comment": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "the client's comment; with edit or merge, the new wording",
-            "title": "Comment"
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ListRow"
+            },
+            "title": "Rows",
+            "type": "array"
           },
-          "decision": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "accept, reject, remove, edit, split, merge, or '' (accept)",
-            "title": "Decision"
+          "sheets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sheets",
+            "type": "array"
           },
-          "index": {
-            "description": "the line's position in the revised list",
-            "minimum": 0.0,
-            "title": "Index",
+          "thread": {
+            "description": "decided comments, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/Comment"
+            },
+            "title": "Thread",
+            "type": "array"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
             "type": "integer"
-          },
-          "merge_with": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "with merge: the # numbers (index + 1) of the lines that become one category with this one",
-            "title": "Merge With"
-          },
-          "split_into": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "with split: each piece becomes a category",
-            "title": "Split Into"
           }
         },
         "required": [
-          "index"
+          "version",
+          "rows",
+          "file",
+          "updated",
+          "thread"
         ],
-        "title": "LineChange",
-        "type": "object"
-      },
-      "LineChanges": {
-        "properties": {
-          "changes": {
-            "items": {
-              "$ref": "#/components/schemas/LineChange"
-            },
-            "title": "Changes",
-            "type": "array"
-          }
-        },
-        "required": [
-          "changes"
-        ],
-        "title": "LineChanges",
+        "title": "ListState",
         "type": "object"
       },
       "MapLine": {
@@ -1695,6 +1756,29 @@
         "title": "Options",
         "type": "object"
       },
+      "Pair": {
+        "properties": {
+          "ours": {
+            "title": "Ours",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "ours",
+          "score"
+        ],
+        "title": "Pair",
+        "type": "object"
+      },
       "PreviewRow": {
         "properties": {
           "answer_type": {
@@ -1782,128 +1866,12 @@
         "title": "ProfileOut",
         "type": "object"
       },
-      "Propose": {
-        "properties": {
-          "country": {
-            "default": "",
-            "description": "ISO code for researched licences, e.g. ET",
-            "title": "Country",
-            "type": "string"
-          },
-          "target": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "maxItems": 2,
-                "minItems": 2,
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "[low, high], e.g. [50, 60]",
-            "title": "Target"
-          },
-          "use_model": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "None: when one is configured; False: rules only",
-            "title": "Use Model"
-          }
-        },
-        "title": "Propose",
-        "type": "object"
-      },
-      "RefineApply": {
-        "properties": {
-          "use_model": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Use Model"
-          },
-          "version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "a label for this version of the list",
-            "title": "Version"
-          }
-        },
-        "title": "RefineApply",
-        "type": "object"
-      },
-      "RefineImport": {
-        "properties": {
-          "confirm": {
-            "default": false,
-            "description": "False: only list what would change",
-            "title": "Confirm",
-            "type": "boolean"
-          },
-          "file": {
-            "description": "an uploaded revised list with its Decision column answered",
-            "title": "File",
-            "type": "string"
-          }
-        },
-        "required": [
-          "file"
-        ],
-        "title": "RefineImport",
-        "type": "object"
-      },
       "RefineState": {
         "properties": {
           "draft": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/DraftState"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "final": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ApplyResult"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "revised": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Revised"
               },
               {
                 "type": "null"
@@ -1931,58 +1899,17 @@
         "title": "Replace",
         "type": "object"
       },
-      "Revised": {
+      "RereadIn": {
         "properties": {
-          "created": {
-            "title": "Created",
+          "id": {
+            "title": "Id",
             "type": "string"
-          },
-          "lines": {
-            "items": {
-              "$ref": "#/components/schemas/Line"
-            },
-            "title": "Lines",
-            "type": "array"
-          },
-          "proposed": {
-            "title": "Proposed",
-            "type": "integer"
-          },
-          "questions": {
-            "title": "Questions",
-            "type": "integer"
-          },
-          "statuses": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Statuses",
-            "type": "object"
-          },
-          "target": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Target"
           }
         },
         "required": [
-          "lines",
-          "proposed",
-          "statuses",
-          "questions",
-          "created"
+          "id"
         ],
-        "title": "Revised",
+        "title": "RereadIn",
         "type": "object"
       },
       "RowChange": {
@@ -2542,7 +2469,7 @@
       "TableImport": {
         "properties": {
           "source": {
-            "description": "'refine' (the applied review), an uploaded table such as uploads/x.csv, or the client's approved category list as uploads/x.xlsx (spec 17 D)",
+            "description": "'list' (the exercise's category list), an uploaded table such as uploads/x.csv, or the client's approved category list as uploads/x.xlsx (spec 17 D)",
             "title": "Source",
             "type": "string"
           }
@@ -3297,7 +3224,7 @@
     },
     "/api/exercises/{exercise_id}/categories/import": {
       "post": {
-        "description": "replaces is kept in history/.",
+        "description": "The table it replaces is kept in history/.",
         "operationId": "categories_import_table_import_post",
         "parameters": [
           {
@@ -3345,7 +3272,7 @@
             "description": "Unprocessable Content"
           }
         },
-        "summary": "Replace the table: from the applied refinement review, or from an uploaded CSV. The table it",
+        "summary": "Replace the table: from the exercise's category list, an uploaded CSV, or the client's approved list.",
         "tags": [
           "categories"
         ]
@@ -4173,64 +4100,9 @@
         ]
       }
     },
-    "/api/exercises/{exercise_id}/refine/apply": {
-      "post": {
-        "operationId": "refine_apply_apply_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "exercise_id",
-            "required": true,
-            "schema": {
-              "title": "Exercise Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefineApply"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Job"
-                }
-              }
-            },
-            "description": "Accepted"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ValidationErrorModel"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "summary": "Apply the review, as a job: the final list, and the exercise's categories table.",
-        "tags": [
-          "refine"
-        ]
-      }
-    },
     "/api/exercises/{exercise_id}/refine/draft": {
       "post": {
-        "description": "to refine/history/: a new draft starts the refinement again.",
+        "description": "again from it, exactly as written; the earlier list and its comments move to refine/history/.",
         "operationId": "refine_choose_draft_draft_post",
         "parameters": [
           {
@@ -4278,15 +4150,15 @@
             "description": "Unprocessable Content"
           }
         },
-        "summary": "Read the draft list from an uploaded file. A revised or final list from an earlier draft moves",
+        "summary": "Read the draft from an uploaded file (one tab, or several as one draft). The category list starts",
         "tags": [
           "refine"
         ]
       }
     },
-    "/api/exercises/{exercise_id}/refine/final-client.xlsx": {
+    "/api/exercises/{exercise_id}/refine/list": {
       "get": {
-        "operationId": "refine_download_final_for_client_final_client_xlsx_get",
+        "operationId": "list_get_list_get",
         "parameters": [
           {
             "in": "path",
@@ -4298,92 +4170,12 @@
             }
           }
         ],
-        "responses": {
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ValidationErrorModel"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "summary": "The final list as the client sees it.",
-        "tags": [
-          "refine"
-        ]
-      }
-    },
-    "/api/exercises/{exercise_id}/refine/final.xlsx": {
-      "get": {
-        "operationId": "refine_download_final_final_xlsx_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "exercise_id",
-            "required": true,
-            "schema": {
-              "title": "Exercise Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ValidationErrorModel"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "tags": [
-          "refine"
-        ]
-      }
-    },
-    "/api/exercises/{exercise_id}/refine/import": {
-      "post": {
-        "description": "Without `confirm`, only lists what would change.",
-        "operationId": "refine_import_answers_import_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "exercise_id",
-            "required": true,
-            "schema": {
-              "title": "Exercise Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RefineImport"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ImportResult"
+                  "$ref": "#/components/schemas/ListState"
                 }
               }
             },
@@ -4403,15 +4195,15 @@
             "description": "Unprocessable Content"
           }
         },
-        "summary": "A revised list the client answered in Excel: its decisions and comments replace the browser's.",
         "tags": [
-          "refine"
+          "list"
         ]
       }
     },
-    "/api/exercises/{exercise_id}/refine/lines": {
-      "patch": {
-        "operationId": "refine_change_lines_lines_patch",
+    "/api/exercises/{exercise_id}/refine/list/categories": {
+      "post": {
+        "description": "the table since the last time stay.",
+        "operationId": "list_make_categories_categories_post",
         "parameters": [
           {
             "in": "path",
@@ -4427,7 +4219,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LineChanges"
+                "$ref": "#/components/schemas/CategoriesIn"
               }
             }
           },
@@ -4438,7 +4230,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RefineState"
+                  "$ref": "#/components/schemas/CategoriesOut"
                 }
               }
             },
@@ -4458,15 +4250,15 @@
             "description": "Unprocessable Content"
           }
         },
-        "summary": "The review: decisions, client comments and category codes, for any number of lines at once.",
+        "summary": "The list as the exercise's categories table, the input of criteria generation; edits the team made on",
         "tags": [
-          "refine"
+          "list"
         ]
       }
     },
-    "/api/exercises/{exercise_id}/refine/propose": {
+    "/api/exercises/{exercise_id}/refine/list/check": {
       "post": {
-        "operationId": "refine_propose_propose_post",
+        "operationId": "list_check_check_post",
         "parameters": [
           {
             "in": "path",
@@ -4482,7 +4274,97 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Propose"
+                "$ref": "#/components/schemas/CheckIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "How close the list is to a list the team made (spec 21 F).",
+        "tags": [
+          "list"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/list/client.xlsx": {
+      "get": {
+        "operationId": "list_client_workbook_client_xlsx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "The list in the client's layout, to send for review.",
+        "tags": [
+          "list"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/list/comment": {
+      "post": {
+        "operationId": "list_comment_comment_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommentIn"
               }
             }
           },
@@ -4513,15 +4395,15 @@
             "description": "Unprocessable Content"
           }
         },
-        "summary": "Propose the revised list, as a job; its result is the proposal, also kept as the revised list.",
+        "summary": "A team member's comment, read by the AI as a job; it then waits for Apply or Reject.",
         "tags": [
-          "refine"
+          "list"
         ]
       }
     },
-    "/api/exercises/{exercise_id}/refine/revised-client.xlsx": {
-      "get": {
-        "operationId": "refine_download_revised_for_client_revised_client_xlsx_get",
+    "/api/exercises/{exercise_id}/refine/list/decide": {
+      "post": {
+        "operationId": "list_decide_decide_post",
         "parameters": [
           {
             "in": "path",
@@ -4533,7 +4415,27 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideIn"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListState"
+                }
+              }
+            },
+            "description": "OK"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4548,15 +4450,15 @@
             "description": "Unprocessable Content"
           }
         },
-        "summary": "The proposed list as the client sees it: descriptions and sub-categories only, in its draft's layout.",
+        "summary": "Apply the ticked changes of the waiting comment (a new version of the list), or reject it.",
         "tags": [
-          "refine"
+          "list"
         ]
       }
     },
-    "/api/exercises/{exercise_id}/refine/revised.xlsx": {
-      "get": {
-        "operationId": "refine_download_revised_revised_xlsx_get",
+    "/api/exercises/{exercise_id}/refine/list/reread": {
+      "post": {
+        "operationId": "list_reread_reread_post",
         "parameters": [
           {
             "in": "path",
@@ -4568,7 +4470,27 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RereadIn"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4583,9 +4505,54 @@
             "description": "Unprocessable Content"
           }
         },
-        "summary": "The revised list as a workbook, to send to the client; written from the state as it is now.",
+        "summary": "Read the waiting comment again, on the list as it is now (after another comment changed it).",
         "tags": [
-          "refine"
+          "list"
+        ]
+      }
+    },
+    "/api/exercises/{exercise_id}/refine/list/undo": {
+      "post": {
+        "operationId": "list_undo_undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListState"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ValidationErrorModel"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Undo the latest applied comment: the list goes back to the version before it (as a new version).",
+        "tags": [
+          "list"
         ]
       }
     },
@@ -4875,6 +4842,9 @@
     },
     {
       "name": "refine"
+    },
+    {
+      "name": "list"
     },
     {
       "name": "categories"

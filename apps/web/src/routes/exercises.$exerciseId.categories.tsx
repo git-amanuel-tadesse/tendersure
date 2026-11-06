@@ -6,7 +6,7 @@ import {
   Badge, Button, Card, Check, cx, Empty, ErrorNotice, Input, linkButton, Notice, Select,
 } from "../components/ui";
 import { UploadButton } from "../components/UploadButton";
-import { type Category, useCategories, useCategoryActions, useExercise, useRefine } from "../lib/api";
+import { type Category, useCategories, useCategoryActions, useExercise, useList, useRefine } from "../lib/api";
 import { type MarkedItem, readItem, writeItem } from "../lib/items";
 
 export const Route = createFileRoute("/exercises/$exerciseId/categories")({ component: CategoriesPage });
@@ -17,7 +17,8 @@ const split = (text: string) => text.split("|").map((s) => s.trim()).filter(Bool
 function CategoriesPage() {
   const { exerciseId } = Route.useParams();
   const table = useCategories(exerciseId);
-  const refine = useRefine(exerciseId).data;
+  const draft = useRefine(exerciseId).data?.draft;
+  const list = useList(exerciseId, !!draft).data;
   const ex = useExercise(exerciseId).data;
   const { changeRow, replace, importTable } = useCategoryActions(exerciseId);
   const [csv, setCsv] = useState("");
@@ -47,9 +48,9 @@ function CategoriesPage() {
         )}
       >
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          <Button variant="secondary" disabled={!refine?.final} busy={importTable.isPending && importTable.variables === "refine"}
-                  onClick={() => importFrom("refine")}>
-            From the applied review{refine?.final && ` (${refine.final.categories.length})`}
+          <Button variant="secondary" disabled={!list} busy={importTable.isPending && importTable.variables === "list"}
+                  onClick={() => importFrom("list")}>
+            From the category list{list && ` (${list.rows.length}, version ${list.version})`}
           </Button>
           <span className="text-zinc-400">or</span>
           <Select value={csv} onChange={(e) => setCsv(e.target.value)}>
@@ -83,7 +84,7 @@ function CategoriesPage() {
         ) : null}
         <div className="mt-3"><ErrorNotice error={changeRow.error ?? replace.error} /></div>
         {!t.categories.length ? (
-          <Empty>No table yet: apply the refinement review, then bring its list in here.</Empty>
+          <Empty>No table yet: shape the category list in step 1, then bring it in here.</Empty>
         ) : (
           <div className="mt-4 overflow-x-auto rounded-md border border-zinc-200 dark:border-zinc-800">
             <table className="w-full text-sm">

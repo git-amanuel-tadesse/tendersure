@@ -184,8 +184,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Replace the table: from the applied refinement review, or from an uploaded CSV. The table it
-         * @description replaces is kept in history/.
+         * Replace the table: from the exercise's category list, an uploaded CSV, or the client's approved list.
+         * @description The table it replaces is kept in history/.
          */
         post: operations["categories_import_table_import_post"];
         delete?: never;
@@ -426,23 +426,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/exercises/{exercise_id}/refine/apply": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Apply the review, as a job: the final list, and the exercise's categories table. */
-        post: operations["refine_apply_apply_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/exercises/{exercise_id}/refine/draft": {
         parameters: {
             query?: never;
@@ -453,8 +436,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Read the draft list from an uploaded file. A revised or final list from an earlier draft moves
-         * @description to refine/history/: a new draft starts the refinement again.
+         * Read the draft from an uploaded file (one tab, or several as one draft). The category list starts
+         * @description again from it, exactly as written; the earlier list and its comments move to refine/history/.
          */
         post: operations["refine_choose_draft_draft_post"];
         delete?: never;
@@ -463,15 +446,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/exercises/{exercise_id}/refine/final-client.xlsx": {
+    "/api/exercises/{exercise_id}/refine/list": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** The final list as the client sees it. */
-        get: operations["refine_download_final_for_client_final_client_xlsx_get"];
+        get: operations["list_get_list_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -480,23 +462,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/exercises/{exercise_id}/refine/final.xlsx": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["refine_download_final_final_xlsx_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/exercises/{exercise_id}/refine/import": {
+    "/api/exercises/{exercise_id}/refine/list/categories": {
         parameters: {
             query?: never;
             header?: never;
@@ -506,17 +472,17 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * A revised list the client answered in Excel: its decisions and comments replace the browser's.
-         * @description Without `confirm`, only lists what would change.
+         * The list as the exercise's categories table, the input of criteria generation; edits the team made on
+         * @description the table since the last time stay.
          */
-        post: operations["refine_import_answers_import_post"];
+        post: operations["list_make_categories_categories_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/exercises/{exercise_id}/refine/lines": {
+    "/api/exercises/{exercise_id}/refine/list/check": {
         parameters: {
             query?: never;
             header?: never;
@@ -525,15 +491,32 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** How close the list is to a list the team made (spec 21 F). */
+        post: operations["list_check_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exercises/{exercise_id}/refine/list/client.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The list in the client's layout, to send for review. */
+        get: operations["list_client_workbook_client_xlsx_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** The review: decisions, client comments and category codes, for any number of lines at once. */
-        patch: operations["refine_change_lines_lines_patch"];
+        patch?: never;
         trace?: never;
     };
-    "/api/exercises/{exercise_id}/refine/propose": {
+    "/api/exercises/{exercise_id}/refine/list/comment": {
         parameters: {
             query?: never;
             header?: never;
@@ -542,42 +525,59 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Propose the revised list, as a job; its result is the proposal, also kept as the revised list. */
-        post: operations["refine_propose_propose_post"];
+        /** A team member's comment, read by the AI as a job; it then waits for Apply or Reject. */
+        post: operations["list_comment_comment_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/exercises/{exercise_id}/refine/revised-client.xlsx": {
+    "/api/exercises/{exercise_id}/refine/list/decide": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** The proposed list as the client sees it: descriptions and sub-categories only, in its draft's layout. */
-        get: operations["refine_download_revised_for_client_revised_client_xlsx_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** Apply the ticked changes of the waiting comment (a new version of the list), or reject it. */
+        post: operations["list_decide_decide_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/exercises/{exercise_id}/refine/revised.xlsx": {
+    "/api/exercises/{exercise_id}/refine/list/reread": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** The revised list as a workbook, to send to the client; written from the state as it is now. */
-        get: operations["refine_download_revised_revised_xlsx_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** Read the waiting comment again, on the list as it is now (after another comment changed it). */
+        post: operations["list_reread_reread_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/exercises/{exercise_id}/refine/list/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Undo the latest applied comment: the list goes back to the version before it (as a new version). */
+        post: operations["list_undo_undo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -683,29 +683,6 @@ export interface components {
                 [key: string]: string;
             };
         };
-        /** ApplyResult */
-        ApplyResult: {
-            /** Categories */
-            categories: components["schemas"]["Category"][];
-            /**
-             * Categories Out
-             * @default null
-             */
-            categories_out?: string | null;
-            /** Excluded */
-            excluded: components["schemas"]["Line"][];
-            /** Final */
-            final: components["schemas"]["Line"][];
-            /** Notes */
-            notes: components["schemas"]["ClientNote"][];
-            /**
-             * Out
-             * @default null
-             */
-            out?: string | null;
-            /** Problems */
-            problems: string[];
-        };
         /** BankStatus */
         BankStatus: {
             /** Clients */
@@ -777,6 +754,26 @@ export interface components {
              * @default
              */
             text?: string;
+        };
+        /** CategoriesIn */
+        CategoriesIn: {
+            /**
+             * Version
+             * @description a label for this version of the list
+             * @default null
+             */
+            version?: string | null;
+        };
+        /** CategoriesOut */
+        CategoriesOut: {
+            /** Count */
+            count: number;
+            /**
+             * Kept
+             * @description the team's edits on the table that were kept
+             * @default []
+             */
+            kept?: string[];
         };
         /**
          * Category
@@ -851,18 +848,39 @@ export interface components {
              */
             version?: string | null;
         };
-        /** Change */
-        Change: {
-            /** After */
-            after: string;
-            /** Before */
-            before: string;
-            /** Description */
-            description: string;
-            /** Field */
-            field: string;
-            /** Index */
-            index: number;
+        /** CheckIn */
+        CheckIn: {
+            /**
+             * File
+             * @description an uploaded list the team made
+             */
+            file: string;
+            /**
+             * Sheets
+             * @default []
+             */
+            sheets?: string[];
+        };
+        /** CheckOut */
+        CheckOut: {
+            /** Close Pairs */
+            close_pairs: components["schemas"]["Pair"][];
+            /** Close Wording */
+            close_wording: number;
+            /** Extra */
+            extra: string[];
+            /** Group Differs */
+            group_differs: components["schemas"]["GroupDiff"][];
+            /** Missing */
+            missing: string[];
+            /** Ours */
+            ours: number;
+            /** Same Group */
+            same_group: number;
+            /** Same Wording */
+            same_wording: number;
+            /** Target */
+            target: number;
         };
         /** ChooseBenchmark */
         ChooseBenchmark: {
@@ -877,21 +895,11 @@ export interface components {
             /** File */
             file: string;
             /**
-             * Sheet
-             * @default null
+             * Sheets
+             * @description the tabs to read as one draft; none: the first with a list
+             * @default []
              */
-            sheet?: string | null;
-        };
-        /** ClientNote */
-        ClientNote: {
-            /**
-             * Change
-             * @description the model's proposed change: shown, never applied
-             */
-            change: string;
-            /** Comment */
-            comment: string;
-            line: components["schemas"]["Line"];
+            sheets?: string[];
         };
         /** ClientProfile */
         ClientProfile: {
@@ -997,6 +1005,90 @@ export interface components {
              */
             suggested?: components["schemas"]["ClientRule"][];
         };
+        /** Comment */
+        Comment: {
+            /** At */
+            at: string;
+            /** Author */
+            author: string;
+            /**
+             * Changes
+             * @default []
+             */
+            changes?: components["schemas"]["ListChange"][];
+            /**
+             * Decided At
+             * @default
+             */
+            decided_at?: string;
+            /** Id */
+            id: string;
+            /**
+             * Instructions
+             * @default []
+             */
+            instructions?: components["schemas"]["ListInstruction"][];
+            /**
+             * Job
+             * @default
+             */
+            job?: string;
+            /**
+             * List Version
+             * @description the version of the list it was read on
+             */
+            list_version: number;
+            /**
+             * Note
+             * @default
+             */
+            note?: string;
+            /**
+             * Sources
+             * @description the approved lists the AI was given
+             * @default []
+             */
+            sources?: string[];
+            /**
+             * State
+             * @description reading, ready or failed while waiting; applied, rejected or undone once decided
+             */
+            state: string;
+            /** Text */
+            text: string;
+            /**
+             * Version After
+             * @default 0
+             */
+            version_after?: number;
+        };
+        /** CommentIn */
+        CommentIn: {
+            /**
+             * Author
+             * @description who writes it, e.g. a team member's name
+             * @default
+             */
+            author?: string;
+            /** Text */
+            text: string;
+        };
+        /** DecideIn */
+        DecideIn: {
+            /**
+             * Apply
+             * @description true: apply the ticked changes; false: reject the comment
+             */
+            apply: boolean;
+            /** Id */
+            id: string;
+            /**
+             * Ticked
+             * @description the ids of the changes to apply
+             * @default []
+             */
+            ticked?: string[];
+        };
         /**
          * Draft
          * @description A row of a client's draft category list.
@@ -1060,13 +1152,14 @@ export interface components {
              */
             file: string;
             /**
-             * Sheet
-             * @default null
+             * Sheets
+             * @description the tabs read, as one draft; none: the first with a list
+             * @default []
              */
-            sheet?: string | null;
+            sheets?: string[];
             /**
              * Tabs
-             * @description the workbook's tabs, to pick the one with the list
+             * @description the workbook's visible tabs, to pick the ones with the list
              */
             tabs: string[];
         };
@@ -1196,24 +1289,21 @@ export interface components {
              */
             written: string[];
         };
+        /** GroupDiff */
+        GroupDiff: {
+            /** Category */
+            category: string;
+            /** Ours */
+            ours: string;
+            /** Target */
+            target: string;
+        };
         /** Health */
         Health: {
             /** Ok */
             ok: boolean;
             /** Version */
             version: string;
-        };
-        /** ImportResult */
-        ImportResult: {
-            /** Applied */
-            applied: boolean;
-            /** Changes */
-            changes: components["schemas"]["Change"][];
-            /**
-             * Unmatched
-             * @description rows of the workbook that match no line here: not applied
-             */
-            unmatched: string[];
         };
         /** IngestForm */
         IngestForm: {
@@ -1333,176 +1423,156 @@ export interface components {
             /** Jobs */
             jobs: components["schemas"]["Job"][];
         };
-        /**
-         * Line
-         * @description A line of the revised category list: one proposed category, with how it came from the draft.
-         */
-        Line: {
-            /**
-             * Applies To
-             * @default []
-             */
-            applies_to?: string[];
-            /**
-             * Code
-             * @default
-             */
-            code?: string;
-            /**
-             * Comment
-             * @description the client's comment; with edit, the new wording
-             * @default
-             */
-            comment?: string;
-            /**
-             * Decision
-             * @description the review: accept, reject, remove or edit (blank accepts)
-             * @default
-             */
-            decision?: string;
-            /** Description */
-            description: string;
-            /**
-             * Eligibility
-             * @description stated by the draft: applied
-             * @default []
-             */
-            eligibility?: string[];
-            /** From Draft */
-            from_draft: string[];
-            /** Gate Question */
-            readonly gate_question: boolean;
+        /** ListChange */
+        ListChange: {
             /**
              * Group
-             * @default null
-             */
-            group?: string | null;
-            /**
-             * Hr
-             * @description the draft's key staff items
-             * @default []
-             */
-            hr?: string[];
-            /**
-             * Licence
-             * @description the draft's licence / contractor level items
-             * @default []
-             */
-            licence?: string[];
-            /**
-             * Merge With
-             * @description with decision merge: # numbers of the lines merged into this one
-             * @default []
-             */
-            merge_with?: string[];
-            /**
-             * Question
-             * @description a question for the client about this line
              * @default
              */
-            question?: string;
+            group?: string;
             /**
-             * Reason
+             * Groups
+             * @default []
+             */
+            groups?: string[];
+            /**
+             * Id
              * @default
              */
-            reason?: string;
+            id?: string;
             /**
-             * Research Sources
+             * Instruction
+             * @default -1
+             */
+            instruction?: number;
+            /**
+             * Key
+             * @default
+             */
+            key?: string;
+            /**
+             * Keys
              * @default []
              */
-            research_sources?: string[];
+            keys?: string[];
             /**
-             * Split Into
-             * @description with decision split: each piece becomes a category
+             * Kind
+             * @description reword, group, remove, fold, subs, add, split, order or merge
+             */
+            kind: string;
+            /**
+             * Risky
+             * @description why to look before applying; a flagged change starts unticked
+             * @default
+             */
+            risky?: string;
+            /**
+             * Source
+             * @default
+             */
+            source?: string;
+            /**
+             * Source Text
+             * @default
+             */
+            source_text?: string;
+            /**
+             * Subs
              * @default []
              */
-            split_into?: string[];
+            subs?: string[];
+            /**
+             * Target
+             * @default
+             */
+            target?: string;
+            /**
+             * Text
+             * @default
+             */
+            text?: string;
+            /**
+             * Texts
+             * @default []
+             */
+            texts?: string[];
+            /**
+             * Ticked
+             * @description in a decided comment: whether it was applied
+             * @default true
+             */
+            ticked?: boolean;
+            /**
+             * Why
+             * @default
+             */
+            why?: string;
+        };
+        /** ListInstruction */
+        ListInstruction: {
+            /**
+             * Note
+             * @default
+             */
+            note?: string;
             /**
              * Status
-             * @description Kept, Renamed, Merged, Separated, Repeated, Additional or Removed
+             * @description done, nothing_to_change, partly_done or unclear
              */
             status: string;
             /**
-             * Sub Categories
+             * Targets
              * @default []
              */
-            sub_categories?: string[];
-            /**
-             * Suggested Eligibility
-             * @description the model's or research's: shown, not applied
-             * @default []
-             */
-            suggested_eligibility?: string[];
-            /**
-             * Suggested Merge
-             * @description by rules: # numbers of overlapping lines
-             * @default []
-             */
-            suggested_merge?: string[];
-            /**
-             * Suggested Split
-             * @description by rules: a split to choose, never applied on its own
-             * @default []
-             */
-            suggested_split?: string[];
-            /**
-             * Technical
-             * @description the draft's technical documents and equipment
-             * @default []
-             */
-            technical?: string[];
-            /**
-             * Technical Name
-             * @default
-             */
-            technical_name?: string;
-            /**
-             * Usual Split
-             * @default []
-             */
-            usual_split?: string[];
+            targets?: string[];
+            /** Text */
+            text: string;
         };
-        /** LineChange */
-        LineChange: {
+        /** ListRow */
+        ListRow: {
+            /** Description */
+            description: string;
             /**
-             * Code
-             * @default null
+             * From Draft
+             * @description the client's draft rows the category comes from
+             * @default []
              */
-            code?: string | null;
+            from_draft?: string[];
+            /** Group */
+            group: string;
+            /** Key */
+            key: string;
             /**
-             * Comment
-             * @description the client's comment; with edit or merge, the new wording
-             * @default null
+             * Subs
+             * @default []
              */
-            comment?: string | null;
-            /**
-             * Decision
-             * @description accept, reject, remove, edit, split, merge, or '' (accept)
-             * @default null
-             */
-            decision?: string | null;
-            /**
-             * Index
-             * @description the line's position in the revised list
-             */
-            index: number;
-            /**
-             * Merge With
-             * @description with merge: the # numbers (index + 1) of the lines that become one category with this one
-             * @default null
-             */
-            merge_with?: string[] | null;
-            /**
-             * Split Into
-             * @description with split: each piece becomes a category
-             * @default null
-             */
-            split_into?: string[] | null;
+            subs?: string[];
         };
-        /** LineChanges */
-        LineChanges: {
-            /** Changes */
-            changes: components["schemas"]["LineChange"][];
+        /** ListState */
+        ListState: {
+            /**
+             * File
+             * @description the draft it started from
+             */
+            file: string;
+            /** @default null */
+            pending?: components["schemas"]["Comment"] | null;
+            /** Rows */
+            rows: components["schemas"]["ListRow"][];
+            /**
+             * Sheets
+             * @default []
+             */
+            sheets?: string[];
+            /**
+             * Thread
+             * @description decided comments, oldest first
+             */
+            thread: components["schemas"]["Comment"][];
+            /** Updated */
+            updated: string;
+            /** Version */
+            version: number;
         };
         /** MapLine */
         MapLine: {
@@ -1605,6 +1675,15 @@ export interface components {
              */
             use_model?: boolean | null;
         };
+        /** Pair */
+        Pair: {
+            /** Ours */
+            ours: string;
+            /** Score */
+            score: number;
+            /** Target */
+            target: string;
+        };
         /** PreviewRow */
         PreviewRow: {
             /**
@@ -1659,88 +1738,20 @@ export interface components {
              */
             saved: boolean;
         };
-        /** Propose */
-        Propose: {
-            /**
-             * Country
-             * @description ISO code for researched licences, e.g. ET
-             * @default
-             */
-            country?: string;
-            /**
-             * Target
-             * @description [low, high], e.g. [50, 60]
-             * @default null
-             */
-            target?: number[] | null;
-            /**
-             * Use Model
-             * @description None: when one is configured; False: rules only
-             * @default null
-             */
-            use_model?: boolean | null;
-        };
-        /** RefineApply */
-        RefineApply: {
-            /**
-             * Use Model
-             * @default null
-             */
-            use_model?: boolean | null;
-            /**
-             * Version
-             * @description a label for this version of the list
-             * @default null
-             */
-            version?: string | null;
-        };
-        /** RefineImport */
-        RefineImport: {
-            /**
-             * Confirm
-             * @description False: only list what would change
-             * @default false
-             */
-            confirm?: boolean;
-            /**
-             * File
-             * @description an uploaded revised list with its Decision column answered
-             */
-            file: string;
-        };
         /** RefineState */
         RefineState: {
             /** @default null */
             draft?: components["schemas"]["DraftState"] | null;
-            /** @default null */
-            final?: components["schemas"]["ApplyResult"] | null;
-            /** @default null */
-            revised?: components["schemas"]["Revised"] | null;
         };
         /** Replace */
         Replace: {
             /** Categories */
             categories: components["schemas"]["Category"][];
         };
-        /** Revised */
-        Revised: {
-            /** Created */
-            created: string;
-            /** Lines */
-            lines: components["schemas"]["Line"][];
-            /** Proposed */
-            proposed: number;
-            /** Questions */
-            questions: number;
-            /** Statuses */
-            statuses: {
-                [key: string]: number;
-            };
-            /**
-             * Target
-             * @default null
-             */
-            target?: number[] | null;
+        /** RereadIn */
+        RereadIn: {
+            /** Id */
+            id: string;
         };
         /**
          * RowChange
@@ -2015,7 +2026,7 @@ export interface components {
         TableImport: {
             /**
              * Source
-             * @description 'refine' (the applied review), an uploaded table such as uploads/x.csv, or the client's approved category list as uploads/x.xlsx (spec 17 D)
+             * @description 'list' (the exercise's category list), an uploaded table such as uploads/x.csv, or the client's approved category list as uploads/x.xlsx (spec 17 D)
              */
             source: string;
         };
@@ -3066,41 +3077,6 @@ export interface operations {
             };
         };
     };
-    refine_apply_apply_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                exercise_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefineApply"];
-            };
-        };
-        responses: {
-            /** @description Accepted */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Job"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorModel"][];
-                };
-            };
-        };
-    };
     refine_choose_draft_draft_post: {
         parameters: {
             query?: never;
@@ -3136,7 +3112,108 @@ export interface operations {
             };
         };
     };
-    refine_download_final_for_client_final_client_xlsx_get: {
+    list_get_list_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListState"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    list_make_categories_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoriesIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoriesOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    list_check_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckIn"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckOut"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    list_client_workbook_client_xlsx_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -3158,29 +3235,7 @@ export interface operations {
             };
         };
     };
-    refine_download_final_final_xlsx_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                exercise_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorModel"][];
-                };
-            };
-        };
-    };
-    refine_import_answers_import_post: {
+    list_comment_comment_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3191,77 +3246,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RefineImport"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportResult"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorModel"][];
-                };
-            };
-        };
-    };
-    refine_change_lines_lines_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                exercise_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LineChanges"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RefineState"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorModel"][];
-                };
-            };
-        };
-    };
-    refine_propose_propose_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                exercise_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Propose"];
+                "application/json": components["schemas"]["CommentIn"];
             };
         };
         responses: {
@@ -3285,7 +3270,7 @@ export interface operations {
             };
         };
     };
-    refine_download_revised_for_client_revised_client_xlsx_get: {
+    list_decide_decide_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3294,8 +3279,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideIn"];
+            };
+        };
         responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListState"];
+                };
+            };
             /** @description Unprocessable Content */
             422: {
                 headers: {
@@ -3307,7 +3305,42 @@ export interface operations {
             };
         };
     };
-    refine_download_revised_revised_xlsx_get: {
+    list_reread_reread_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RereadIn"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorModel"][];
+                };
+            };
+        };
+    };
+    list_undo_undo_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -3318,6 +3351,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListState"];
+                };
+            };
             /** @description Unprocessable Content */
             422: {
                 headers: {
