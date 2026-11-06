@@ -54,6 +54,38 @@ After changing the API, regenerate its contract and the web app's types:
 
     make contract
 
+## The team server on Render
+
+One Render web service holds the team's one bank (spec 20). It's built from
+the `Dockerfile` and set up by `render.yaml`. The bank, learned files,
+exercises and cached model answers live on its persistent disk at
+`/app/home`. The image holds code only.
+
+1. In the Render dashboard: **New → Blueprint**, then pick this repository.
+   Render reads `render.yaml` and asks for `GEMINI_API_KEY` and
+   `GEMINI_PAID_TIER` (`yes`: the key's project must have billing on).
+2. After the first deploy, open **Environment** and copy
+   `TENDERSURE_PASSWORD`. The browser asks for the user name `team` and that
+   password. Share it with the team only, never with a client.
+3. Move the bank in. In **Connect → SSH**, add your SSH key, then from the
+   repo root run:
+
+       scp -s -r data workspaces .cache <service-ssh-address>:/app/home/
+
+4. Open `https://<name>.onrender.com/`. Home should show the same workbook,
+   sheet and question numbers as this machine.
+
+Deploys are manual (**Manual Deploy**). A deploy restarts the one instance,
+which cuts off any running job, so deploy when no job is running. The CLI
+runs in the service's **Shell** against the same home, for example
+`tendersure privacy-check`. Render snapshots the disk daily and keeps 7 days.
+
+To try the image locally:
+
+    docker build -t tendersure .
+    docker run --rm -p 10000:10000 -e PORT=10000 -e TENDERSURE_PASSWORD=<16+ chars> \
+      -v "$PWD/data:/app/home/data" tendersure
+
 ## Run
 
 Client workbooks are confidential: keep them out of the repo (`sample file/`

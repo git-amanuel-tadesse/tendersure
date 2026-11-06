@@ -11,9 +11,21 @@ reach a local port through the browser:
   another site cannot add that header without a CORS preflight, and this
   server never answers one.
 
+On a team server (spec 20: Render), TENDERSURE_PASSWORD is set and the app
+is public, so the password is the guard instead of the machine:
+
+- every request but /api/health needs HTTP Basic credentials, the user
+  TENDERSURE_USER (default `team`) and that password. The browser asks once
+  and sends them with every request after;
+- the Host is not limited (the server has a public name), but an Origin
+  must be the server itself;
+- writes still carry `X-TenderSure: 1`, so another site cannot make a
+  signed-in browser change anything.
+
 Errors are always JSON: {"error": "...", "detail": ...}.
 """
 
+import hmac
 import os
 from typing import Optional
 from urllib.parse import urlsplit
@@ -29,7 +41,9 @@ LOCAL_HOSTS = {"localhost", "127.0.0.1", "[::1]", "::1"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 HEADER = "X-TenderSure"
 VERSION = "0.1.0"
-WEB_DIST = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "web", "dist"))
+WEB_DIST = os.environ.get("TENDERSURE_WEB_DIST") or os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "web", "dist"))
+REALM = "TenderSure"
 
 
 class Health(BaseModel):
@@ -42,6 +56,10 @@ def _host(netloc: str) -> str:
     if netloc.startswith("["):
         return netloc[:netloc.find("]") + 1]
     return netloc.rsplit(":", 1)[0] if netloc.count(":") == 1 else netloc
+
+
+def _same(a: str, b: str) -> bool:
+    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
 
 
 def _invalid(e):
@@ -79,13 +97,33 @@ def create_app(web_dist: Optional[str] = WEB_DIST, workspaces: Optional[str] = N
     def served(_exc):
         runner.serving(False)
 
+    user = os.environ.get("TENDERSURE_USER") or "team"
+    password = os.environ.get("TENDERSURE_PASSWORD") or ""
+
+    @app.before_request
+    def team_only():
+        if not password or request.path == "/api/health":        # the host's health check has no password
+            return None
+        a = request.authorization
+        if a and a.type == "basic" and _same(a.username or "", user) & _same(a.password or "", password):
+            return None
+        r = jsonify(error="Unauthorized", detail="sign in with the team's user name and password")
+        r.status_code = 401
+        r.headers["WWW-Authenticate"] = f'Basic realm="{REALM}", charset="UTF-8"'
+        return r
+
     @app.before_request
     def local_only():
-        if _host(request.host).lower() not in LOCAL_HOSTS:
+        if password:                                            # a team server: public name, same-origin only
+            origin = request.headers.get("Origin")
+            if origin and urlsplit(origin).netloc.lower() != request.host.lower():
+                abort(403, description="requests from other sites are refused")
+        elif _host(request.host).lower() not in LOCAL_HOSTS:
             abort(403, description="this server only answers requests addressed to this machine")
-        origin = request.headers.get("Origin")
-        if origin and _host(urlsplit(origin).netloc).lower() not in LOCAL_HOSTS:
-            abort(403, description="requests from other sites are refused")
+        else:
+            origin = request.headers.get("Origin")
+            if origin and _host(urlsplit(origin).netloc).lower() not in LOCAL_HOSTS:
+                abort(403, description="requests from other sites are refused")
         if request.method not in SAFE_METHODS and request.headers.get(HEADER) != "1":
             abort(403, description=f"a request that changes something must carry the {HEADER}: 1 header")
 

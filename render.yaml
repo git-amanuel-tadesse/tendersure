@@ -1,0 +1,37 @@
+# Render Blueprint for the team server (spec 20). New -> Blueprint in the Render
+# dashboard, pick this repo; Render asks for the values marked sync: false.
+services:
+  - type: web
+    name: tendersure
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # a paid plan: a persistent disk needs one. 2 GB of memory for large workbooks and PDFs.
+    plan: 1c-2g
+    # EU by default (spec 13, open question 1); can't be changed after creation
+    region: frankfurt
+    healthCheckPath: /api/health
+    # a deploy restarts the one instance and interrupts a running job:
+    # deploy by hand (Manual Deploy) when no job is running
+    autoDeployTrigger: "off"
+    # the home: bank.sqlite, learned files, workspaces (exercises and jobs), cached model answers.
+    # Render snapshots it daily and keeps 7 days.
+    disk:
+      name: tendersure-home
+      mountPath: /app/home
+      sizeGB: 5
+    envVars:
+      # the team's sign-in: user `team` and this password (a random 256-bit value;
+      # read it in the dashboard under Environment)
+      - key: TENDERSURE_USER
+        value: team
+      - key: TENDERSURE_PASSWORD
+        generateValue: true
+      # the model: see .env.example. Paid tier only for Gemini.
+      - key: TENDERSURE_PROVIDER
+        value: gemini
+      - key: TENDERSURE_MODEL
+        value: gemini-4-argon
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_PAID_TIER
+        sync: false

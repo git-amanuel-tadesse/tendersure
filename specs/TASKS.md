@@ -269,3 +269,11 @@ ERCS for an early look.
 | T121 | Previous matching: supply-only and repair-only wording never match. | 19 C | T118 | S | Camera repair proposed beside camera supply. |
 | T122 | Suggested split keeps a sub-category that already starts with a procurement word. | 19 D | - | S | No "Provision of Provision of". |
 | T123 | `title_case` keeps i.e., e.g., etc. lower case, in brackets too. | 19 E | - | S | The E case passes. |
+
+## 20. The team server on Render (spec 20)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T124 | `tendersure-api --serve`: waitress on 0.0.0.0:$PORT, refuses without a 16+ character `TENDERSURE_PASSWORD`; HTTP Basic on every request but `/api/health`; same-origin check and `X-TenderSure` kept; `TENDERSURE_WEB_DIST`. | 20 R1, R2 | - | S | Done: the team-server tests in apps/api/tests/test_app.py pass. |
+| T125 | `Dockerfile` (web build, then the Python parties), `.dockerignore` keeping client data out, `render.yaml` (Frankfurt, disk at /app/home, manual deploys, generated password). | 20 R1, R3 | T124 | S | Done: the image builds and answers /api/health; the password guards the rest. |
+| T126 | Move in: copy `data/`, `workspaces/`, `.cache/` onto the disk; the server's Home shows this machine's numbers. | 20 R3 | T125 | S | Same Home numbers and exercises on Render. |
