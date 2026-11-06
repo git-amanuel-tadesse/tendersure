@@ -28,7 +28,7 @@ import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -52,8 +52,10 @@ OVERLAP_HEAD = 0.6       # the same for the subject outside brackets ("ICT Equip
 DUPLICATE = 0.92         # text similarity above which two draft rows are the same category
 _SMALL = {"a", "an", "and", "as", "at", "by", "for", "from", "in", "of", "on", "or", "the", "to", "with", "etc",
           "per", "via", "into", "including", "e.g.", "i.e."}
-_NUMBER_HEAD = re.compile(r"^(no\.?|#|s/?n|ref(erence)?|code|category code|cat\.? no\.?)$", re.I)
-_DESC_HEAD = re.compile(r"description", re.I)
+_NUMBER_HEAD = re.compile(r"^(no\.?|#|s/?n|s\.\s*no\.?|sr\.?\s*no\.?|serial(\s*(no\.?|number|#))?|ref(erence)?|code|"
+                          r"category code|cat\.? no\.?)$", re.I)
+# a description column's header; NRC instead puts the group's name there ("Prequalification for Supply of Goods")
+_DESC_HEAD = re.compile(r"description|cat[ae]gor|\bitems?\b", re.I)
 _PEOPLE = re.compile(r"consult|training|trainer|facilitat|translat|interpret|research|psycho|counsel|"
                      r"clinical|legal|audit|advis|evaluat|photograph|videograph|writer|editing", re.I)
 _ONLY = re.compile(r"\(([^()]*?)\b(registered|certified|accredited|licensed)\b[^()]*\bonly\)", re.I)
@@ -93,8 +95,11 @@ def _header(ws) -> Tuple[int, int, int]:
         cells = [c for c in row if c.value not in (None, "")]
         for i, c in enumerate(cells):
             if _NUMBER_HEAD.match(str(c.value).strip()):
-                desc = next((d for d in cells[i + 1:] if _DESC_HEAD.search(str(d.value))), None) \
-                    or (cells[i + 1] if i + 1 < len(cells) else None)
+                rest = cells[i + 1:]
+                desc = next((d for d in rest if re.search("description", str(d.value), re.I)), None) \
+                    or next((d for d in rest if _DESC_HEAD.search(str(d.value))
+                             and not _NUMBER_HEAD.match(str(d.value).strip())), None) \
+                    or (rest[0] if rest else None)
                 if desc is not None:
                     return c.row, c.column, desc.column
     raise ValueError("no header row with a number column (No, #, Ref, Code) found")
@@ -175,49 +180,121 @@ def _csv_draft(i: int, d: dict) -> Draft:
                  INDIVIDUAL in (d.get("applies_to") or ""))
 
 
-def read_draft(path: str, sheet: Optional[str] = None) -> List[Draft]:
-    """A draft list as clients write it: a number column, a description
-    column, and group rows (capitalised text without a number, in either
-    column, merged or not); optionally sub-categories, licence, HR and
-    technical columns, filled on the category's row or on rows under it
-    (spec 07). A CSV categories table works too."""
-    if path.lower().endswith(".csv"):
-        with open(path, newline="") as fh:
-            return [_csv_draft(i, d) for i, d in enumerate(csv.DictReader(fh))]
-    wb = openpyxl.load_workbook(path, data_only=True)
-    ws = wb[sheet] if sheet else wb.worksheets[0]
+UNPLACED = "No number in the draft: a category, or part of the one above?"
+_BULLET = re.compile(r"^[-‐-―•·▪●*]\s*")
+# what a category's wording starts with; a short row starting otherwise, above a numbered row, is a group
+_PROCUREMENT = re.compile(r"^(supply|supplies|provision|provide|hire|hiring|rent|rental|repairs?|maintenance|"
+                          r"construction|design|installation|install|delivery|printing|production|purchase)\b", re.I)
+_TAB_LEAD = re.compile(r"^(category|catagory|categories|catagories)(\s+list)?\s+(for|of)\s+", re.I)
+_HEADING_WORDS = 3
+
+
+def tab_group(name: str) -> str:
+    """A tab's name as the group of the rows above its first group row:
+    'Catagory for Goods and services' -> 'Goods and Services'."""
+    return title_case(_TAB_LEAD.sub("", " ".join(name.split())))
+
+
+def visible_tabs(wb) -> List[str]:
+    return [ws.title for ws in wb.worksheets if ws.sheet_state == "visible"]
+
+
+def _has_header(ws) -> bool:
+    try:
+        _header(ws)
+        return True
+    except ValueError:
+        return False
+
+
+def _read_tab(ws, first_group: Optional[str] = None, prefix: str = "") -> List[Draft]:
+    """One tab of a draft list (see read_draft). `prefix` keeps the ids of
+    several tabs apart; `first_group` names the rows above the first group row."""
     head, ncol, dcol = _header(ws)
     extra = _extra_columns(ws, head, (ncol, dcol))
     head_label = str(ws.cell(head, ncol).value).strip()
     first = str(ws.cell(head, dcol).value or "").strip()
     group = None if _DESC_HEAD.search(first) else first or None      # NRC: the header names the group
-    out, seen = [], Counter()
-    for r in range(head + 1, ws.max_row + 1):
-        num_cell = str(ws.cell(r, ncol).value or "").strip()
-        desc = " ".join(str(ws.cell(r, dcol).value or "").split())
+    group = group or first_group
+    # stray copies far to the right of the table (Amref) are not part of any row
+    last_head = max((c.column for c in ws[head] if c.value not in (None, "")), default=dcol)
+    width = max([ncol, dcol, last_head, *extra.values()]) + 5
+    rows = []
+    for r, values in enumerate(ws.iter_rows(min_row=head + 1, max_col=width, values_only=True), head + 1):
+        val = lambda col: values[col - 1] if col - 1 < len(values) else None
+        rows.append((r, str(val(ncol) or "").strip(), " ".join(str(val(dcol) or "").split()),
+                     {name: str(val(c) or "").strip() for name, c in extra.items()},
+                     " ".join(str(v) for i, v in enumerate(values, 1) if v not in (None, "") and i != dcol)))
+    numbered = any(_number(num) for _, num, _, _, _ in rows)
+    out, seen, last = [], Counter(), None              # last: what the previous row was (category, sub, group)
+    for k, (r, num_cell, desc, cells, row_text) in enumerate(rows):
         if num_cell == head_label:                     # a repeated header row naming the next group
-            group = desc or group
+            group, last = desc or group, "group"
             continue
-        cells = {name: str(ws.cell(r, c).value or "").strip() for name, c in extra.items()}
-        row_text = " ".join(str(c.value) for c in ws[r] if c.value not in (None, "") and c.column != dcol)
         number = _number(num_cell)
         if not number:
             label = desc or num_cell
             if not label and out and (any(cells.values()) or _INDIVIDUAL.search(row_text)):
                 _add_extras(out[-1], cells, row_text)           # a continuation row of the category above
                 continue
-            if label and (not desc or _is_group_label(label)):
-                group = label.strip()
+            if not label:
                 continue
-            if not desc:
+            nxt = next((x for x in rows[k + 1:] if x[1] or x[2]), None)
+            next_bullet = bool(nxt and not _number(nxt[1]) and _BULLET.match(nxt[2]))
+            if desc and out and last in ("category", "sub") and (_BULLET.match(desc) or next_bullet):
+                sub = _BULLET.sub("", desc).strip()                # a sub-category line (spec 18 C)
+                if sub and sub not in out[-1].sub_categories:
+                    out[-1].sub_categories.append(sub)
+                last = "sub"
+                continue
+            heading = len(label.split()) <= _HEADING_WORDS and not _PROCUREMENT.match(label) \
+                and bool(nxt and _number(nxt[1]))
+            if not desc or _is_group_label(label) or heading:
+                group, last = label.strip(), "group"
                 continue
         seen[number] += 1
-        out.append(Draft(number if number and seen[number] == 1 else f"r{r}", desc, group))
+        out.append(Draft(prefix + (number if number and seen[number] == 1 else f"r{r}"), desc, group))
+        if not number and numbered:
+            out[-1].notes.append(UNPLACED)
         _add_extras(out[-1], cells, row_text)
+        last = "category"
     return out
 
 
+def read_draft(path: str, sheet: Union[str, Sequence[str], None] = None) -> List[Draft]:
+    """A draft list as clients write it: a number column, a description
+    column, and group rows (capitalised text without a number, in either
+    column, merged or not, or a short heading above a numbered row);
+    sub-category lines under a category; optionally sub-categories, licence,
+    HR and technical columns, filled on the category's row or on rows under
+    it (spec 07). A CSV categories table works too.
+
+    `sheet`: one tab, or several read as one draft (spec 18 B: ids carry the
+    tab's position, "2-7"; rows above a tab's first group row are grouped
+    under the tab's name). With none, the first visible tab that has a list.
+    Hidden tabs are never read."""
+    if path.lower().endswith(".csv"):
+        with open(path, newline="") as fh:
+            return [_csv_draft(i, d) for i, d in enumerate(csv.DictReader(fh))]
+    wb = openpyxl.load_workbook(path, data_only=True)
+    names = [sheet] if isinstance(sheet, str) else [s for s in sheet or [] if s]
+    if not names:
+        ws = next((ws for ws in wb.worksheets if ws.sheet_state == "visible" and _has_header(ws)), None)
+        if ws is None:
+            raise ValueError("no header row with a number column (No, #, Serial, Ref, Code) found")
+        return _read_tab(ws)
+    for n in names:
+        if wb[n].sheet_state != "visible":
+            raise ValueError(f"tab '{n}' is hidden")
+    if len(names) == 1:
+        return _read_tab(wb[names[0]])
+    return [d for k, n in enumerate(names, 1) for d in _read_tab(wb[n], tab_group(n), f"{k}-")]
+
+
 # --- wording --------------------------------------------------------------------
+
+_ABBREVIATIONS = {"i.e.", "e.g.", "etc.", "etc", "i.e", "e.g"}
+
 
 def title_case(text: str) -> str:
     """Title Case as the final lists write it: small words lower-case after the
@@ -229,6 +306,8 @@ def title_case(text: str) -> str:
         core = word[len(lead):]
         if not core or any(ch.isdigit() for ch in core) or (len(core) > 1 and core.isupper()):
             out.append(word)
+        elif i and core.lower().rstrip(",;:)") in _ABBREVIATIONS:        # spec 19 E, in brackets too
+            out.append(lead + core.lower())
         elif i and not lead and core.lower().strip(".,;:)") in _SMALL:
             out.append(core.lower())
         else:
@@ -269,10 +348,96 @@ class Line:
     merge_with: List[str] = field(default_factory=list)        # with decision merge: the revised list's # numbers
     suggested_split: List[str] = field(default_factory=list)   # by rules: shown, applied only when chosen
     suggested_merge: List[str] = field(default_factory=list)
+    # The client's previous list (spec 18 D): its categories this line matches, "(covered)" when the model said so
+    previous: List[str] = field(default_factory=list)
 
     @property
     def gate_question(self) -> bool:
         return INDIVIDUAL in self.applies_to
+
+
+@dataclass
+class Previous:
+    """The client's previous category list (spec 18 D): names only, never its suppliers."""
+    names: List[str]
+    label: str = ""                 # e.g. "2025-2026"
+    file: str = ""
+    tabs: List[str] = field(default_factory=list)
+    tab_of: Dict[str, str] = field(default_factory=dict)      # name -> the tab it was read from (spec 19 B)
+
+    def consultancy(self, name: str) -> bool:
+        """Read from a tab that reads as consultancy ("Prequalified_Consultant")."""
+        tab = self.tab_of.get(name, "").replace("_", " ")
+        return bool(tab) and (category_kind(tab) == "consultancy" or bool(_PEOPLE.search(tab)))
+
+    @property
+    def called(self) -> str:
+        return f"the client's {self.label} list" if self.label else "the client's previous list"
+
+
+PREVIOUS_GROUP = "From the previous list"
+PREVIOUS_ASK = "Keep it for this round?"
+COVERED = " (covered)"
+
+
+_SUPPLY = re.compile(r"\b(supply|supplies|delivery|purchase)\b", re.I)
+_UPKEEP = re.compile(r"\b(repairs?|maintenance|maintain|servicing)\b", re.I)
+
+
+def _work(text: str) -> set:
+    return {k for k, rx in (("supply", _SUPPLY), ("upkeep", _UPKEEP)) if rx.search(text)}
+
+
+def _same_work(a: str, b: str) -> bool:
+    """Not one that only supplies and one that only repairs (spec 19 C)."""
+    wa, wb = _work(a), _work(b)
+    return not (wa and wb and wa.isdisjoint(wb))
+
+
+def previous_matches(drafts: List[Draft], names: List[str]) -> Tuple[Dict[str, List[str]], List[str]]:
+    """(draft id -> the previous names it matches, previous names no draft row matches): the same
+    goods or services whatever the verbs and small words, or the same text. Near-same text is not
+    enough: "Provision of taxi services" is not "Provision of cloud services"; nor is supplying
+    something the same as repairing it."""
+    by_draft: Dict[str, List[str]] = defaultdict(list)
+    unmatched = []
+    for n in names:
+        hits = [d for d in drafts if _same_work(n, d.description)
+                and (_same(n, d.description) or _same_text(n, d.description) >= DUPLICATE)]
+        for d in hits:
+            by_draft[d.id].append(n)
+        if not hits:
+            unmatched.append(n)
+    return by_draft, unmatched
+
+
+def _apply_previous(lines: List[Line], raw: Optional[dict], drafts: List[Draft], previous: Previous):
+    """Each line with the previous categories it matches; the rest proposed as additions, except
+    those the model found covered by a draft row (shown on that row's line)."""
+    by_draft, unmatched = previous_matches(drafts, previous.names)
+    ids = {d.id for d in drafts}
+    left = {" ".join(n.lower().split()): n for n in unmatched}
+    covered: Dict[str, List[str]] = defaultdict(list)
+    for c in (raw or {}).get("previous_covered", []) or []:
+        name = left.get(" ".join(str(c.get("name", "")).lower().split()))
+        if name and str(c.get("by")) in ids:
+            covered[str(c["by"])].append(name + COVERED)
+            left.pop(" ".join(name.lower().split()), None)
+    for ln in lines:
+        ln.previous = list(dict.fromkeys(n for i in ln.from_draft for n in by_draft.get(i, []) + covered.get(i, [])))
+    for name in left.values():
+        tab = previous.tab_of.get(name)
+        reason = f"In {previous.called}{f' ({tab})' if tab else ''}, not in the draft"
+        who = BUSINESS_TYPES[:] if previous.consultancy(name) else []
+        twin = next((ln for ln in lines if ln.status == ADDITIONAL and _same(ln.description, name)
+                     and _same_work(ln.description, name)), None)
+        if twin:                                    # the model suggested it too
+            twin.previous.append(name)
+            twin.reason = f"{twin.reason}; {reason}" if twin.reason else reason
+            twin.applies_to = [b for b in BUSINESS_TYPES if b in twin.applies_to + who] if who else twin.applies_to
+            continue
+        lines.append(Line(" ".join(name.split()), ADDITIONAL, [], PREVIOUS_GROUP, reason, PREVIOUS_ASK,
+                          applies_to=who, previous=[name]))
 
 
 def _words(text: str) -> set:
@@ -407,6 +572,14 @@ For each line also give, where they apply:
 Under "additional", suggest categories common in comparable past exercises (listed below) that this
 client's draft lacks, each with its reason and the group it belongs to. Suggest few, only clear gaps.
 
+A row with several sub-categories may be Separated into a few categories (usually 3-4), each made of related
+sub-categories: give each new line the sub_categories it takes, in the draft's wording.
+
+When the client's previous list is given, it names categories from the client's last round that no draft row
+matched. For each one a draft row already covers (for instance inside a broader category), give it under
+previous_covered with that row's id. Do not repeat these names under "additional": the rest are proposed by
+code.
+
 When the client's brief is given, it comes first. Set from_brief on a line or addition you made because of
 it; never remove a category for it either."""
 
@@ -424,10 +597,14 @@ SCHEMA = {"type": "object", "required": ["lines", "additional"], "properties": {
                                               "properties": {"description": {"type": "string"},
                                                              "group": {"type": "string"},
                                                              "reason": {"type": "string"},
-                                                             "from_brief": {"type": "boolean"}}}}}}
+                                                             "from_brief": {"type": "boolean"}}}},
+    "previous_covered": {"type": "array", "items": {"type": "object", "required": ["name", "by"],
+                                                    "properties": {"name": {"type": "string"},
+                                                                   "by": {"type": "string"}}}}}}
 
 
-def build_prompt(drafts: List[Draft], past: List[str], target: Optional[Tuple[int, int]], brief: str = "") -> str:
+def build_prompt(drafts: List[Draft], past: List[str], target: Optional[Tuple[int, int]], brief: str = "",
+                 previous: Optional[Previous] = None) -> str:
     dups = duplicates(drafts)
     lines = cb.prompt_lines(brief) + [f"DRAFT ({len(drafts)} rows; id | group | description):"]
     lines += [f"  {d.id} | {d.group or '-'} | {d.description}" for d in drafts]
@@ -436,6 +613,10 @@ def build_prompt(drafts: List[Draft], past: List[str], target: Optional[Tuple[in
     lines += [f"  {a} and {b} may overlap" for a, b, _ in overlaps(drafts, dups)[:30]]
     if target:
         lines += ["", f"TARGET: about {target[0]}-{target[1]} categories (a guide, not a rule)."]
+    unmatched = previous_matches(drafts, previous.names)[1] if previous and previous.names else []
+    if unmatched:
+        lines += ["", f"THE CLIENT'S PREVIOUS LIST ({previous.label or 'last round'}), names no draft row matched:"]
+        lines += [f"  {n}" for n in unmatched]
     if past:
         lines += ["", "CATEGORIES IN COMPARABLE PAST EXERCISES:"] + [f"  {p}" for p in past[:150]]
     return "\n".join(lines)
@@ -446,11 +627,12 @@ class ModelRefiner:
         self.llm = llm or make_llm(model=model)
 
     def propose(self, drafts: List[Draft], client: str, past: List[str],
-                target: Optional[Tuple[int, int]], brief: str = "") -> Optional[dict]:
+                target: Optional[Tuple[int, int]], brief: str = "",
+                previous: Optional[Previous] = None) -> Optional[dict]:
         """The model's proposal, kept as soon as it arrives: proposing again with
         the same draft, brief and target reuses it (no second call), so a run
         stopped by a restart loses nothing it paid for."""
-        prompt = build_prompt(drafts, past, target, brief)
+        prompt = build_prompt(drafts, past, target, brief, previous)
         key = hashlib.sha1(f"{getattr(self.llm, 'model', '')}|{SYSTEM}|{prompt}".encode()).hexdigest()[:16]
         path = os.path.join(current().cache, f"refine_{re.sub(r'[^A-Za-z0-9]+', '_', client)}.json")
         cache = {}
@@ -533,14 +715,18 @@ def _line_from_model(raw: dict, by_id: Dict[str, Draft], dups: Dict[str, str]) -
 
 def _settle_eligibility(ln: Line, by_id: Dict[str, Draft]):
     """Eligibility is a pass/fail upload in every sheet of the category, so
-    only what the draft itself states is applied ("(IATA Registered Only)");
-    other documents the model proposes are shown as suggestions."""
-    stated = list(dict.fromkeys(e for text in [ln.description] + [by_id[i].description for i in ln.from_draft
-                                                                    if i in by_id]
-                                for e in rule_eligibility(text)))
+    only what the client's own words state is applied ("(IATA Registered
+    Only)"): its draft rows, or the previous category an addition comes from.
+    A document read from the model's wording, and the model's own proposals,
+    are shown as suggestions (spec 19 A)."""
+    own = [by_id[i].description for i in ln.from_draft if i in by_id] or \
+        [n for n in ln.previous if not n.endswith(COVERED)]
+    stated = list(dict.fromkeys(e for text in own for e in rule_eligibility(text)))
     ln.eligibility = ln.eligibility or stated
     have = {e.lower() for e in ln.eligibility}
-    ln.suggested_eligibility = [e for e in ln.suggested_eligibility if e.lower() not in have]
+    worded = [e for e in rule_eligibility(ln.description) if e.lower() not in have]
+    ln.suggested_eligibility = list(dict.fromkeys(worded + [e for e in ln.suggested_eligibility
+                                                            if e.lower() not in have]))
 
 
 def _carry_draft(ln: Line, by_id: Dict[str, Draft]):
@@ -551,8 +737,12 @@ def _carry_draft(ln: Line, by_id: Dict[str, Draft]):
     rows = [by_id[i] for i in ln.from_draft if i in by_id]
     union = lambda name: list(dict.fromkeys(x for d in rows for x in getattr(d, name)))
     # Sub-categories come from the client's draft only (spec 12 R1): the model's are shown, not applied.
-    proposed = [s for s in ln.sub_categories if s not in union("sub_categories")]
-    ln.sub_categories = union("sub_categories")
+    # A separated line takes the draft's sub-categories the model gave it (spec 18 C).
+    asked = {" ".join(s.lower().split()) for s in ln.sub_categories}
+    taken = [s for s in union("sub_categories") if " ".join(s.lower().split()) in asked]
+    proposed = [s for s in ln.sub_categories if " ".join(s.lower().split()) not in
+                {" ".join(t.lower().split()) for t in union("sub_categories")}]
+    ln.sub_categories = taken if ln.status == SEPARATED and taken else union("sub_categories")
     if proposed and rows:
         hint = f"model suggests sub-categories (not applied): {' | '.join(proposed)}"
         ln.reason = f"{ln.reason}; {hint}" if ln.reason else hint
@@ -562,6 +752,14 @@ def _carry_draft(ln: Line, by_id: Dict[str, Draft]):
         ln.applies_to = [b for b in BUSINESS_TYPES if b in ln.applies_to + [INDIVIDUAL]]
     notes = [n for n in union("notes") if n not in ln.question]
     ln.question = " ".join([ln.question] + notes).strip()
+
+
+_OLD_NUMBER = re.compile(r"^\d{1,3}[.)]?\s+(?=[A-Za-z(])")
+
+
+def _own_number(d: Draft) -> bool:
+    """The row has its own number in the number column (its id is not r<row>)."""
+    return not d.id.rsplit("-", 1)[-1].startswith("r")
 
 
 INDIVIDUAL_ASK = "Open to Individual Consultants too? (the draft names the categories that include them)"
@@ -578,9 +776,11 @@ def _draft_decides_individuals(ln: Line, by_id: Dict[str, Draft]):
         ln.question = f"{ln.question} {INDIVIDUAL_ASK}".strip()
 
 
-def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[str]]) -> List[Line]:
+def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[str]],
+          previous: Optional[Previous] = None) -> List[Line]:
     """The model's proposal as lines the code stands behind (or the rules'
-    proposal when there is none). Every draft row ends up on a line."""
+    proposal when there is none). Every draft row ends up on a line; with the
+    client's previous list, its categories missing from the draft are proposed."""
     by_id = {d.id: d for d in drafts}
     marked = any(d.individual for d in drafts)
     dups = duplicates(drafts)
@@ -605,10 +805,16 @@ def check(raw: Optional[dict], drafts: List[Draft], groups_order: List[Optional[
                     max((_same_text(desc, d.description) for d in drafts), default=0) < 0.8:
                 lines.append(Line(desc, ADDITIONAL, [], names.get((a.get("group") or "").lower()),
                                   cb.labelled(a["reason"], a.get("from_brief"))))
+    if previous and previous.names:
+        _apply_previous(lines, raw, drafts, previous)
     for ln in lines:
-        new = title_case(ln.description)
+        text = ln.description
+        if ln.from_draft and all(i in by_id and _own_number(by_id[i]) for i in ln.from_draft):
+            text = _OLD_NUMBER.sub("", text)               # "3 Provision of ..." on row 37 (spec 18 A)
+        new = title_case(text)
         if new != ln.description and ln.status == KEPT:
-            ln.status, ln.reason = RENAMED, f"capitalisation; was: {ln.description}"
+            why = "old number dropped" if text != ln.description else "capitalisation"
+            ln.status, ln.reason = RENAMED, f"{why}; was: {ln.description}"
         ln.description = new
         ln.applies_to = [b for b in BUSINESS_TYPES if b in (ln.applies_to or rule_applies_to(ln.description))]
         _carry_draft(ln, by_id)
@@ -635,7 +841,8 @@ def suggest(lines: List[Line]):
         ln.suggested_split, ln.suggested_merge = [], []
         head = _HEAD.match(ln.description)
         if len(ln.sub_categories) >= 2:
-            ln.suggested_split = [title_case(f"{head.group(1)} {s}" if head else s) for s in ln.sub_categories]
+            ln.suggested_split = [title_case(f"{head.group(1)} {s}" if head and not _PROCUREMENT.match(s) else s)
+                                  for s in ln.sub_categories]
         else:
             parts = [p.strip(" ,") for p in _TWO_HEADS.split(ln.description) if p.strip(" ,")]
             if len(parts) >= 2:
@@ -661,7 +868,7 @@ def traceability(lines: List[Line], drafts: List[Draft]) -> List[str]:
 # --- workbooks ------------------------------------------------------------------
 
 REVISED_HEADERS = ["#", "Category Code", "Category Description", "Status", "From draft #", "Reason",
-                   "Question for client", "Sub-categories", "Eligibility", "Licence", "HR", "Technical",
+                   "Question for client", "Previous list", "Sub-categories", "Eligibility", "Licence", "HR", "Technical",
                    "Suggested eligibility (not applied)",
                    "Technical name (suggested)", "Usually split as", "Research sources",
                    "Gate Question", "Applies To", "Decision", "Client comment", "Split into", "Merge with #",
@@ -717,12 +924,12 @@ def write_revised(path: str, drafts: List[Draft], lines: List[Line], client: str
     ws = wb.create_sheet("Revised")
     _write_lines(ws, lines, REVISED_HEADERS, lambda n, ln: [
         n, ln.code, ln.description, ln.status, ", ".join(ln.from_draft), ln.reason, ln.question,
-        " | ".join(ln.sub_categories), " | ".join(ln.eligibility), " | ".join(ln.licence), " | ".join(ln.hr),
+        " | ".join(ln.previous), " | ".join(ln.sub_categories), " | ".join(ln.eligibility), " | ".join(ln.licence), " | ".join(ln.hr),
         " | ".join(ln.technical), " | ".join(ln.suggested_eligibility), ln.technical_name, " | ".join(ln.usual_split), "\n".join(ln.research_sources),
         "TRUE" if ln.gate_question else "", ", ".join(ln.applies_to), ln.decision, ln.comment,
         " | ".join(ln.split_into), ", ".join(ln.merge_with), " | ".join(ln.suggested_split),
         ", ".join(ln.suggested_merge), ln.group or ""],
-        [5, 13, 60, 20, 10, 40, 40, 36, 28, 28, 36, 36, 34, 40, 40, 50, 9, 34, 11, 30, 40, 12, 40, 14, 4])
+        [5, 13, 60, 20, 10, 40, 40, 36, 36, 28, 28, 36, 36, 34, 40, 40, 50, 9, 34, 11, 30, 40, 12, 40, 14, 4])
     answers = [REVISED_HEADERS.index(h) for h in ("Decision", "Client comment", "Split into", "Merge with #")]
     for row in ws.iter_rows(min_row=2):
         if row[3].value:                                   # a line, not a group row
@@ -801,7 +1008,8 @@ def read_revised(path: str) -> Tuple[List[Draft], List[Line]]:
                           _split(g("Technical"), "|"), _split(g("Split into"), "|"),
                           [n.lstrip("#") for n in _split(str(g("Merge with #") or ""), ",")],
                           _split(g("Suggested split"), "|"),
-                          [n.lstrip("#") for n in _split(str(g("Suggested merge with #") or ""), ",")]))
+                          [n.lstrip("#") for n in _split(str(g("Suggested merge with #") or ""), ",")],
+                          _split(g("Previous list"), "|")))
     return drafts, lines
 
 

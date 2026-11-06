@@ -27,6 +27,8 @@ from these specs until the task list is reviewed.
 | [15-rules-as-checks.md](15-rules-as-checks.md) | An edited copy checked against the client's rules and the categories table's items | (team request, 2026-10-30) |
 | [16-lessons-from-psi.md](16-lessons-from-psi.md) | What PSI taught us: rules checked every run, client profile, rules proposed from the client's files, calmer review, preview | (team request, 2026-10-30) |
 | [17-psi-version-3.md](17-psi-version-3.md) | PSI's Version 3 comments: an `add` client rule, Trade License naming, sum formulas, importing the client's list | (PSI feedback, 2026-11-02) |
+| [18-draft-in-tabs-and-previous-list.md](18-draft-in-tabs-and-previous-list.md) | A draft over several tabs read as one, sub-category lines, and the client's previous list as evidence | (Amref, 2026-11-04) |
+| [19-amref-proposal-review.md](19-amref-proposal-review.md) | What Amref's first proposal showed: eligibility from the client's words only, previous tabs, supply vs repair, split wording, abbreviations | (Amref, 2026-11-04) |
 
 The build order is in [TASKS.md](TASKS.md).
 

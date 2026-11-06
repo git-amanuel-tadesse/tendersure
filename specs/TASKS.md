@@ -244,8 +244,28 @@ Suggested order: T91 -> T92 (both safe on laptops too), then T93 -> T94 -> T95 -
 | T112 | `=SUM()` sub-totals by default (CLI `--values`); the check reads a formula total from the rows. | 17 C | - | S | Default build writes formulas; check passes. |
 | T113 | Import the client's approved category list (.xlsx), keeping the team's settings by description. | 17 D | - | S | PSI's list: 77 categories, gates and engineering items kept. |
 
+## 18. A draft in several tabs, and the client's previous list (spec 18)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T114 | Reader: `Serial` / `S.No` headers; hidden tabs skipped (default = first visible tab with a header); short un-numbered rows before a numbered row are groups; a leading old number dropped and recorded `Renamed`. | 18 A | - | S | Amref goods tab: 54 categories, `Engineering` a group, #37–39 renamed. |
+| T115 | Several tabs as one draft: repeatable `--sheet`, the tab's name as the first group, unique IDs across tabs; API takes a list of tabs; web tab checkboxes without hidden tabs. | 18 B | T114 | M | Both Amref tabs: 94 categories, consultancy #16 `Repeated` of #7. |
+| T116 | Sub-category lines: dash/bullet rows (and the row above them) under a numbered category become its sub-categories; unplaced rows carry the note. Model prompt allows `Separated` by related sub-categories. | 18 C | T114 | S | Consultancy #1 has 5 sub-categories; no line from rows 5–9. |
+| T117 | Previous list reader: draft layout or results layout (code headers, merged headers, counts dropped, supplier rows never kept); test that no supplier name reaches outputs, log or prompt. | 18 D | T114 | M | 98 names; no supplier name anywhere. |
+| T118 | Previous list in refinement: `Previous list` column, unmatched names proposed `Additional`, model prompt section and "covered by"; CLI `--previous`, API field, web upload. | 18 D | T115, T117 | M | Mobile toilets and taxi proposed; psychometric matched across tabs. |
+
 ## Suggested first slice
 
 T01 → T02 → T03 → T06 → T07: the new template plus the two fixes the team
 will notice first (marks in two columns, unbroken blocks), then regenerate
 ERCS for an early look.
+
+## 19. What Amref's first proposal showed (spec 19)
+
+| ID | Task | Spec | Depends | Size | Done when |
+|---|---|---|---|---|---|
+| T119 | Eligibility applied only from the client's own text (draft rows, previous names); the model's wording suggests. | 19 A | - | S | The IATA rename suggests, never applies. |
+| T120 | Previous names keep their tab; consultancy tabs open additions to individuals; reason names the tab; the previous list is read again on each proposal (API keeps `tab_of`). | 19 B | T118 | S | Statisticians proposed with Individual Consultant. |
+| T121 | Previous matching: supply-only and repair-only wording never match. | 19 C | T118 | S | Camera repair proposed beside camera supply. |
+| T122 | Suggested split keeps a sub-category that already starts with a procurement word. | 19 D | - | S | No "Provision of Provision of". |
+| T123 | `title_case` keeps i.e., e.g., etc. lower case, in brackets too. | 19 E | - | S | The E case passes. |

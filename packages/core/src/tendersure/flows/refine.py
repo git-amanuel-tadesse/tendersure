@@ -6,12 +6,16 @@ steps reading and writing the workbooks the team sends to the client.
 """
 
 import os
+import zipfile
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
+
+from openpyxl.utils.exceptions import InvalidFileException
 
 from .. import brief as cb
 from .. import categories as cat
+from .. import previous as pv
 from .. import refine as rf
 from .. import research as rs
 from ..paths import current
@@ -55,7 +59,7 @@ class ApplyResult:
 
 def propose(drafts: List[rf.Draft], client: str, target: Target = None, bank: Optional[str] = None,
             research: Optional[str] = None, country: str = "", model: Model = Model(),
-            brief: str = "") -> List[rf.Line]:
+            brief: str = "", previous: Optional[rf.Previous] = None) -> List[rf.Line]:
     """The revised list: one line per proposed category, every draft row accounted for."""
     bank = bank or current().bank
     research = research or current().learned(rs.RESEARCH)
@@ -64,9 +68,12 @@ def propose(drafts: List[rf.Draft], client: str, target: Target = None, bank: Op
     if not use_model:
         log.info(f"refine: without a model ({why_not}): duplicates folded, overlaps raised as questions"
                  + (f"; {cb.NOT_APPLIED}" if brief else ""))
-    raw = rf.ModelRefiner(model=model.name).propose(drafts, client, past_categories(bank), target, brief) \
-        if use_model else None
-    lines = rf.check(raw, drafts, rf.groups_of(drafts))
+    if previous:
+        log.info(f"refine: {len(previous.names)} categories from {previous.called}"
+                 + (f" ({', '.join(previous.tabs)})" if previous.tabs else ""))
+    raw = rf.ModelRefiner(model=model.name).propose(drafts, client, past_categories(bank), target, brief,
+                                                    previous) if use_model else None
+    lines = rf.check(raw, drafts, rf.groups_of(drafts), previous)
     table, kb, web = research_tools(research, load_source(None, bank)[0] if os.path.exists(bank) else [], model)
     rs.research([ln.description for ln in lines if ln.status != rf.REPEATED], country,
                 ["names", "licences"], table, kb, web, client)
@@ -75,12 +82,14 @@ def propose(drafts: List[rf.Draft], client: str, target: Target = None, bank: Op
     return lines
 
 
-def propose_file(draft: str, client: str, sheet: Optional[str] = None, target: Target = None,
+def propose_file(draft: str, client: str, sheet: Union[str, Sequence[str], None] = None, target: Target = None,
                  out: Optional[str] = None, bank: Optional[str] = None, research: Optional[str] = None,
-                 country: str = "", model: Model = Model(), brief: str = "") -> ProposeResult:
-    """Step A from a draft workbook (or CSV) to `<draft> - Revised.xlsx`."""
-    drafts = rf.read_draft(draft, sheet)
-    lines = propose(drafts, client, target, bank, research, country, model, brief)
+                 country: str = "", model: Model = Model(), brief: str = "",
+                 previous: Optional[rf.Previous] = None) -> ProposeResult:
+    """Step A from a draft workbook (or CSV) to `<draft> - Revised.xlsx`; `sheet`: one tab or several
+    read as one draft (spec 18 B); `previous`: the client's previous list (spec 18 D)."""
+    drafts = read_draft(draft, sheet)
+    lines = propose(drafts, client, target, bank, research, country, model, brief, previous)
     out = out or os.path.join(current().reports, os.path.splitext(os.path.basename(draft))[0] + " - Revised.xlsx")
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     rf.write_revised(out, drafts, lines, client, target, brief, model.wanted()[0])
@@ -151,26 +160,49 @@ def evaluate(workbook: str, draft_tab: str, final_tab: str, client: str, out: Op
 # --- the workbooks, for an app that holds the review itself ----------------------
 
 def draft_tabs(path: str) -> List[str]:
-    """The tabs of a draft workbook (none for a CSV), so a person can pick the one with the list."""
+    """The visible tabs of a draft workbook (none for a CSV), so a person can pick the ones with the list.
+    Hidden tabs are never offered (spec 18 A)."""
     if path.lower().endswith(".csv"):
         return []
     import openpyxl
     try:
-        return openpyxl.load_workbook(path, read_only=True).sheetnames
+        return rf.visible_tabs(openpyxl.load_workbook(path, read_only=True))
     except Exception as e:
         raise FlowError(f"{os.path.basename(path)} is not a readable workbook ({e})")
 
 
-def read_draft(path: str, sheet: Optional[str] = None) -> List[rf.Draft]:
+def _tabs(sheet: Union[str, Sequence[str], None]) -> List[str]:
+    return [sheet] if isinstance(sheet, str) else [s for s in sheet or [] if s]
+
+
+def _where(path: str, sheet) -> str:
+    tabs = _tabs(sheet)
+    return os.path.basename(path) + (f" / {', '.join(tabs)}" if tabs else "")
+
+
+def read_draft(path: str, sheet: Union[str, Sequence[str], None] = None) -> List[rf.Draft]:
+    """The draft list from one tab, or from several read as one draft (spec 18 B)."""
     try:
         drafts = rf.read_draft(path, sheet)
-    except KeyError:
-        raise FlowError(f"{os.path.basename(path)} has no tab '{sheet}'")
+    except KeyError as e:
+        raise FlowError(f"{os.path.basename(path)} has no tab {e}")
     except ValueError as e:
-        raise FlowError(f"{os.path.basename(path)}{' / ' + sheet if sheet else ''}: {e}")
+        raise FlowError(f"{_where(path, sheet)}: {e}")
     if not drafts:
-        raise FlowError(f"no categories found in {os.path.basename(path)}{' / ' + sheet if sheet else ''}")
+        raise FlowError(f"no categories found in {_where(path, sheet)}")
     return drafts
+
+
+def read_previous(path: str, sheets: Optional[Sequence[str]] = None, label: str = "") -> rf.Previous:
+    """The client's previous list (spec 18 D): category names only, never its suppliers."""
+    try:
+        return pv.read_previous(path, sheets, label)
+    except KeyError as e:
+        raise FlowError(f"{os.path.basename(path)} has no tab {e}")
+    except ValueError as e:
+        raise FlowError(f"{_where(path, sheets)}: {e}")
+    except (OSError, zipfile.BadZipFile, InvalidFileException) as e:
+        raise FlowError(f"{os.path.basename(path)} is not a readable workbook ({e})")
 
 
 def export_revised(path: str, drafts: List[rf.Draft], lines: List[rf.Line], client: str, target: Target = None):

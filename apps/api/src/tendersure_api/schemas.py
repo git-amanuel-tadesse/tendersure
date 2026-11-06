@@ -70,6 +70,8 @@ class Line(CoreModel):
     merge_with: List[str] = Field([], description="with decision merge: # numbers of the lines merged into this one")
     suggested_split: List[str] = Field([], description="by rules: a split to choose, never applied on its own")
     suggested_merge: List[str] = Field([], description="by rules: # numbers of overlapping lines")
+    previous: List[str] = Field([], description="the client's previous categories this line matches; "
+                                                "'(covered)' when the model found it inside this line (spec 18 D)")
 
     @computed_field
     @property

@@ -66,8 +66,12 @@ def cmd_refine(a):
     if not a.draft:
         sys.exit("give a draft category list, or --apply <reviewed revised list>")
     target = tuple(int(x) for x in a.target.split("-")) if a.target else None
+    previous = None
+    if a.previous:
+        _need(a.previous, "previous category list", "check the path; quote it if it contains spaces")
+        previous = flows.read_previous(a.previous, a.previous_sheet, a.previous_label)
     flows.propose_file(a.draft, a.client, a.sheet, target, a.out, a.bank, a.research, a.country or "", _model(a),
-                       flows.load_brief(a.brief))
+                       flows.load_brief(a.brief), previous)
 
 
 def cmd_refine_evaluate(a):
@@ -178,7 +182,14 @@ def main(argv=None):
     p = sub.add_parser("refine", help="propose a revised category list from a draft; or apply its review")
     p.add_argument("draft", nargs="?", help="the draft category list (.xlsx or .csv)")
     p.add_argument("--client", required=True, help="client code, e.g. ERCS")
-    p.add_argument("--sheet", help="the tab holding the draft (default: the first)")
+    p.add_argument("--sheet", action="append",
+                   help="a tab holding the draft; give it more than once to read several tabs as one draft "
+                        "(default: the first visible tab with a list)")
+    p.add_argument("--previous", help="the client's previous category list (.xlsx/.csv): its names only, as "
+                                      "evidence; categories missing from the draft are proposed")
+    p.add_argument("--previous-sheet", action="append",
+                   help="a tab of --previous to read (default: its results tabs, or its first list)")
+    p.add_argument("--previous-label", default="", help="what to call the previous list, e.g. 2025-2026")
     p.add_argument("--target", help="category count to aim at, e.g. 50-60 (reported against, never forced)")
     p.add_argument("--apply", help="a revised list with its Decision column answered: write the final list")
     p.add_argument("--categories-out", help="with --apply: write the categories table for generate here")
